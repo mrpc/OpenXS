@@ -27,19 +27,24 @@ $cfg{'QUARANTINE_CATEGORIES'} = join(',', @qcats);
 $cfg{'WATCH_PATHS'} = &one_line($in{'watch_paths'}) if (defined($in{'watch_paths'}));
 &openxs_write_config(%cfg);
 
-if (defined($in{'schedule'})) {
-	if ($in{'schedule'} eq "") {
-		# Disable the scheduled scan entirely, cxs's --Wstop/--Wstart
-		# equivalent for the cron-based scan (rather than just "no
-		# change", which a blank field would otherwise mean).
-		unlink('/etc/cron.d/openxs-scan');
-		$cfg{'SCHEDULE'} = '';
-		&openxs_write_config(%cfg);
-		}
-	elsif (&openxs_write_schedule(&one_line($in{'schedule'}))) {
+if (defined($in{'schedule'}) && $in{'schedule'} ne "") {
+	if (&openxs_write_schedule(&one_line($in{'schedule'}))) {
 		$cfg{'SCHEDULE'} = &one_line($in{'schedule'});
 		&openxs_write_config(%cfg);
 		}
+	else {
+		&openxs_redirect_with_message("index.cgi",
+			"Settings saved, but the schedule '" . $in{'schedule'} .
+			"' is not valid cron syntax (5 space-separated fields) - schedule left unchanged.", 1);
+		}
+	}
+elsif (defined($in{'schedule'})) {
+	# Disable the scheduled scan entirely, cxs's --Wstop/--Wstart
+	# equivalent for the cron-based scan (rather than just "no change",
+	# which a blank field would otherwise mean).
+	unlink('/etc/cron.d/openxs-scan');
+	$cfg{'SCHEDULE'} = '';
+	&openxs_write_config(%cfg);
 	}
 
-&redirect("index.cgi");
+&openxs_redirect_with_message("index.cgi", "Settings saved.", 0);
