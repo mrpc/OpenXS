@@ -13,6 +13,21 @@ our $pmf_dir = '/opt/php-malware-finder';
 our $config_file = '/etc/openxs/openxs.conf';
 our $modsec_rule = '/etc/modsecurity/openxs.conf';
 our $csf_regex = '/etc/csf/regex.custom.pm';
+our $ui_disabled_file = '/etc/openxs/disableui';
+
+# Files editable from edit_file.cgi - an explicit allow-list, never an
+# arbitrary path from the request, since this UI can write as root.
+our %editable_files = (
+	'ignore' => '/etc/openxs/ignore',
+	'rules' => '/etc/openxs/rules',
+	'path_settings' => '/etc/openxs/path_settings',
+	'csf_blocklists' => '/etc/csf/csf.blocklists',
+);
+
+sub openxs_ui_disabled
+{
+return -e $ui_disabled_file ? 1 : 0;
+}
 
 sub openxs_daemon_pid
 {
@@ -122,5 +137,16 @@ print $fh "$schedule root /opt/php-malware-finder/run_scheduled_scan.sh >> /opt/
 close($fh);
 return 1;
 }
+
+# Kill-switch, checked once here (every .cgi requires this file first) so
+# no individual page needs its own check: once disabled, nothing short of
+# removing the file via shell brings the UI back - if a compromised app
+# could re-enable it from the UI itself, the switch would be pointless.
+if (&openxs_ui_disabled()) {
+	&ui_print_header(undef, 'OpenXS Exploit Scanner', "");
+	print "<p style='color:red'><b>This UI has been disabled.</b> Remove <code>$ui_disabled_file</code> on the server to re-enable it.</p>\n";
+	&ui_print_footer("/", "Webmin index page");
+	exit;
+	}
 
 1;
