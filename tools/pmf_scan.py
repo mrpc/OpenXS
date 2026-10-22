@@ -56,6 +56,7 @@ def main():
     else:
         total = 0
         hits = 0
+        findings = []
         for fname in iter_files(filelist_path):
             total += 1
             matches = rules.match(fname, fast=True)
@@ -63,11 +64,19 @@ def main():
             if real:
                 for m in real:
                     print(f"{fname}\t{m.rule}")
+                    findings.append((fname, m.rule))
                 hits += 1
         if total == 0:
             print("# Nothing to scan: no PHP files found under the given path(s).", file=sys.stderr)
         else:
             print(f"# Scanned {total} file(s), {hits} with a genuine hit (after whitelist suppression)", file=sys.stderr)
+
+        try:
+            import openxs_db
+            label = os.environ.get("OPENXS_SCAN_LABEL", filelist_path)
+            openxs_db.record_scan(label, total, findings)
+        except Exception as e:
+            print(f"# (scan history not recorded: {e})", file=sys.stderr)
 
 if __name__ == "__main__":
     main()

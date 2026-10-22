@@ -14,6 +14,9 @@ RUN apt-get update && apt-get install -y \
     wget \
     git \
     gnupg2 \
+    iproute2 \
+    dnsutils \
+    mailutils \
     python3 \
     python3-yara \
     yara \
@@ -56,17 +59,29 @@ RUN a2enmod security2 \
 # whitelisting silently does nothing without this fix.
 RUN git clone --depth 1 https://github.com/nbs-system/php-malware-finder.git /tmp/pmf-src \
     && mv /tmp/pmf-src/php-malware-finder /opt/php-malware-finder \
+    && mv /tmp/pmf-src/.git /opt/php-malware-finder/.git \
     && rm -rf /tmp/pmf-src \
     && sed -i 's/^        Misc$/        Misc or\n        Custom/' /opt/php-malware-finder/whitelist.yar
 
 # our own tools (glue code on top of php-malware-finder)
 COPY tools/ /opt/php-malware-finder/
+RUN chmod +x /opt/php-malware-finder/*.sh /opt/php-malware-finder/*.py
+
+# default settings + scan-history database location
+RUN mkdir -p /etc/openxs /var/lib/openxs \
+    && printf 'EMAIL=root@localhost\nSCAN_PATH=/var/www\n' > /etc/openxs/openxs.conf
+
+# daily scheduled scan (alert-only, uses the settings above)
+RUN echo '17 2 * * * root /opt/php-malware-finder/run_scheduled_scan.sh >> /opt/php-malware-finder/cron.log 2>&1' \
+    > /etc/cron.d/openxs-scan \
+    && chmod 644 /etc/cron.d/openxs-scan
 
 # CSF <-> mod_security firewall integration (see csf-integration/README.md)
 COPY csf-integration/modsecurity-openxs.conf /etc/modsecurity/openxs.conf
 COPY csf-integration/regex.custom.pm /etc/csf/regex.custom.pm
 RUN sed -i 's|CUSTOM1_LOG = "/var/log/customlog"|CUSTOM1_LOG = "/var/log/apache2/error.log"|' /etc/csf/csf.conf \
-    && sed -i 's/^TESTING = "1"/TESTING = "0"/' /etc/csf/csf.conf
+    && sed -i 's/^TESTING = "1"/TESTING = "0"/' /etc/csf/csf.conf \
+    && sed -i 's/,993,995"/,993,995,10000"/' /etc/csf/csf.conf
 
 # OpenXS Webmin module
 COPY webmin/openxs/ /usr/share/webmin/openxs/
