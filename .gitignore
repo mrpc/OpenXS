@@ -1,3 +1,5 @@
 csf-fork/
 test-*.php
 test-*.jpg
+__pycache__/
+.pytest_cache/
