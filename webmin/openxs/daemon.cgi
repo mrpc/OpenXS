@@ -23,12 +23,12 @@ if (defined($in{'stop'}) || defined($in{'restart'})) {
 		if (defined($in{'stop'})) {
 			my $still_there = $which eq 'watchd' ? &openxs_watchd_pid() : &openxs_daemon_pid();
 			if ($still_there) {
-				&openxs_redirect_with_message("index.cgi", "$label did not stop (pid $still_there).", 1);
+				&openxs_result_page("$label did not stop (pid $still_there).", 1);
 				}
 			}
 		}
 	elsif (!defined($in{'start'}) && !defined($in{'restart'})) {
-		&openxs_redirect_with_message("index.cgi", "$label was not running.", 1);
+		&openxs_result_page("$label was not running.", 1);
 		}
 	}
 
@@ -38,7 +38,7 @@ if (defined($in{'start'}) || defined($in{'restart'})) {
 		if ($which eq 'watchd') {
 			my %cfg = &openxs_read_config();
 			if (($cfg{'WATCH_PATHS'} || '') eq '') {
-				&openxs_redirect_with_message("index.cgi",
+				&openxs_result_page(
 					"Set 'Watch paths' in Settings before starting the watch daemon.", 1);
 				}
 			}
@@ -48,10 +48,10 @@ if (defined($in{'start'}) || defined($in{'restart'})) {
 		sleep(1);
 		my $now_running = $which eq 'watchd' ? &openxs_watchd_pid() : &openxs_daemon_pid();
 		if (!$now_running) {
-			&openxs_redirect_with_message("index.cgi",
+			&openxs_result_page(
 				"$label did not start - check $log on the server.", 1);
 			}
 		}
 	}
 
-&openxs_redirect_with_message("index.cgi", "$label updated.", 0);
+&openxs_result_page("$label updated.", 0);
