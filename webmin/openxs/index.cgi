@@ -93,10 +93,11 @@ print &ui_table_row("Schedule (cron syntax: min hour day month weekday)",
 print &ui_table_row("Quarantine", &ui_checkbox("quarantine_enabled", "1",
 	"Move flagged files to quarantine (manual + scheduled scans only, not the real-time upload hook)",
 	$cfg{'QUARANTINE_ENABLED'} eq '1'));
-print &ui_table_row("ClamAV scope", &ui_checkbox("clamav_scan_all", "1",
-	"Let ClamAV check all files under the scan path, not just .php (YARA always stays PHP-only - ".
-	"its rules require a &lt;?php tag). Off by default: scanning every upload/media file is much slower.",
-	$cfg{'CLAMAV_SCAN_ALL'} eq '1'));
+print &ui_table_row("Fast mode (.php files only)", &ui_checkbox("fast_php_only", "1",
+	"Only scan *.php files, instead of everything under the scan path. Faster, but a webshell saved with ".
+	"a disguised extension (e.g. avatar.jpg containing real PHP code) would no longer be caught. ".
+	"Off by default - scans everything.",
+	$cfg{'FAST_PHP_ONLY'} eq '1'));
 print &ui_table_end();
 print &ui_submit("Save", "save");
 print &ui_form_end();

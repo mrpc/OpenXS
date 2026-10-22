@@ -106,12 +106,12 @@ def main():
                 already_flagged.add(fname)
 
         if total == 0 and not clam_findings:
-            print("# Nothing to scan: no PHP files found under the given path(s).", file=sys.stderr)
+            print("# Nothing to scan: the given path(s) contained no files.", file=sys.stderr)
         else:
             clam_note = f", {len(clam_findings)} ClamAV hit(s)" if shutil.which("clamdscan") else ""
             if clamav_filelist_path != filelist_path:
-                clam_note += " (ClamAV also covered a wider file list, not just PHP)"
-            print(f"# Scanned {total} PHP file(s), {hits} flagged (YARA after whitelist suppression + ClamAV){clam_note}", file=sys.stderr)
+                clam_note += " (ClamAV also covered a wider file list)"
+            print(f"# Scanned {total} file(s), {hits} flagged (YARA after whitelist suppression + ClamAV){clam_note}", file=sys.stderr)
 
         try:
             import openxs_db

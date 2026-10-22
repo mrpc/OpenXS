@@ -16,19 +16,20 @@ if (!$path || !-d $path) {
 	}
 else {
 	my $filelist = "/tmp/openxs-webmin-scan-$$.txt";
-	my $filelist_clamav = "/tmp/openxs-webmin-scan-clamav-$$.txt";
-	system("find " . quotemeta($path) . " -type f -name '*.php' > $filelist");
 	my %cfg = &openxs_read_config();
-	if (($cfg{'CLAMAV_SCAN_ALL'} || '0') eq '1') {
-		system("find " . quotemeta($path) . " -type f > $filelist_clamav");
+	# Scans every file by default (not just *.php) - a disguised-extension
+	# webshell would otherwise never reach either engine. FAST_PHP_ONLY=1
+	# trades that off for speed on very large directories.
+	if (($cfg{'FAST_PHP_ONLY'} || '0') eq '1') {
+		system("find " . quotemeta($path) . " -type f -name '*.php' > $filelist");
 		}
 	else {
-		system("cp $filelist $filelist_clamav");
+		system("find " . quotemeta($path) . " -type f > $filelist");
 		}
 	$ENV{'OPENXS_SCAN_LABEL'} = $path;
 	$ENV{'OPENXS_QUARANTINE_ENABLED'} = ($cfg{'QUARANTINE_ENABLED'} || '0') eq '1' ? '1' : '0';
-	my $out = `python3 /opt/php-malware-finder/pmf_scan.py scan $ruleset $filelist $filelist_clamav 2>&1`;
-	unlink($filelist, $filelist_clamav);
+	my $out = `python3 /opt/php-malware-finder/pmf_scan.py scan $ruleset $filelist 2>&1`;
+	unlink($filelist);
 	print "<pre style='background:#1e1e1e;color:#e8e8e8;padding:8px;max-height:400px;overflow:auto'>";
 	print $out ne "" ? &html_escape($out) : "(no output)";
 	print "</pre>";
