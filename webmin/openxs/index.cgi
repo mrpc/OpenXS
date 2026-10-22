@@ -105,18 +105,18 @@ print &ui_submit("Scan now", "scan");
 print &ui_form_end();
 
 print &ui_subheading("Settings");
-print &ui_form_start("config.cgi", "post");
+print &ui_form_start("config.cgi", "post", undef, "autocomplete='off'");
 print &ui_table_start(undef, undef, 2);
-print &ui_table_row("Alert e-mail address", &ui_textbox("email", $cfg{'EMAIL'}, 40));
+print &ui_table_row("Alert e-mail address", &ui_textbox("email", $cfg{'EMAIL'}, 40, 0, 0, "autocomplete='off'"));
 print &ui_table_row("Daily cron scan mode", &ui_select("scan_mode", $cfg{'SCAN_MODE'},
 	[["path", "Single directory"], ["accounts", "Every account (cxs's --allusers)"]]));
-print &ui_table_row("Directory scanned (single-directory mode)", &ui_textbox("scan_path", $cfg{'SCAN_PATH'}, 40));
-print &ui_table_row("Accounts directory (accounts mode)", &ui_textbox("accounts_dir", $cfg{'ACCOUNTS_DIR'}, 40) .
+print &ui_table_row("Directory scanned (single-directory mode)", &ui_textbox("scan_path", $cfg{'SCAN_PATH'}, 40, 0, 0, "autocomplete='off'"));
+print &ui_table_row("Accounts directory (accounts mode)", &ui_textbox("accounts_dir", $cfg{'ACCOUNTS_DIR'}, 40, 0, 0, "autocomplete='off'") .
 	" <i>one subdirectory per hosting account, e.g. /home/&lt;user&gt;</i>");
-print &ui_table_row("Web root subfolder per account (accounts mode)", &ui_textbox("accounts_subpath", $cfg{'ACCOUNTS_SUBPATH'}, 40) .
+print &ui_table_row("Web root subfolder per account (accounts mode)", &ui_textbox("accounts_subpath", $cfg{'ACCOUNTS_SUBPATH'}, 40, 0, 0, "autocomplete='off'") .
 	" <i>e.g. public_html - blank scans the whole account home dir (mail/backups too, usually not what you want)</i>");
 print &ui_table_row("Schedule (cron syntax: min hour day month weekday)",
-	&ui_textbox("schedule", $cfg{'SCHEDULE'}, 20) . " <i>e.g. '17 2 * * *' = 02:17 daily; blank = disable the scheduled scan entirely</i>");
+	&ui_textbox("schedule", $cfg{'SCHEDULE'}, 20, 0, 0, "autocomplete='off'") . " <i>e.g. '17 2 * * *' = 02:17 daily; blank = disable the scheduled scan entirely</i>");
 print &ui_table_row("Quarantine", &ui_checkbox("quarantine_enabled", "1",
 	"Move flagged files to quarantine (manual + scheduled scans only, not the real-time upload hook)",
 	$cfg{'QUARANTINE_ENABLED'} eq '1'));
@@ -143,7 +143,7 @@ print &ui_table_row("Custom rule file", "<a href='edit_file.cgi?f=rules'>Edit /e
 print &ui_table_row("Per-path settings", "<a href='edit_file.cgi?f=path_settings'>Edit /etc/openxs/path_settings &raquo;</a> <i>one override per line: ".
 	"<code>/some/path fast_php_only=1,quarantine_enabled=0</code> - longest matching path wins.</i>");
 print &ui_table_row("Watch paths (for the watch daemon above)",
-	&ui_textbox("watch_paths", $cfg{'WATCH_PATHS'}, 60) .
+	&ui_textbox("watch_paths", $cfg{'WATCH_PATHS'}, 60, 0, 0, "autocomplete='off'") .
 	" <i>comma-separated directories to monitor continuously. Blank = every account's web root ".
 	"(Accounts directory/subpath below), same as accounts-mode scanning. ".
 	"Restart the watch daemon after changing this.</i>");
