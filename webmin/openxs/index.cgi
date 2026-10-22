@@ -113,6 +113,8 @@ print &ui_table_row("Quiet output", &ui_checkbox("quiet", "1",
 	$cfg{'QUIET'} eq '1'));
 print &ui_table_row("Ignore file", "<code>/etc/openxs/ignore</code> <i>one path/substring per line to skip - edit directly on the server</i>");
 print &ui_table_row("Custom rule file", "<code>/etc/openxs/rules</code> <i>one extra regex per line to additionally flag - edit directly on the server</i>");
+print &ui_table_row("Per-path settings", "<code>/etc/openxs/path_settings</code> <i>one override per line: ".
+	"<code>/some/path fast_php_only=1,quarantine_enabled=0</code> - longest matching path wins. Edit directly on the server.</i>");
 print &ui_table_end();
 print &ui_submit("Save", "save");
 print &ui_form_end();

@@ -113,7 +113,7 @@ RUN chmod +x /opt/php-malware-finder/*.sh /opt/php-malware-finder/*.py
 # (cxs's ignore file equivalent: one path/substring per line to skip scanning)
 RUN mkdir -p /etc/openxs /var/lib/openxs \
     && printf 'EMAIL=root@localhost\nSCAN_PATH=/var/www\n' > /etc/openxs/openxs.conf \
-    && touch /etc/openxs/ignore /etc/openxs/rules
+    && touch /etc/openxs/ignore /etc/openxs/rules /etc/openxs/path_settings
 
 # daily scheduled scan (alert-only, uses the settings above)
 RUN echo '17 2 * * * root /opt/php-malware-finder/run_scheduled_scan.sh >> /opt/php-malware-finder/cron.log 2>&1' \
