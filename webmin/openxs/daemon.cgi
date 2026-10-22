@@ -1,22 +1,33 @@
 #!/usr/bin/perl
 # daemon.cgi
-# Start / stop / restart the OpenXS scan daemon
+# Start / stop / restart the OpenXS daemons: the scan daemon (which=scand,
+# default) used by the mod_security upload hook, or the watch daemon
+# (which=watchd) that monitors whole directories via inotify.
 
 require './openxs-lib.pl';
 &ReadParse();
 
-my $pid = &openxs_daemon_pid();
+my $which = $in{'which'} || 'scand';
+my ($script, $log, $pid) = $which eq 'watchd'
+	? ($watchd_script, $watchd_log, &openxs_watchd_pid())
+	: ($daemon_script, $daemon_log, &openxs_daemon_pid());
 
 if (defined($in{'stop'}) || defined($in{'restart'})) {
 	if ($pid) {
-		system("kill $pid");
+		# Negative PID = whole process group. setsid made $pid its own
+		# group leader, so this also kills child processes (e.g. the
+		# watch daemon's inotifywait) instead of orphaning them.
+		system("kill -- -$pid 2>/dev/null; kill $pid 2>/dev/null");
 		sleep(1);
 		}
 	}
 
 if (defined($in{'start'}) || defined($in{'restart'})) {
-	if (!&openxs_daemon_pid()) {
-		system("nohup python3 $daemon_script >> $daemon_log 2>&1 &");
+	my $still_running = $which eq 'watchd' ? &openxs_watchd_pid() : &openxs_daemon_pid();
+	if (!$still_running) {
+		# setsid detaches into a new session/process group so the
+		# daemon survives past this CGI request's own lifetime.
+		system("setsid python3 $script >> $log 2>&1 < /dev/null &");
 		sleep(1);
 		}
 	}
