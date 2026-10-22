@@ -51,7 +51,7 @@ print &ui_table_row("ClamAV (virus scanning, 2nd detector)",
 	&row_value($clamav_ok ? &status_cell($clamav_running, "Installed, running", "Installed, not running")
 	                      : "<i style='color:#888'>Not installed - ran without it (optional, degrades gracefully)</i>", ""));
 
-print &ui_table_row("Scan daemon (openxs-scand, powers the upload hook)",
+print &ui_table_row("Scan daemon (openxs-scand, shared YARA engine - powers the upload hook + watch daemon)",
 	&row_value($pid ? &status_cell(1, "Running (pid $pid)", "") : &status_cell(0, "", "Not running"),
 		&mini_form("daemon.cgi",
 			&ui_hidden("which", "scand") .
