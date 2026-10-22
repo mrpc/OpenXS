@@ -13,6 +13,13 @@
 # Safe to re-run (idempotent).
 set -euo pipefail
 
+# Pinned to our own fork, not upstream HEAD - see Dockerfile for why. Forks
+# do NOT auto-sync with upstream; bump this deliberately after reviewing
+# the upstream diff. To use our fork's latest commit instead of the pinned
+# one, override with the branch name: PMF_COMMIT=master sudo -E ./install.sh
+PMF_FORK=https://github.com/mrpc/php-malware-finder.git
+PMF_COMMIT="${PMF_COMMIT:-b8698eb605cc06bc0585902d7fb7f4943113cc5d}"
+
 WITH_MODSECURITY=0
 WITH_CSF_HOOK=0
 for arg in "$@"; do
@@ -52,10 +59,14 @@ if [ -d "$PMF_DIR" ] && [ ! -d "$PMF_DIR/.git" ]; then
     mv "$PMF_DIR" "$backup"
 fi
 if [ ! -d "$PMF_DIR/.git" ]; then
-    git clone --depth 1 https://github.com/nbs-system/php-malware-finder.git /tmp/pmf-src-$$
-    mv /tmp/pmf-src-$$/php-malware-finder "$PMF_DIR"
-    mv /tmp/pmf-src-$$/.git "$PMF_DIR/.git"
-    rm -rf /tmp/pmf-src-$$
+    git init -q "/tmp/pmf-src-$$"
+    (cd "/tmp/pmf-src-$$" \
+        && git remote add origin "$PMF_FORK" \
+        && git fetch -q --depth 1 origin "$PMF_COMMIT" \
+        && git checkout -q FETCH_HEAD)
+    mv "/tmp/pmf-src-$$/php-malware-finder" "$PMF_DIR"
+    mv "/tmp/pmf-src-$$/.git" "$PMF_DIR/.git"
+    rm -rf "/tmp/pmf-src-$$"
 else
     (cd "$PMF_DIR" && git pull -q)
 fi

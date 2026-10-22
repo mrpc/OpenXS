@@ -37,7 +37,9 @@ print &ui_table_start(undef, undef, 1);
 
 print &ui_table_row("Detection engine (php-malware-finder)",
 	&row_value(&status_cell($pmf_ok, "Installed (" . &openxs_pmf_commit() . ")", "Not installed"),
-		$pmf_ok ? &mini_form("update.cgi", &ui_submit("Update now", "update"))
+		$pmf_ok ? &mini_form("update.cgi",
+			&ui_textbox("ruleset_ref", "", 20) . " <i>(blank = latest from our fork; or a specific commit/tag)</i><br>" .
+			&ui_submit("Update now", "update"))
 		        : "<i>installed as part of the base image</i>"));
 
 print &ui_table_row("Scan daemon (openxs-scand)",

@@ -1,13 +1,24 @@
 #!/usr/bin/perl
 # update.cgi
-# Pull the latest php-malware-finder ruleset, reapply our IsWhitelisted fix
-# (idempotent), and reload the running daemon without dropping its socket.
+# Update the php-malware-finder ruleset: either to our fork's latest commit
+# (default, blank ref), or to a specific commit/tag/branch if given -
+# reapplies our IsWhitelisted fix (idempotent), and reloads the running
+# daemon without dropping its socket.
 
 require './openxs-lib.pl';
 &ReadParse();
 
+my $ref = $in{'ruleset_ref'};
+$ref =~ s/[^a-zA-Z0-9_.\-\/]//g;  # commit SHAs, tags and branch names only
+
 if (-d $pmf_dir) {
-	system("cd $pmf_dir && git pull >/dev/null 2>&1");
+	if ($ref ne "") {
+		system("cd $pmf_dir && git fetch -q origin " . quotemeta($ref) .
+		       " && git checkout -q FETCH_HEAD 2>&1");
+		}
+	else {
+		system("cd $pmf_dir && git pull -q >/dev/null 2>&1");
+		}
 	# Idempotent: only add the fix if it's not already there
 	my $has_fix = `grep -c 'Misc or' $pmf_dir/whitelist.yar 2>/dev/null`;
 	chomp($has_fix);

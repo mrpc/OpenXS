@@ -2,6 +2,21 @@ FROM debian:bookworm-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Pinned to our own forks, not upstream HEAD: a supply-chain compromise or
+# disappearance of the original repo (exactly what happened to the real
+# cxs/CSF) won't silently flow into every future build. Bump these
+# deliberately, after reviewing the upstream diff - see
+# ../OpenXS-ops/TIMELINE.md for the review process. Forks do NOT auto-sync
+# with upstream (GitHub never does this automatically) - that's deliberate.
+#
+# To build against our fork's latest commit instead of the pinned one, pass
+# the branch name instead of a SHA, e.g.:
+#   docker build --build-arg PMF_COMMIT=master --build-arg CSF_COMMIT=main .
+ARG PMF_FORK=https://github.com/mrpc/php-malware-finder.git
+ARG PMF_COMMIT=b8698eb605cc06bc0585902d7fb7f4943113cc5d
+ARG CSF_FORK=https://github.com/mrpc/openxs-csf.git
+ARG CSF_COMMIT=4793f7c2e6f705eb4244a9fcd3f4cd202c726085
+
 RUN apt-get update && apt-get install -y \
     apache2 \
     libapache2-mod-security2 \
@@ -37,12 +52,16 @@ RUN curl -o /tmp/webmin-setup-repos.sh https://raw.githubusercontent.com/webmin/
     && apt-get install -y webmin --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-# CSF v15.00 GPLv3 (the final official release from Way to the Web before it shut down,
-# community-mirrored here since download.configserver.com is dead - see README)
+# CSF v15.00 GPLv3 (the final official release from Way to the Web before it shut down).
+# Pinned to our own fork+commit (see ARGs above), not upstream HEAD.
 # install.sh does not auto-register CSF's own Webmin module even though
 # webmin is already present at this point, so we copy it in ourselves.
-RUN git clone --depth 1 https://github.com/centminmod/configserver-scripts.git /tmp/csf-fork \
-    && cd /tmp/csf-fork && tar -xzf csf.tgz -C /tmp && cd /tmp/csf && sh install.sh \
+RUN git init -q /tmp/csf-fork \
+    && cd /tmp/csf-fork \
+    && git remote add origin "$CSF_FORK" \
+    && git fetch -q --depth 1 origin "$CSF_COMMIT" \
+    && git checkout -q FETCH_HEAD \
+    && tar -xzf csf.tgz -C /tmp && cd /tmp/csf && sh install.sh \
     && cp -r /tmp/csf-fork/csf/webmin/csf /usr/share/webmin/csf \
     && chmod +x /usr/share/webmin/csf/*.cgi \
     && sed -i 's/^root: /root: csf /' /etc/webmin/webmin.acl \
@@ -66,10 +85,15 @@ RUN a2enmod security2 \
          -e 's|^#SecUploadFileMode 0600|SecUploadFileMode 0600|' \
          /etc/modsecurity/modsecurity.conf
 
-# php-malware-finder (LGPL-3.0, nbs-system) - third-party tool, not vendored here
+# php-malware-finder (LGPL-3.0, nbs-system) - third-party tool, not vendored here.
+# Pinned to our own fork+commit (see ARGs above), not upstream HEAD.
 # Upstream bug: whitelist.yar/IsWhitelisted doesn't reference its own "Custom" rule -
 # whitelisting silently does nothing without this fix.
-RUN git clone --depth 1 https://github.com/nbs-system/php-malware-finder.git /tmp/pmf-src \
+RUN git init -q /tmp/pmf-src \
+    && cd /tmp/pmf-src \
+    && git remote add origin "$PMF_FORK" \
+    && git fetch -q --depth 1 origin "$PMF_COMMIT" \
+    && git checkout -q FETCH_HEAD \
     && mv /tmp/pmf-src/php-malware-finder /opt/php-malware-finder \
     && mv /tmp/pmf-src/.git /opt/php-malware-finder/.git \
     && rm -rf /tmp/pmf-src \
