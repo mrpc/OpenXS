@@ -10,7 +10,7 @@ require './openxs-lib.pl';
 sub one_line { my ($s) = @_; $s =~ s/[\r\n]//g; return $s; }
 
 my %cfg = &openxs_read_config();
-$cfg{'EMAIL'} = &one_line($in{'email'}) if (defined($in{'email'}) && $in{'email'} ne "");
+$cfg{'EMAIL'} = &one_line($in{'alert_addr'}) if (defined($in{'alert_addr'}) && $in{'alert_addr'} ne "");
 $cfg{'SCAN_PATH'} = &one_line($in{'scan_path'}) if (defined($in{'scan_path'}) && $in{'scan_path'} ne "");
 $cfg{'QUARANTINE_ENABLED'} = (defined($in{'quarantine_enabled'}) && $in{'quarantine_enabled'} eq '1') ? '1' : '0';
 $cfg{'FAST_PHP_ONLY'} = (defined($in{'fast_php_only'}) && $in{'fast_php_only'} eq '1') ? '1' : '0';
