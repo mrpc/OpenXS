@@ -25,6 +25,9 @@ push(@qcats, 'yara') if (defined($in{'qcat_yara'}) && $in{'qcat_yara'} eq '1');
 push(@qcats, 'fs') if (defined($in{'qcat_fs'}) && $in{'qcat_fs'} eq '1');
 $cfg{'QUARANTINE_CATEGORIES'} = join(',', @qcats);
 $cfg{'WATCH_PATHS'} = &one_line($in{'watch_paths'}) if (defined($in{'watch_paths'}));
+$cfg{'SCAN_MODE'} = $in{'scan_mode'} eq 'accounts' ? 'accounts' : 'path';
+$cfg{'ACCOUNTS_DIR'} = &one_line($in{'accounts_dir'}) if (defined($in{'accounts_dir'}) && $in{'accounts_dir'} ne "");
+$cfg{'ACCOUNTS_SUBPATH'} = &one_line($in{'accounts_subpath'}) if (defined($in{'accounts_subpath'}));
 &openxs_write_config(%cfg);
 
 if (defined($in{'schedule'}) && $in{'schedule'} ne "") {
