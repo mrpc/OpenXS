@@ -8,7 +8,7 @@ require './openxs-lib.pl';
 &ui_print_header(undef, 'OpenXS Exploit Scanner', "");
 
 print "<p><a href='index.cgi'>Dashboard</a> | <a href='reports.cgi'>Scan history</a> | ".
-      "<a href='reports.cgi?view=quarantine'>Quarantine</a></p>\n";
+      "<a href='reports.cgi?view=quarantine'>Quarantine</a> | <a href='documentation.cgi'>Documentation</a></p>\n";
 &openxs_show_message();
 
 my $scan_id = $in{'scan_id'};
