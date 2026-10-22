@@ -50,6 +50,7 @@ export OPENXS_CHANGED_HOURS="$CHANGED_HOURS"
 export OPENXS_THROTTLE_LOAD="$THROTTLE_LOAD"
 export OPENXS_QUIET="$QUIET"
 export OPENXS_QUARANTINE_CATEGORIES="$QUARANTINE_CATEGORIES"
+export OPENXS_FAST_PHP_ONLY="$FAST_PHP_ONLY"
 python3 pmf_scan.py scan php.yar filelist.txt > scan_results.txt 2> scan.log
 
 hits=$(grep -c . scan_results.txt || true)
