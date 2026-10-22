@@ -8,6 +8,9 @@ EMAIL="root@localhost"
 SCAN_PATH="/var/www"
 QUARANTINE_ENABLED="0"
 FAST_PHP_ONLY="0"
+CHANGED_HOURS=""
+THROTTLE_LOAD=""
+QUIET="0"
 # Parsed as plain data, not `source`-d: the config file is writable via the
 # Webmin settings form, and `source` would execute $()/`` in any value as
 # real shell code (e.g. a crafted EMAIL value running arbitrary commands
@@ -19,6 +22,9 @@ if [ -f "$CONFIG" ]; then
             SCAN_PATH) SCAN_PATH="$value" ;;
             QUARANTINE_ENABLED) QUARANTINE_ENABLED="$value" ;;
             FAST_PHP_ONLY) FAST_PHP_ONLY="$value" ;;
+            CHANGED_HOURS) CHANGED_HOURS="$value" ;;
+            THROTTLE_LOAD) THROTTLE_LOAD="$value" ;;
+            QUIET) QUIET="$value" ;;
         esac
     done < "$CONFIG"
 fi
@@ -38,6 +44,9 @@ else
 fi
 export OPENXS_SCAN_LABEL="$SCAN_PATH"
 export OPENXS_QUARANTINE_ENABLED="$QUARANTINE_ENABLED"
+export OPENXS_CHANGED_HOURS="$CHANGED_HOURS"
+export OPENXS_THROTTLE_LOAD="$THROTTLE_LOAD"
+export OPENXS_QUIET="$QUIET"
 python3 pmf_scan.py scan php.yar filelist.txt > scan_results.txt 2> scan.log
 
 hits=$(grep -c . scan_results.txt || true)

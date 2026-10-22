@@ -98,6 +98,14 @@ print &ui_table_row("Fast mode (.php files only)", &ui_checkbox("fast_php_only",
 	"a disguised extension (e.g. avatar.jpg containing real PHP code) would no longer be caught. ".
 	"Off by default - scans everything.",
 	$cfg{'FAST_PHP_ONLY'} eq '1'));
+print &ui_table_row("Only scan files changed in the last N hours",
+	&ui_textbox("changed_hours", $cfg{'CHANGED_HOURS'}, 10) . " <i>blank = no time filter, scan everything</i>");
+print &ui_table_row("Throttle: pause if 1-min load average exceeds",
+	&ui_textbox("throttle_load", $cfg{'THROTTLE_LOAD'}, 10) . " <i>blank = disabled; sleeps 60s at a time until load drops</i>");
+print &ui_table_row("Quiet output", &ui_checkbox("quiet", "1",
+	"Suppress the scan summary line (useful for cron jobs where only hits should trigger e-mail)",
+	$cfg{'QUIET'} eq '1'));
+print &ui_table_row("Ignore file", "<code>/etc/openxs/ignore</code> <i>one path/substring per line to skip - edit directly on the server</i>");
 print &ui_table_end();
 print &ui_submit("Save", "save");
 print &ui_form_end();

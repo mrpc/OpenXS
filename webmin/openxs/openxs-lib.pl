@@ -79,7 +79,8 @@ return $out ne "" ? 1 : 0;
 sub openxs_read_config
 {
 my %cfg = ( 'EMAIL' => 'root@localhost', 'SCAN_PATH' => '/var/www', 'QUARANTINE_ENABLED' => '0',
-            'FAST_PHP_ONLY' => '0', 'SCHEDULE' => '17 2 * * *' );
+            'FAST_PHP_ONLY' => '0', 'SCHEDULE' => '17 2 * * *', 'CHANGED_HOURS' => '',
+            'THROTTLE_LOAD' => '', 'QUIET' => '0' );
 if (open(my $fh, '<', $config_file)) {
 	while (<$fh>) {
 		chomp;
