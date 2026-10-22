@@ -66,6 +66,14 @@ print &ui_table_row("CSF firewall auto-block hook",
 		($csf_ok && !$csf_hook_ok) ? &mini_form("install_csf_hook.cgi", &ui_submit("Install", "install")) : "")
 	. ($csf_ok && -d "/usr/share/webmin/csf" ? "<div style='margin-top:4px'><a href='../csf/'>Open CSF Firewall module &raquo;</a></div>" : ""));
 
+if ($csf_ok) {
+	my $active_feeds = `grep -c '^[A-Z]' /etc/csf/csf.blocklists 2>/dev/null`;
+	chomp($active_feeds);
+	print &ui_table_row("IP reputation (CSF BLOCKLIST feeds)",
+		&row_value("<b>" . ($active_feeds || 0) . "</b> feed(s) active - native CSF feature, not tied to any license",
+			"<a href='edit_file.cgi?f=csf_blocklists'>Edit csf.blocklists &raquo;</a>"));
+	}
+
 print &ui_table_end();
 
 print &ui_subheading("Daemon log (last 30 lines)");
@@ -89,7 +97,7 @@ print &ui_table_start(undef, undef, 2);
 print &ui_table_row("Alert e-mail address", &ui_textbox("email", $cfg{'EMAIL'}, 40));
 print &ui_table_row("Directory scanned by the daily cron job", &ui_textbox("scan_path", $cfg{'SCAN_PATH'}, 40));
 print &ui_table_row("Schedule (cron syntax: min hour day month weekday)",
-	&ui_textbox("schedule", $cfg{'SCHEDULE'}, 20) . " <i>e.g. '17 2 * * *' = 02:17 daily</i>");
+	&ui_textbox("schedule", $cfg{'SCHEDULE'}, 20) . " <i>e.g. '17 2 * * *' = 02:17 daily; blank = disable the scheduled scan entirely</i>");
 print &ui_table_row("Quarantine", &ui_checkbox("quarantine_enabled", "1",
 	"Move flagged files to quarantine (manual + scheduled scans only, not the real-time upload hook)",
 	$cfg{'QUARANTINE_ENABLED'} eq '1'));
@@ -111,12 +119,21 @@ print &ui_table_row("Throttle: pause if 1-min load average exceeds",
 print &ui_table_row("Quiet output", &ui_checkbox("quiet", "1",
 	"Suppress the scan summary line (useful for cron jobs where only hits should trigger e-mail)",
 	$cfg{'QUIET'} eq '1'));
-print &ui_table_row("Ignore file", "<code>/etc/openxs/ignore</code> <i>one path/substring per line to skip - edit directly on the server</i>");
-print &ui_table_row("Custom rule file", "<code>/etc/openxs/rules</code> <i>one extra regex per line to additionally flag - edit directly on the server</i>");
-print &ui_table_row("Per-path settings", "<code>/etc/openxs/path_settings</code> <i>one override per line: ".
-	"<code>/some/path fast_php_only=1,quarantine_enabled=0</code> - longest matching path wins. Edit directly on the server.</i>");
+print &ui_table_row("Ignore file", "<a href='edit_file.cgi?f=ignore'>Edit /etc/openxs/ignore &raquo;</a> <i>one path/substring per line to skip</i>");
+print &ui_table_row("Custom rule file", "<a href='edit_file.cgi?f=rules'>Edit /etc/openxs/rules &raquo;</a> <i>one extra regex per line to additionally flag</i>");
+print &ui_table_row("Per-path settings", "<a href='edit_file.cgi?f=path_settings'>Edit /etc/openxs/path_settings &raquo;</a> <i>one override per line: ".
+	"<code>/some/path fast_php_only=1,quarantine_enabled=0</code> - longest matching path wins.</i>");
 print &ui_table_end();
 print &ui_submit("Save", "save");
+print &ui_form_end();
+
+print &ui_subheading("Support");
+print "<p><a href='support.cgi'>Install Information</a> <i>(diagnostic dump, for troubleshooting)</i></p>\n";
+
+print &ui_subheading("Danger zone");
+print &ui_form_start("disable_ui.cgi", "post");
+print "<p>" . &ui_submit("Disable this UI completely", "disable") .
+	" <i>Cannot be undone from the UI itself - remove <code>$ui_disabled_file</code> on the server to re-enable.</i></p>\n";
 print &ui_form_end();
 
 &ui_print_footer("/", "Webmin index page");

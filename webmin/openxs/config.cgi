@@ -26,9 +26,19 @@ push(@qcats, 'fs') if (defined($in{'qcat_fs'}) && $in{'qcat_fs'} eq '1');
 $cfg{'QUARANTINE_CATEGORIES'} = join(',', @qcats);
 &openxs_write_config(%cfg);
 
-if (defined($in{'schedule'}) && $in{'schedule'} ne "" && &openxs_write_schedule(&one_line($in{'schedule'}))) {
-	$cfg{'SCHEDULE'} = &one_line($in{'schedule'});
-	&openxs_write_config(%cfg);
+if (defined($in{'schedule'})) {
+	if ($in{'schedule'} eq "") {
+		# Disable the scheduled scan entirely, cxs's --Wstop/--Wstart
+		# equivalent for the cron-based scan (rather than just "no
+		# change", which a blank field would otherwise mean).
+		unlink('/etc/cron.d/openxs-scan');
+		$cfg{'SCHEDULE'} = '';
+		&openxs_write_config(%cfg);
+		}
+	elsif (&openxs_write_schedule(&one_line($in{'schedule'}))) {
+		$cfg{'SCHEDULE'} = &one_line($in{'schedule'});
+		&openxs_write_config(%cfg);
+		}
 	}
 
 &redirect("index.cgi");
