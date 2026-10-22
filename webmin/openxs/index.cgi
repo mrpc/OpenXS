@@ -144,7 +144,8 @@ print &ui_table_row("Per-path settings", "<a href='edit_file.cgi?f=path_settings
 	"<code>/some/path fast_php_only=1,quarantine_enabled=0</code> - longest matching path wins.</i>");
 print &ui_table_row("Watch paths (for the watch daemon above)",
 	&ui_textbox("watch_paths", $cfg{'WATCH_PATHS'}, 60) .
-	" <i>comma-separated directories to monitor continuously, e.g. /home. Blank = watch daemon stays off. ".
+	" <i>comma-separated directories to monitor continuously. Blank = every account's web root ".
+	"(Accounts directory/subpath below), same as accounts-mode scanning. ".
 	"Restart the watch daemon after changing this.</i>");
 print &ui_table_end();
 print &ui_submit("Save", "save");
