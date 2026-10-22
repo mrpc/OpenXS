@@ -10,6 +10,17 @@ for i in $(seq 1 20); do
     sleep 0.5
 done
 
+# ClamAV: download signatures if missing, then start the daemon - in the
+# background since this can take a while and container/Apache startup
+# shouldn't block on it. The YARA-only path already works without it;
+# pmf_scan.py/inspectfile.sh degrade gracefully if clamd isn't up yet.
+(
+    if [ ! -s /var/lib/clamav/main.cvd ] && [ ! -s /var/lib/clamav/main.cld ]; then
+        freshclam --quiet || true
+    fi
+    service clamav-daemon start || true
+) &
+
 service apache2 start
 service cron start
 service webmin start
