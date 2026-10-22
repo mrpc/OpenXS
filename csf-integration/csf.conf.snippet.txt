@@ -1,0 +1,1 @@
+CUSTOM1_LOG = "/var/log/apache2/error.log"  # adjust to your server's actual Apache error log path
