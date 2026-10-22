@@ -8,6 +8,8 @@ use WebminCore;
 our $socket_path = $ENV{'OPENXS_SOCKET'} || '/run/openxs/scan.sock';
 our $daemon_script = '/opt/php-malware-finder/openxs-scand.py';
 our $daemon_log = '/var/log/openxs-scand.log';
+our $watchd_script = '/opt/php-malware-finder/openxs-watchd.py';
+our $watchd_log = '/var/log/openxs-watchd.log';
 our $ruleset = '/opt/php-malware-finder/php.yar';
 our $pmf_dir = '/opt/php-malware-finder';
 our $config_file = '/etc/openxs/openxs.conf';
@@ -29,9 +31,34 @@ sub openxs_ui_disabled
 return -e $ui_disabled_file ? 1 : 0;
 }
 
+# `pgrep -f 'pattern'` run via backticks is itself invoked as
+# `sh -c "pgrep -f 'pattern'"` - that wrapper shell's OWN argv contains
+# the literal pattern text too, so without this, pgrep matches its own
+# invocation and a daemon that was never started looks "already
+# running". The classic `ps aux | grep '[p]attern'` bracket trick
+# fixes it: a real process's argv still contains plain "pattern" (the
+# bracket is a 1-char class matching that same letter), but the
+# self-referencing command line has a literal "[p]" there instead,
+# which the pattern can't match against itself.
+sub pgrep_safe_pattern
+{
+my ($s) = @_;
+$s =~ s/([A-Za-z])/[$1]/;
+return $s;
+}
+
 sub openxs_daemon_pid
 {
-my $out = `pgrep -f '$daemon_script' 2>/dev/null`;
+my $pattern = &pgrep_safe_pattern($daemon_script);
+my $out = `pgrep -f '$pattern' 2>/dev/null`;
+my ($pid) = split(/\s+/, $out);
+return $pid;
+}
+
+sub openxs_watchd_pid
+{
+my $pattern = &pgrep_safe_pattern($watchd_script);
+my $out = `pgrep -f '$pattern' 2>/dev/null`;
 my ($pid) = split(/\s+/, $out);
 return $pid;
 }
@@ -95,7 +122,8 @@ sub openxs_read_config
 {
 my %cfg = ( 'EMAIL' => 'root@localhost', 'SCAN_PATH' => '/var/www', 'QUARANTINE_ENABLED' => '0',
             'FAST_PHP_ONLY' => '0', 'SCHEDULE' => '17 2 * * *', 'CHANGED_HOURS' => '',
-            'THROTTLE_LOAD' => '', 'QUIET' => '0', 'QUARANTINE_CATEGORIES' => 'virus,yara' );
+            'THROTTLE_LOAD' => '', 'QUIET' => '0', 'QUARANTINE_CATEGORIES' => 'virus,yara',
+            'WATCH_PATHS' => '' );
 if (open(my $fh, '<', $config_file)) {
 	while (<$fh>) {
 		chomp;

@@ -1,0 +1,12 @@
+[Unit]
+Description=OpenXS watch daemon (account-wide inotify monitor)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/php-malware-finder/openxs-watchd.py
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

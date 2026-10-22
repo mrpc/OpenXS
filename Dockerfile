@@ -41,6 +41,7 @@ RUN apt-get update && apt-get install -y \
     iptables \
     cron \
     procps \
+    inotify-tools \
     unzip \
     && rm -rf /var/lib/apt/lists/*
 
