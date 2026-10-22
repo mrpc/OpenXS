@@ -171,24 +171,34 @@ return 1;
 # just reloaded looking unchanged, with nothing telling the user whether
 # anything actually happened. These two carry a one-line result message
 # through the redirect instead.
-sub openxs_redirect_with_message
-{
-my ($page, $msg, $is_err) = @_;
-my $encoded = $msg;
-$encoded =~ s/([^A-Za-z0-9_.~-])/sprintf("%%%02X", ord($1))/ge;
-my $sep = $page =~ /\?/ ? '&' : '?';
-&redirect("$page${sep}msg=$encoded" . ($is_err ? "&err=1" : ""));
-# redirect() only sends the Location header, it does not stop execution -
-# every caller here uses this mid-script to bail out early on a failure,
-# so without this the rest of the script would keep running regardless.
-exit;
-}
+our $openxs_nav = "<p><a href='index.cgi'>Dashboard</a> | <a href='reports.cgi'>Scan history</a> | ".
+	"<a href='reports.cgi?view=quarantine'>Quarantine</a> | <a href='documentation.cgi'>Documentation</a></p>\n";
 
-sub openxs_show_message
+# Prints the result of an action directly, in the same request, instead of
+# an HTTP redirect to another page. Webmin's modern themes navigate between
+# pages via client-side AJAX/PJAX, carrying headers (X-Requested-With,
+# X-PJAX) and an xnavigation=1 marker that tell the theme to inject the
+# response into the persistent sidebar/header shell already on the page.
+# A server-side redirect can't carry any of that - the browser just follows
+# the Location header as an ordinary top-level navigation, landing on a
+# bare, unthemed page with no sidebar at all (confirmed: CSF's own module
+# never redirects after an action for exactly this reason - every action
+# there renders its result inline, same as this does).
+sub openxs_result_page
 {
-return if (!defined($in{'msg'}) || $in{'msg'} eq "");
-my $color = $in{'err'} ? '#b30000' : '#2e7d32';
-print "<p style='color:$color;font-weight:bold'>" . &html_escape($in{'msg'}) . "</p>\n";
+my ($msg, $is_err, $back_label, $back_url) = @_;
+$back_label ||= "Back to dashboard";
+$back_url ||= "index.cgi";
+&ui_print_header(undef, 'OpenXS Exploit Scanner', "");
+print $openxs_nav;
+my $color = $is_err ? '#b30000' : '#2e7d32';
+my $bg = $is_err ? '#fdecea' : '#eaf6ec';
+print "<div style='background:$bg;color:$color;border:1px solid $color;border-radius:4px;".
+	"padding:12px;font-weight:bold;margin:12px 0'>" . &html_escape($msg) . "</div>\n";
+print "<p><a href='$back_url' style='display:inline-block;padding:6px 14px;background:#337ab7;".
+	"color:#fff;border-radius:4px;text-decoration:none'>$back_label</a></p>\n";
+&ui_print_footer("/", "Webmin index page");
+exit;
 }
 
 # Kill-switch, checked once here (every .cgi requires this file first) so

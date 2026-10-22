@@ -33,7 +33,7 @@ if (defined($in{'schedule'}) && $in{'schedule'} ne "") {
 		&openxs_write_config(%cfg);
 		}
 	else {
-		&openxs_redirect_with_message("index.cgi",
+		&openxs_result_page(
 			"Settings saved, but the schedule '" . $in{'schedule'} .
 			"' is not valid cron syntax (5 space-separated fields) - schedule left unchanged.", 1);
 		}
@@ -47,4 +47,4 @@ elsif (defined($in{'schedule'})) {
 	&openxs_write_config(%cfg);
 	}
 
-&openxs_redirect_with_message("index.cgi", "Settings saved.", 0);
+&openxs_result_page("Settings saved.", 0);
