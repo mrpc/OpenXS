@@ -98,8 +98,19 @@ def main():
 
     watch_paths = [p for p in cfg.get("WATCH_PATHS", "").split(",") if p.strip()]
     if not watch_paths:
-        log("WATCH_PATHS is empty - nothing to watch, exiting")
-        sys.exit(0)
+        # No explicit paths given - fall back to the same account-wide
+        # scope as scheduled/manual scans (cxs's --allusers --www), not
+        # just sitting idle. Still opt-in in spirit: it only kicks in
+        # once an admin actually starts this daemon.
+        import glob
+        accounts_dir = cfg.get("ACCOUNTS_DIR", "/home")
+        subpath = cfg.get("ACCOUNTS_SUBPATH", "public_html")
+        pattern = f"{accounts_dir}/*/{subpath}" if subpath else f"{accounts_dir}/*"
+        watch_paths = [p for p in glob.glob(pattern) if os.path.isdir(p)]
+        if not watch_paths:
+            log(f"WATCH_PATHS is empty and no accounts found under {pattern} - nothing to watch, exiting")
+            sys.exit(0)
+        log(f"WATCH_PATHS is empty - defaulting to every account's web root ({pattern})")
 
     ignore = pmf_scan.load_ignore_patterns(os.environ.get("OPENXS_IGNORE_FILE", "/etc/openxs/ignore"))
     custom_rules = pmf_scan.load_custom_rules(os.environ.get("OPENXS_RULE_FILE", "/etc/openxs/rules"))

@@ -38,8 +38,17 @@ if (defined($in{'start'}) || defined($in{'restart'})) {
 		if ($which eq 'watchd') {
 			my %cfg = &openxs_read_config();
 			if (($cfg{'WATCH_PATHS'} || '') eq '') {
-				&openxs_result_page(
-					"Set 'Watch paths' in Settings before starting the watch daemon.", 1);
+				# Empty WATCH_PATHS falls back to every account's web root
+				# (see openxs-watchd.py) - only block starting if that
+				# fallback also has nothing to watch.
+				my $accounts_dir = $cfg{'ACCOUNTS_DIR'} || '/home';
+				my $subpath = $cfg{'ACCOUNTS_SUBPATH'};
+				my @accounts = $subpath ne '' ? glob("$accounts_dir/*/$subpath") : glob("$accounts_dir/*");
+				if (!grep { -d $_ } @accounts) {
+					&openxs_result_page(
+						"No 'Watch paths' set, and no accounts found under $accounts_dir - " .
+						"set one of these in Settings before starting the watch daemon.", 1);
+					}
 				}
 			}
 		# setsid detaches into a new session/process group so the
