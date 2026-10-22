@@ -51,9 +51,20 @@ print &ui_table_row("ClamAV (virus scanning, 2nd detector)",
 	&row_value($clamav_ok ? &status_cell($clamav_running, "Installed, running", "Installed, not running")
 	                      : "<i style='color:#888'>Not installed - ran without it (optional, degrades gracefully)</i>", ""));
 
-print &ui_table_row("Scan daemon (openxs-scand)",
+print &ui_table_row("Scan daemon (openxs-scand, powers the upload hook)",
 	&row_value($pid ? &status_cell(1, "Running (pid $pid)", "") : &status_cell(0, "", "Not running"),
 		&mini_form("daemon.cgi",
+			&ui_hidden("which", "scand") .
+			&ui_submit("Start", "start") . &ui_submit("Stop", "stop") . &ui_submit("Restart", "restart"))));
+
+my $watchd_pid = &openxs_watchd_pid();
+my %cfg_early = &openxs_read_config();
+print &ui_table_row("Watch daemon (openxs-watchd, account-wide inotify monitor) <i>early/evolving</i>",
+	&row_value($watchd_pid ? &status_cell(1, "Running (pid $watchd_pid)", "")
+	           : (($cfg_early{'WATCH_PATHS'} || '') eq '' ? "<i style='color:#888'>Not running - set 'Watch paths' below first</i>"
+	                                                       : &status_cell(0, "", "Not running")),
+		&mini_form("daemon.cgi",
+			&ui_hidden("which", "watchd") .
 			&ui_submit("Start", "start") . &ui_submit("Stop", "stop") . &ui_submit("Restart", "restart"))));
 
 print &ui_table_row("mod_security (real-time upload blocking)",
@@ -123,6 +134,10 @@ print &ui_table_row("Ignore file", "<a href='edit_file.cgi?f=ignore'>Edit /etc/o
 print &ui_table_row("Custom rule file", "<a href='edit_file.cgi?f=rules'>Edit /etc/openxs/rules &raquo;</a> <i>one extra regex per line to additionally flag</i>");
 print &ui_table_row("Per-path settings", "<a href='edit_file.cgi?f=path_settings'>Edit /etc/openxs/path_settings &raquo;</a> <i>one override per line: ".
 	"<code>/some/path fast_php_only=1,quarantine_enabled=0</code> - longest matching path wins.</i>");
+print &ui_table_row("Watch paths (for the watch daemon above)",
+	&ui_textbox("watch_paths", $cfg{'WATCH_PATHS'}, 60) .
+	" <i>comma-separated directories to monitor continuously, e.g. /home. Blank = watch daemon stays off. ".
+	"Restart the watch daemon after changing this.</i>");
 print &ui_table_end();
 print &ui_submit("Save", "save");
 print &ui_form_end();

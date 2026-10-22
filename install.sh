@@ -50,7 +50,7 @@ if ! apt-get update -qq; then
     exit 1
 fi
 apt-get install -y -qq git python3 python3-yara yara mailutils cron \
-    clamav-daemon clamav-freshclam
+    clamav-daemon clamav-freshclam inotify-tools
 
 echo "==> Detection engine (php-malware-finder)..."
 if [ -d "$PMF_DIR" ] && [ ! -d "$PMF_DIR/.git" ]; then
@@ -89,6 +89,11 @@ fi
 echo "==> Scan daemon (systemd service)..."
 if command -v systemctl >/dev/null 2>&1; then
     cp "$HERE/tools/openxs-scand.service" /etc/systemd/system/openxs-scand.service
+    # Watch daemon: service file installed but not started - it exits
+    # immediately until WATCH_PATHS is set (Webmin Settings or
+    # /etc/openxs/openxs.conf), so enabling it by default would be a
+    # no-op that just confuses `systemctl status`.
+    cp "$HERE/tools/openxs-watchd.service" /etc/systemd/system/openxs-watchd.service
     systemctl daemon-reload
     systemctl enable --now openxs-scand
     echo "==> ClamAV..."

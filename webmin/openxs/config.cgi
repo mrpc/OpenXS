@@ -24,6 +24,7 @@ push(@qcats, 'virus') if (defined($in{'qcat_virus'}) && $in{'qcat_virus'} eq '1'
 push(@qcats, 'yara') if (defined($in{'qcat_yara'}) && $in{'qcat_yara'} eq '1');
 push(@qcats, 'fs') if (defined($in{'qcat_fs'}) && $in{'qcat_fs'} eq '1');
 $cfg{'QUARANTINE_CATEGORIES'} = join(',', @qcats);
+$cfg{'WATCH_PATHS'} = &one_line($in{'watch_paths'}) if (defined($in{'watch_paths'}));
 &openxs_write_config(%cfg);
 
 if (defined($in{'schedule'})) {
