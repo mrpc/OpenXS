@@ -101,8 +101,11 @@ Editable from the Webmin dashboard, or by hand.
 
 This is an early-stage project. What's implemented is listed above and has
 been tested end-to-end (including on a vanilla, from-scratch install), but
-it has **not yet been deployed to a real production server**. Still on the
-roadmap, deliberately incremental rather than all-at-once:
+it has **not yet been deployed to a real production server**. `install.sh`
+has only been tested on Debian 12 (bookworm); it explicitly refuses to run
+on non-apt systems rather than failing halfway through.
+
+Still on the roadmap, deliberately incremental rather than all-at-once:
 
 - `sversionscan` equivalent — detecting outdated/vulnerable versions of
   installed CMSs and plugins (cxs covered 700+ applications; this needs
@@ -111,6 +114,11 @@ roadmap, deliberately incremental rather than all-at-once:
   heuristics trigger a report vs. a quarantine action).
 - Server-level security audit (missing security updates, known
   vulnerable packages).
+- Testing `install.sh` against more environments: other Debian/Ubuntu
+  releases, RHEL/CentOS-family systems (would need a yum/dnf code path),
+  and against the actual CSF version (v14.24, pre-GPLv3) still running on
+  most of our own servers — the CSF-hook installer has only been verified
+  against the v15.00 GPLv3 release so far.
 
 ## Credits
 
