@@ -15,6 +15,10 @@ v1 scope, deliberately kept small:
     different shape of check than "a file just changed")
   - no rate-limiting/debounce yet (cxs's --Wsleep/--Wrateignore) - a
     file saved many times in a row will be rescanned every time
+
+YARA matching goes through openxs-scand's socket (requires it to be
+running) rather than compiling the ruleset again here - one compiled
+copy in memory shared by the upload hook and this daemon, not two.
 """
 import sys
 import os
@@ -37,7 +41,7 @@ def log(msg):
         pass
 
 
-def scan_one(fname, rules, ignore, custom_rules, path_overrides, global_fast_php_only):
+def scan_one(fname, ignore, custom_rules, path_overrides, global_fast_php_only):
     plain, md5s, sha256s = ignore
     if pmf_scan.is_ignored(fname, plain, md5s, sha256s):
         return
@@ -54,11 +58,11 @@ def scan_one(fname, rules, ignore, custom_rules, path_overrides, global_fast_php
         return
 
     findings = []
-    try:
-        matches = rules.match(fname, fast=True)
-        findings += [(fname, m.rule) for m in matches if m.rule not in ("IsWhitelisted", "IsPhp")]
-    except Exception as e:
-        log(f"YARA error on {fname}: {e}")
+    matches = pmf_scan.yara_match_via_daemon(fname)
+    if matches is None:
+        log(f"openxs-scand unreachable, skipping YARA check for {fname}")
+    else:
+        findings += [(fname, rule) for rule in matches if rule not in ("IsWhitelisted", "IsPhp")]
     findings += [(fname, r) for r in pmf_scan.check_custom_rules(fname, custom_rules)]
     for f, sig in pmf_scan.clamav_scan([fname]):
         findings.append((f, f"{sig} (ClamAV)"))
@@ -97,16 +101,6 @@ def main():
         log("WATCH_PATHS is empty - nothing to watch, exiting")
         sys.exit(0)
 
-    yar_path = "/opt/php-malware-finder/php.yar"
-    import yara
-    sources = {"php": yar_path}
-    rules_dir = os.path.join(os.path.dirname(yar_path), "openxs-rules")
-    if os.path.isdir(rules_dir):
-        for fn in sorted(os.listdir(rules_dir)):
-            if fn.endswith(".yar"):
-                sources[f"openxs_{fn[:-4]}"] = os.path.join(rules_dir, fn)
-    rules = yara.compile(filepaths=sources, includes=True, error_on_warning=False)
-
     ignore = pmf_scan.load_ignore_patterns(os.environ.get("OPENXS_IGNORE_FILE", "/etc/openxs/ignore"))
     custom_rules = pmf_scan.load_custom_rules(os.environ.get("OPENXS_RULE_FILE", "/etc/openxs/rules"))
     path_overrides = pmf_scan.load_path_overrides(os.environ.get("OPENXS_PATH_SETTINGS", "/etc/openxs/path_settings"))
@@ -120,7 +114,7 @@ def main():
     for line in proc.stdout:
         fname = line.rstrip("\n")
         if fname:
-            scan_one(fname, rules, ignore, custom_rules, path_overrides, global_fast_php_only)
+            scan_one(fname, ignore, custom_rules, path_overrides, global_fast_php_only)
 
 
 if __name__ == "__main__":

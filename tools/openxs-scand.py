@@ -12,21 +12,35 @@ Protocol (one request per connection):
 This is the exact line format mod_security's @inspectFile approver-script
 protocol expects, so inspectfile.sh just has to forward our response verbatim.
 
+A second request form returns every matching rule name instead of just the
+first (the watch daemon's use case - it wants the full finding list, not a
+single approve/reject decision):
+  client -> daemon: ALL <absolute file path>\\n
+  daemon -> client: <JSON array of rule names>\\n   (e.g. ["ObfuscatedPhp"])
+
+Either way, the point of this daemon is that the ruleset (php.yar +
+whitelist.yar + our own openxs-rules/*.yar) is compiled exactly once and
+shared by every consumer - the mod_security hook and the watch daemon both
+go through this same process instead of each holding their own copy in
+memory.
+
 Reload: send SIGHUP to recompile the ruleset (e.g. after whitelist.yar changes)
 without restarting the daemon and dropping the socket.
 """
 import os
+import json
 import signal
 import socket
 import socketserver
 import sys
 import threading
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import pmf_scan
+
 RULESET = os.environ.get("OPENXS_RULESET", "/opt/php-malware-finder/php.yar")
 SOCKET_PATH = os.environ.get("OPENXS_SOCKET", "/run/openxs/scan.sock")
 MAX_FILE_SIZE = 5 * 1024 * 1024
-
-import yara
 
 _rules_lock = threading.Lock()
 _rules = None
@@ -34,7 +48,7 @@ _rules = None
 
 def load_rules():
     global _rules
-    compiled = yara.compile(RULESET, includes=True, error_on_warning=False)
+    compiled = pmf_scan.compile_ruleset(RULESET)
     with _rules_lock:
         _rules = compiled
     print(f"openxs-scand: ruleset loaded from {RULESET}", file=sys.stderr)
@@ -50,21 +64,27 @@ def handle_sighup(signum, frame):
 class ScanHandler(socketserver.BaseRequestHandler):
     def handle(self):
         data = self.request.recv(4096).strip()
-        path = data.decode("utf-8", errors="replace")
+        text = data.decode("utf-8", errors="replace")
+        all_mode = text.startswith("ALL ")
+        path = text[4:] if all_mode else text
 
         try:
             size = os.path.getsize(path)
         except OSError:
-            self.request.sendall(b"1\n")  # file vanished, nothing to approve/reject on
+            self.request.sendall(b"[]\n" if all_mode else b"1\n")  # vanished, nothing to approve/reject on
             return
 
         if size <= 0 or size > MAX_FILE_SIZE:
-            self.request.sendall(b"1\n")
+            self.request.sendall(b"[]\n" if all_mode else b"1\n")
             return
 
         with _rules_lock:
             rules = _rules
         matches = rules.match(path, fast=True)
+
+        if all_mode:
+            self.request.sendall((json.dumps([m.rule for m in matches]) + "\n").encode())
+            return
         if matches:
             reason = matches[0].rule
             self.request.sendall(f"0 openxs-scan: {reason} {path}\n".encode())
