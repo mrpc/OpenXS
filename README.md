@@ -128,6 +128,13 @@ Still on the roadmap, deliberately incremental rather than all-at-once:
   Michaelson, GPLv3) — the firewall OpenXS integrates with.
 - [Webmin](https://github.com/webmin/webmin) — the management UI framework.
 
+OpenXS builds against [its own forks](https://github.com/mrpc) of the first
+two, pinned to a specific reviewed commit rather than upstream HEAD — the
+forks auto-sync with upstream daily, but OpenXS only moves to a new commit
+deliberately. Pass `--build-arg PMF_COMMIT=master`/`CSF_COMMIT=main` (or
+the equivalent `install.sh`/Webmin options) to track the fork's latest
+instead.
+
 ## License
 
 MIT (see [LICENSE](LICENSE)) for OpenXS's own code. php-malware-finder and
