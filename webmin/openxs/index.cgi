@@ -93,19 +93,28 @@ print @log ? join("", map { &html_escape($_) } @log) : "(no log yet)";
 print "</pre>";
 
 print &ui_subheading("Run a manual scan");
+my %cfg = &openxs_read_config();
 print &ui_form_start("scan.cgi", "post");
 print &ui_table_start(undef, undef, 2);
 print &ui_table_row("Directory to scan", &ui_textbox("path", "/var/www", 50));
+print &ui_table_row("...or every account", &ui_checkbox("accounts", "1",
+	"Scan all accounts under '" . &html_escape($cfg{'ACCOUNTS_DIR'}) . "/*/" . &html_escape($cfg{'ACCOUNTS_SUBPATH'}) .
+	"' instead (ignores 'Directory to scan' above) - see Settings below to change the accounts directory.", 0));
 print &ui_table_end();
 print &ui_submit("Scan now", "scan");
 print &ui_form_end();
 
 print &ui_subheading("Settings");
-my %cfg = &openxs_read_config();
 print &ui_form_start("config.cgi", "post");
 print &ui_table_start(undef, undef, 2);
 print &ui_table_row("Alert e-mail address", &ui_textbox("email", $cfg{'EMAIL'}, 40));
-print &ui_table_row("Directory scanned by the daily cron job", &ui_textbox("scan_path", $cfg{'SCAN_PATH'}, 40));
+print &ui_table_row("Daily cron scan mode", &ui_select("scan_mode", $cfg{'SCAN_MODE'},
+	[["path", "Single directory"], ["accounts", "Every account (cxs's --allusers)"]]));
+print &ui_table_row("Directory scanned (single-directory mode)", &ui_textbox("scan_path", $cfg{'SCAN_PATH'}, 40));
+print &ui_table_row("Accounts directory (accounts mode)", &ui_textbox("accounts_dir", $cfg{'ACCOUNTS_DIR'}, 40) .
+	" <i>one subdirectory per hosting account, e.g. /home/&lt;user&gt;</i>");
+print &ui_table_row("Web root subfolder per account (accounts mode)", &ui_textbox("accounts_subpath", $cfg{'ACCOUNTS_SUBPATH'}, 40) .
+	" <i>e.g. public_html - blank scans the whole account home dir (mail/backups too, usually not what you want)</i>");
 print &ui_table_row("Schedule (cron syntax: min hour day month weekday)",
 	&ui_textbox("schedule", $cfg{'SCHEDULE'}, 20) . " <i>e.g. '17 2 * * *' = 02:17 daily; blank = disable the scheduled scan entirely</i>");
 print &ui_table_row("Quarantine", &ui_checkbox("quarantine_enabled", "1",
