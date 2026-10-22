@@ -8,8 +8,7 @@ require './openxs-lib.pl';
 &ReadParse();
 &ui_print_header(undef, 'OpenXS Exploit Scanner', "");
 
-print "<p><a href='index.cgi'>Dashboard</a> | <a href='reports.cgi'>Scan history</a> | ".
-      "<a href='reports.cgi?view=quarantine'>Quarantine</a> | <a href='documentation.cgi'>Documentation</a></p>\n";
+print $openxs_nav;
 
 print &ui_subheading("Overview");
 print "<p>OpenXS detects malicious PHP (webshells, obfuscated code) and other compromise ".

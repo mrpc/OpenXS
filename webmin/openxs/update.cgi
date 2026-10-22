@@ -12,7 +12,7 @@ my $ref = $in{'ruleset_ref'};
 $ref =~ s/[^a-zA-Z0-9_.\-\/]//g;  # commit SHAs, tags and branch names only
 
 if (!-d $pmf_dir) {
-	&openxs_redirect_with_message("index.cgi", "$pmf_dir does not exist - detection engine not installed.", 1);
+	&openxs_result_page("$pmf_dir does not exist - detection engine not installed.", 1);
 	}
 
 my $before = &openxs_pmf_commit();
@@ -26,7 +26,7 @@ else {
 	}
 
 if ($rc != 0) {
-	&openxs_redirect_with_message("index.cgi",
+	&openxs_result_page(
 		"Update failed (git exited $rc) - ruleset left at $before. Check network/git access on the server.", 1);
 	}
 
@@ -40,4 +40,4 @@ my $pid = &openxs_daemon_pid();
 system("kill -HUP $pid") if ($pid);
 
 my $after = &openxs_pmf_commit();
-&openxs_redirect_with_message("index.cgi", "Ruleset updated: $before -> $after.", 0);
+&openxs_result_page("Ruleset updated: $before -> $after.", 0);

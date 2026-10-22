@@ -34,9 +34,7 @@ my ($status_html, $action_html) = @_;
 return $status_html . ($action_html ne "" ? "<div style='margin-top:4px'>$action_html</div>" : "");
 }
 
-print "<p><a href='index.cgi'>Dashboard</a> | <a href='reports.cgi'>Scan history</a> | ".
-      "<a href='reports.cgi?view=quarantine'>Quarantine</a> | <a href='documentation.cgi'>Documentation</a></p>\n";
-&openxs_show_message();
+print $openxs_nav;
 
 print &ui_subheading("Components");
 print &ui_table_start(undef, undef, 1);
