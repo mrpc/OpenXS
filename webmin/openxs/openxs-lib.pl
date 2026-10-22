@@ -173,7 +173,8 @@ return 1;
 # anything actually happened. These two carry a one-line result message
 # through the redirect instead.
 our $openxs_nav = "<p><a href='index.cgi'>Dashboard</a> | <a href='reports.cgi'>Scan history</a> | ".
-	"<a href='reports.cgi?view=quarantine'>Quarantine</a> | <a href='documentation.cgi'>Documentation</a></p>\n";
+	"<a href='reports.cgi?view=quarantine'>Quarantine</a> | <a href='logs.cgi'>Logs</a> | ".
+	"<a href='documentation.cgi'>Documentation</a></p>\n";
 
 # Prints the result of an action directly, in the same request, instead of
 # an HTTP redirect to another page. Webmin's modern themes navigate between
@@ -187,7 +188,7 @@ our $openxs_nav = "<p><a href='index.cgi'>Dashboard</a> | <a href='reports.cgi'>
 # there renders its result inline, same as this does).
 sub openxs_result_page
 {
-my ($msg, $is_err, $back_label, $back_url) = @_;
+my ($msg, $is_err, $back_label, $back_url, $detail) = @_;
 $back_label ||= "Back to dashboard";
 $back_url ||= "index.cgi";
 &ui_print_header(undef, 'OpenXS Exploit Scanner', "");
@@ -196,10 +197,21 @@ my $color = $is_err ? '#b30000' : '#2e7d32';
 my $bg = $is_err ? '#fdecea' : '#eaf6ec';
 print "<div style='background:$bg;color:$color;border:1px solid $color;border-radius:4px;".
 	"padding:12px;font-weight:bold;margin:12px 0'>" . &html_escape($msg) . "</div>\n";
+if ($detail ne '') {
+	print "<pre style='background:#1e1e1e;color:#e8e8e8;padding:8px;max-height:300px;overflow:auto'>".
+		&html_escape($detail)."</pre>\n";
+	}
 print "<p><a href='$back_url' style='display:inline-block;padding:6px 14px;background:#337ab7;".
 	"color:#fff;border-radius:4px;text-decoration:none'>$back_label</a></p>\n";
 &ui_print_footer("/", "Webmin index page");
 exit;
+}
+
+sub openxs_tail
+{
+my ($file, $n) = @_;
+$n ||= 40;
+return -e $file ? `tail -n $n '$file' 2>&1` : "(no such file: $file)";
 }
 
 # Kill-switch, checked once here (every .cgi requires this file first) so

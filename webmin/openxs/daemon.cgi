@@ -58,7 +58,7 @@ if (defined($in{'start'}) || defined($in{'restart'})) {
 		my $now_running = $which eq 'watchd' ? &openxs_watchd_pid() : &openxs_daemon_pid();
 		if (!$now_running) {
 			&openxs_result_page(
-				"$label did not start - check $log on the server.", 1);
+				"$label did not start.", 1, undef, undef, &openxs_tail($log));
 			}
 		}
 	}
