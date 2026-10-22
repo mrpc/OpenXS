@@ -17,6 +17,8 @@ RUN apt-get update && apt-get install -y \
     iproute2 \
     dnsutils \
     mailutils \
+    clamav-daemon \
+    clamav-freshclam \
     python3 \
     python3-yara \
     yara \

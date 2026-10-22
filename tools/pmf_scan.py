@@ -15,7 +15,32 @@ Modes:
 """
 import sys
 import os
+import re
+import shutil
+import subprocess
 import hashlib
+
+def clamav_scan(filelist_path):
+    """Runs the same file list through clamd (cxs's 'virusscan' equivalent).
+    Returns a list of (path, signature) tuples. Silently returns [] if
+    ClamAV isn't installed/running - it's an optional second detector,
+    not a hard requirement."""
+    if not shutil.which("clamdscan"):
+        return []
+    try:
+        out = subprocess.run(
+            ["clamdscan", "--fdpass", "--no-summary", "--infected",
+             f"--file-list={filelist_path}"],
+            capture_output=True, text=True, timeout=600,
+        ).stdout
+    except Exception:
+        return []
+    findings = []
+    for line in out.splitlines():
+        m = re.match(r"^(.+): (.+) FOUND$", line)
+        if m:
+            findings.append((m.group(1), m.group(2)))
+    return findings
 
 def iter_files(filelist_path):
     with open(filelist_path) as f:
@@ -66,10 +91,20 @@ def main():
                     print(f"{fname}\t{m.rule}")
                     findings.append((fname, m.rule))
                 hits += 1
+        clam_findings = clamav_scan(filelist_path)
+        already_flagged = {f for f, _ in findings}
+        for fname, sig in clam_findings:
+            print(f"{fname}\t{sig} (ClamAV)")
+            findings.append((fname, f"{sig} (ClamAV)"))
+            if fname not in already_flagged:
+                hits += 1
+                already_flagged.add(fname)
+
         if total == 0:
             print("# Nothing to scan: no PHP files found under the given path(s).", file=sys.stderr)
         else:
-            print(f"# Scanned {total} file(s), {hits} with a genuine hit (after whitelist suppression)", file=sys.stderr)
+            clam_note = f", {len(clam_findings)} ClamAV hit(s)" if shutil.which("clamdscan") else ""
+            print(f"# Scanned {total} file(s), {hits} with a genuine hit (after whitelist suppression){clam_note}", file=sys.stderr)
 
         try:
             import openxs_db
