@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import hashlib
 import time
+import json
 
 def load_ignore_patterns(path):
     """cxs's ignore file: one substring/path per line to skip scanning, or
@@ -202,6 +203,24 @@ def vmrss_kb():
         pass
     return 0
 
+def yara_match_via_daemon(fname, socket_path=None):
+    """Queries the already-running openxs-scand for every matching rule on
+    fname, instead of compiling (and holding in memory) a second copy of
+    the ruleset in whatever process calls this. Returns None (not a result
+    - "couldn't check") if the daemon isn't reachable."""
+    import socket as socket_mod
+    socket_path = socket_path or os.environ.get("OPENXS_SOCKET", "/run/openxs/scan.sock")
+    try:
+        s = socket_mod.socket(socket_mod.AF_UNIX, socket_mod.SOCK_STREAM)
+        s.settimeout(5)
+        s.connect(socket_path)
+        s.sendall(f"ALL {fname}\n".encode())
+        response = s.recv(65536).decode(errors="replace").strip()
+        s.close()
+        return json.loads(response)
+    except Exception:
+        return None
+
 def clamav_scan(filenames):
     """Runs the given (already-filtered) list of files through clamd (cxs's
     'virusscan' equivalent). Returns a list of (path, signature) tuples.
@@ -264,25 +283,29 @@ def iter_files(filelist_path, ignore, changed_hours=None, max_size=None,
                 continue
             yield fname
 
-def main():
-    if len(sys.argv) != 4 or sys.argv[1] not in ("whitelist", "scan"):
-        print(f"Usage: {sys.argv[0]} whitelist|scan <php.yar> <filelist.txt>", file=sys.stderr)
-        sys.exit(1)
-
+def compile_ruleset(yar_path):
+    """php.yar plus our own rules (openxs-rules/*.yar, next to php.yar) -
+    real malware families found missing from php-malware-finder's own
+    ruleset during OpenXS's corpus analysis, see OpenXS-ops/TIMELINE.md,
+    2026-10-22. Shared by every consumer (CLI scans, the scan daemon, the
+    watch daemon) so there's exactly one compiled copy of the full
+    ruleset, not one per process."""
     import yara
-    mode, yar_path, filelist_path = sys.argv[1], sys.argv[2], sys.argv[3]
-
-    # Our own rules (openxs-rules/*.yar, next to php.yar) cover real
-    # malware families found missing from php-malware-finder's own
-    # ruleset during OpenXS's corpus analysis - see
-    # OpenXS-ops/TIMELINE.md, 2026-10-22.
     sources = {"php": yar_path}
     rules_dir = os.path.join(os.path.dirname(os.path.abspath(yar_path)), "openxs-rules")
     if os.path.isdir(rules_dir):
         for fn in sorted(os.listdir(rules_dir)):
             if fn.endswith(".yar"):
                 sources[f"openxs_{fn[:-4]}"] = os.path.join(rules_dir, fn)
-    rules = yara.compile(filepaths=sources, includes=True, error_on_warning=False)
+    return yara.compile(filepaths=sources, includes=True, error_on_warning=False)
+
+def main():
+    if len(sys.argv) != 4 or sys.argv[1] not in ("whitelist", "scan"):
+        print(f"Usage: {sys.argv[0]} whitelist|scan <php.yar> <filelist.txt>", file=sys.stderr)
+        sys.exit(1)
+
+    mode, yar_path, filelist_path = sys.argv[1], sys.argv[2], sys.argv[3]
+    rules = compile_ruleset(yar_path)
 
     ignore_patterns = load_ignore_patterns(os.environ.get("OPENXS_IGNORE_FILE", "/etc/openxs/ignore"))
     changed_hours = os.environ.get("OPENXS_CHANGED_HOURS")
