@@ -8,6 +8,7 @@ require './openxs-lib.pl';
 &ui_print_header(undef, 'OpenXS Exploit Scanner', "");
 
 my $scan_id = $in{'scan_id'};
+$scan_id =~ s/[^0-9]//g;
 my $view_quarantine = $in{'view'} eq 'quarantine';
 
 sub quarantine_action_links

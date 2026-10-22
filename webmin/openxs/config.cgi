@@ -5,9 +5,13 @@
 require './openxs-lib.pl';
 &ReadParse();
 
+# Strip newlines defensively - the config file is plain KEY=value lines,
+# an embedded newline would let one form field inject a second bogus line.
+sub one_line { my ($s) = @_; $s =~ s/[\r\n]//g; return $s; }
+
 my %cfg = &openxs_read_config();
-$cfg{'EMAIL'} = $in{'email'} if (defined($in{'email'}) && $in{'email'} ne "");
-$cfg{'SCAN_PATH'} = $in{'scan_path'} if (defined($in{'scan_path'}) && $in{'scan_path'} ne "");
+$cfg{'EMAIL'} = &one_line($in{'email'}) if (defined($in{'email'}) && $in{'email'} ne "");
+$cfg{'SCAN_PATH'} = &one_line($in{'scan_path'}) if (defined($in{'scan_path'}) && $in{'scan_path'} ne "");
 $cfg{'QUARANTINE_ENABLED'} = (defined($in{'quarantine_enabled'}) && $in{'quarantine_enabled'} eq '1') ? '1' : '0';
 &openxs_write_config(%cfg);
 

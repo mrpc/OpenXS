@@ -7,7 +7,19 @@ CONFIG=/etc/openxs/openxs.conf
 EMAIL="root@localhost"
 SCAN_PATH="/var/www"
 QUARANTINE_ENABLED="0"
-[ -f "$CONFIG" ] && source "$CONFIG"
+# Parsed as plain data, not `source`-d: the config file is writable via the
+# Webmin settings form, and `source` would execute $()/`` in any value as
+# real shell code (e.g. a crafted EMAIL value running arbitrary commands
+# as root on the next cron run).
+if [ -f "$CONFIG" ]; then
+    while IFS='=' read -r key value; do
+        case "$key" in
+            EMAIL) EMAIL="$value" ;;
+            SCAN_PATH) SCAN_PATH="$value" ;;
+            QUARANTINE_ENABLED) QUARANTINE_ENABLED="$value" ;;
+        esac
+    done < "$CONFIG"
+fi
 
 HOST=$(hostname -f)
 cd /opt/php-malware-finder
