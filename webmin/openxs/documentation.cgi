@@ -49,7 +49,7 @@ FAST_PHP_ONLY=0                    # 1 = only scan *.php (faster, misses disguis
 CHANGED_HOURS=                     # blank = no time filter; N = only files changed in the last N hours
 THROTTLE_LOAD=                     # blank = disabled; pause scanning if load average exceeds this
 QUIET=0                            # suppress the scan summary line (for cron)
-WATCH_PATHS=                       # comma-separated dirs for the watch daemon; blank = daemon stays off
+WATCH_PATHS=                       # comma-separated dirs for the watch daemon; blank = every account's web root
 </pre>";
 
 print &ui_subheading("Ignore file - /etc/openxs/ignore");
