@@ -46,6 +46,11 @@ RUN git clone --depth 1 https://github.com/centminmod/configserver-scripts.git /
     && sed -i 's/^root: /root: csf /' /etc/webmin/webmin.acl \
     && rm -rf /tmp/csf-fork /tmp/csf*
 
+# Cross-link: add an "Open OpenXS" button to CSF's own module page (GPLv3,
+# fine to patch - unlike cxs, nothing here is obfuscated or license-restricted)
+COPY csf-integration/patch_csf_link.py /tmp/patch_csf_link.py
+RUN python3 /tmp/patch_csf_link.py && rm /tmp/patch_csf_link.py
+
 # mod_security: enable + OWASP core rules as a baseline starting point.
 # SecUploadKeepFiles is off by default, which means @inspectFile (used below)
 # never gets a real file on disk to scan - it must be turned on explicitly.

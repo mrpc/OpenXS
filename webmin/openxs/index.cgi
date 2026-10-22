@@ -26,28 +26,34 @@ my ($action, $buttons_html) = @_;
 return &ui_form_start($action, "post") . $buttons_html . &ui_form_end();
 }
 
+sub row_value
+{
+my ($status_html, $action_html) = @_;
+return $status_html . ($action_html ne "" ? "<div style='margin-top:4px'>$action_html</div>" : "");
+}
+
 print &ui_subheading("Components");
-print &ui_table_start(undef, undef, 3);
+print &ui_table_start(undef, undef, 1);
 
 print &ui_table_row("Detection engine (php-malware-finder)",
-	&status_cell($pmf_ok, "Installed (" . &openxs_pmf_commit() . ")", "Not installed"),
-	$pmf_ok ? &mini_form("update.cgi", &ui_submit("Update now", "update"))
-	        : "<i>installed as part of the base image</i>");
+	&row_value(&status_cell($pmf_ok, "Installed (" . &openxs_pmf_commit() . ")", "Not installed"),
+		$pmf_ok ? &mini_form("update.cgi", &ui_submit("Update now", "update"))
+		        : "<i>installed as part of the base image</i>"));
 
 print &ui_table_row("Scan daemon (openxs-scand)",
-	$pid ? &status_cell(1, "Running (pid $pid)", "") : &status_cell(0, "", "Not running"),
-	&mini_form("daemon.cgi",
-		&ui_submit("Start", "start") . &ui_submit("Stop", "stop") . &ui_submit("Restart", "restart")));
+	&row_value($pid ? &status_cell(1, "Running (pid $pid)", "") : &status_cell(0, "", "Not running"),
+		&mini_form("daemon.cgi",
+			&ui_submit("Start", "start") . &ui_submit("Stop", "stop") . &ui_submit("Restart", "restart"))));
 
 print &ui_table_row("mod_security (real-time upload blocking)",
-	&status_cell($modsec_ok && $modsec_hook_ok, "Installed and hooked up", "Not installed"),
-	($modsec_ok && $modsec_hook_ok) ? ""
-	  : &mini_form("install_modsecurity.cgi", &ui_submit("Install", "install")));
+	&row_value(&status_cell($modsec_ok && $modsec_hook_ok, "Installed and hooked up", "Not installed"),
+		($modsec_ok && $modsec_hook_ok) ? "" : &mini_form("install_modsecurity.cgi", &ui_submit("Install", "install"))));
 
 print &ui_table_row("CSF firewall auto-block hook",
-	$csf_ok ? &status_cell($csf_hook_ok, "Hooked up", "CSF found, hook not installed")
-	        : "<i style='color:#888'>CSF not found on this server</i>",
-	($csf_ok && !$csf_hook_ok) ? &mini_form("install_csf_hook.cgi", &ui_submit("Install", "install")) : "");
+	&row_value($csf_ok ? &status_cell($csf_hook_ok, "Hooked up", "CSF found, hook not installed")
+	                    : "<i style='color:#888'>CSF not found on this server</i>",
+		($csf_ok && !$csf_hook_ok) ? &mini_form("install_csf_hook.cgi", &ui_submit("Install", "install")) : "")
+	. ($csf_ok && -d "/usr/share/webmin/csf" ? "<div style='margin-top:4px'><a href='../csf/'>Open CSF Firewall module &raquo;</a></div>" : ""));
 
 print &ui_table_end();
 
