@@ -40,6 +40,47 @@ def throttle(max_load):
     while os.getloadavg()[0] > max_load:
         time.sleep(60)
 
+FS_RULES = {"SUID file", "world-writable directory", "symlink", "socket",
+            "core dump file", "Linux binary or executable file",
+            "Windows binary or executable file", "hidden directory owned by nobody"}
+
+def categorize(rule_name):
+    """cxs quarantines only a conservative default (Viruses + Known
+    Exploits) 'to avoid otherwise breaking web sites' - filesystem
+    indicators (SUID/symlinks/binaries) are much more likely to be a
+    legitimate part of the server, so they get their own category."""
+    if rule_name.endswith("(ClamAV)"):
+        return "virus"
+    if rule_name in FS_RULES:
+        return "fs"
+    return "yara"
+
+def load_custom_rules(path):
+    """cxs's rule file: extra regexes to flag, beyond the built-in ruleset."""
+    if not path or not os.path.isfile(path):
+        return []
+    patterns = []
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            try:
+                patterns.append(re.compile(line.encode()))
+            except re.error:
+                continue
+    return patterns
+
+def check_custom_rules(fname, patterns):
+    if not patterns:
+        return []
+    try:
+        with open(fname, "rb") as f:
+            data = f.read()
+    except OSError:
+        return []
+    return [f"Custom rule: {p.pattern.decode(errors='replace')}" for p in patterns if p.search(data)]
+
 def clamav_scan(filelist_path):
     """Runs the same file list through clamd (cxs's 'virusscan' equivalent).
     Returns a list of (path, signature) tuples. Silently returns [] if
@@ -100,6 +141,7 @@ def main():
     changed_hours = os.environ.get("OPENXS_CHANGED_HOURS")
     quiet = os.environ.get("OPENXS_QUIET") == "1"
     throttle(os.environ.get("OPENXS_THROTTLE_LOAD"))
+    custom_rules = load_custom_rules(os.environ.get("OPENXS_RULE_FILE", "/etc/openxs/rules"))
 
     if mode == "whitelist":
         entries = []
@@ -123,10 +165,11 @@ def main():
             total += 1
             matches = rules.match(fname, fast=True)
             real = [m for m in matches if m.rule != "IsWhitelisted" and m.rule != "IsPhp"]
-            if real:
-                for m in real:
-                    print(f"{fname}\t{m.rule}")
-                    findings.append((fname, m.rule))
+            custom_hits = check_custom_rules(fname, custom_rules)
+            if real or custom_hits:
+                for rule_name in [m.rule for m in real] + custom_hits:
+                    print(f"{fname}\t{rule_name}")
+                    findings.append((fname, rule_name))
                 hits += 1
         clam_findings = clamav_scan(clamav_filelist_path)
         already_flagged = {f for f, _ in findings}
@@ -168,9 +211,14 @@ def main():
             scan_id = openxs_db.record_scan(label, total, findings)
 
             if os.environ.get("OPENXS_QUARANTINE_ENABLED") == "1" and findings:
+                # cxs's own default: only quarantine Viruses and Known
+                # Exploits, "to avoid otherwise breaking web sites" -
+                # filesystem indicators (SUID/symlinks/binaries) are much
+                # more likely to be legitimate, so they're opt-in.
+                allowed = set(os.environ.get("OPENXS_QUARANTINE_CATEGORIES", "virus,yara").split(","))
                 quarantined = 0
-                for fid, _, _, _ in openxs_db.findings_for_scan(scan_id):
-                    if openxs_db.quarantine_file(fid):
+                for fid, _, rule_name, _ in openxs_db.findings_for_scan(scan_id):
+                    if categorize(rule_name) in allowed and openxs_db.quarantine_file(fid):
                         quarantined += 1
                 if quarantined:
                     print(f"# Quarantined {quarantined} file(s)", file=sys.stderr)

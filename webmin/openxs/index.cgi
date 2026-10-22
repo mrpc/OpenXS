@@ -93,6 +93,12 @@ print &ui_table_row("Schedule (cron syntax: min hour day month weekday)",
 print &ui_table_row("Quarantine", &ui_checkbox("quarantine_enabled", "1",
 	"Move flagged files to quarantine (manual + scheduled scans only, not the real-time upload hook)",
 	$cfg{'QUARANTINE_ENABLED'} eq '1'));
+my %qcats = map { $_ => 1 } split(/,/, $cfg{'QUARANTINE_CATEGORIES'});
+print &ui_table_row("...which categories to quarantine",
+	&ui_checkbox("qcat_virus", "1", "Viruses (ClamAV)", $qcats{'virus'}) . "<br>" .
+	&ui_checkbox("qcat_yara", "1", "Known exploits (YARA + custom rules)", $qcats{'yara'}) . "<br>" .
+	&ui_checkbox("qcat_fs", "1", "Filesystem indicators (SUID/symlinks/binaries - <b>not recommended</b>: ".
+		"these are often legitimate parts of the server)", $qcats{'fs'}));
 print &ui_table_row("Fast mode (.php files only)", &ui_checkbox("fast_php_only", "1",
 	"Only scan *.php files, instead of everything under the scan path. Faster, but a webshell saved with ".
 	"a disguised extension (e.g. avatar.jpg containing real PHP code) would no longer be caught. ".
@@ -106,6 +112,7 @@ print &ui_table_row("Quiet output", &ui_checkbox("quiet", "1",
 	"Suppress the scan summary line (useful for cron jobs where only hits should trigger e-mail)",
 	$cfg{'QUIET'} eq '1'));
 print &ui_table_row("Ignore file", "<code>/etc/openxs/ignore</code> <i>one path/substring per line to skip - edit directly on the server</i>");
+print &ui_table_row("Custom rule file", "<code>/etc/openxs/rules</code> <i>one extra regex per line to additionally flag - edit directly on the server</i>");
 print &ui_table_end();
 print &ui_submit("Save", "save");
 print &ui_form_end();

@@ -11,6 +11,7 @@ FAST_PHP_ONLY="0"
 CHANGED_HOURS=""
 THROTTLE_LOAD=""
 QUIET="0"
+QUARANTINE_CATEGORIES="virus,yara"
 # Parsed as plain data, not `source`-d: the config file is writable via the
 # Webmin settings form, and `source` would execute $()/`` in any value as
 # real shell code (e.g. a crafted EMAIL value running arbitrary commands
@@ -25,6 +26,7 @@ if [ -f "$CONFIG" ]; then
             CHANGED_HOURS) CHANGED_HOURS="$value" ;;
             THROTTLE_LOAD) THROTTLE_LOAD="$value" ;;
             QUIET) QUIET="$value" ;;
+            QUARANTINE_CATEGORIES) QUARANTINE_CATEGORIES="$value" ;;
         esac
     done < "$CONFIG"
 fi
@@ -47,6 +49,7 @@ export OPENXS_QUARANTINE_ENABLED="$QUARANTINE_ENABLED"
 export OPENXS_CHANGED_HOURS="$CHANGED_HOURS"
 export OPENXS_THROTTLE_LOAD="$THROTTLE_LOAD"
 export OPENXS_QUIET="$QUIET"
+export OPENXS_QUARANTINE_CATEGORIES="$QUARANTINE_CATEGORIES"
 python3 pmf_scan.py scan php.yar filelist.txt > scan_results.txt 2> scan.log
 
 hits=$(grep -c . scan_results.txt || true)
