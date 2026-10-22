@@ -38,7 +38,10 @@ print "<p>Plain <code>KEY=value</code> lines, one per line. Editable from the da
       "or by hand:</p>";
 print "<pre style='background:#1e1e1e;color:#e8e8e8;padding:8px'>".
 "EMAIL=root\@localhost              # alert e-mail address
-SCAN_PATH=/var/www                 # directory for the scheduled/manual scan
+SCAN_MODE=path                     # 'path' (single directory) or 'accounts' (every hosting account)
+SCAN_PATH=/var/www                 # directory for the scheduled/manual scan, used when SCAN_MODE=path
+ACCOUNTS_DIR=/home                 # one subdirectory per account, used when SCAN_MODE=accounts
+ACCOUNTS_SUBPATH=public_html       # web root per account; blank = whole account home dir
 SCHEDULE=17 2 * * *                # cron syntax; blank = scheduled scan disabled
 QUARANTINE_ENABLED=0               # move flagged files to quarantine
 QUARANTINE_CATEGORIES=virus,yara   # which categories to quarantine: virus, yara, fs
