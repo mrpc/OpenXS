@@ -135,7 +135,18 @@ def main():
     # check a broader list (uploaded images/PDFs/etc. can carry malware
     # too), so it takes an optional separate, wider list.
     clamav_filelist_path = sys.argv[4] if len(sys.argv) == 5 else filelist_path
-    rules = yara.compile(yar_path, includes=True, error_on_warning=False)
+
+    # Our own rules (openxs-rules/*.yar, next to php.yar) cover real
+    # malware families found missing from php-malware-finder's own
+    # ruleset during OpenXS's corpus analysis - see
+    # OpenXS-ops/TIMELINE.md, 2026-10-22.
+    sources = {"php": yar_path}
+    rules_dir = os.path.join(os.path.dirname(os.path.abspath(yar_path)), "openxs-rules")
+    if os.path.isdir(rules_dir):
+        for fn in sorted(os.listdir(rules_dir)):
+            if fn.endswith(".yar"):
+                sources[f"openxs_{fn[:-4]}"] = os.path.join(rules_dir, fn)
+    rules = yara.compile(filepaths=sources, includes=True, error_on_warning=False)
 
     ignore_patterns = load_ignore_patterns(os.environ.get("OPENXS_IGNORE_FILE", "/etc/openxs/ignore"))
     changed_hours = os.environ.get("OPENXS_CHANGED_HOURS")
