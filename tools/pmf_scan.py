@@ -54,15 +54,20 @@ def main():
         print("        false\n}")
         print(f"# {len(entries)} files whitelisted", file=sys.stderr)
     else:
+        total = 0
         hits = 0
         for fname in iter_files(filelist_path):
+            total += 1
             matches = rules.match(fname, fast=True)
             real = [m for m in matches if m.rule != "IsWhitelisted" and m.rule != "IsPhp"]
             if real:
                 for m in real:
                     print(f"{fname}\t{m.rule}")
                 hits += 1
-        print(f"# {hits} files with a genuine hit (after whitelist suppression)", file=sys.stderr)
+        if total == 0:
+            print("# Nothing to scan: no PHP files found under the given path(s).", file=sys.stderr)
+        else:
+            print(f"# Scanned {total} file(s), {hits} with a genuine hit (after whitelist suppression)", file=sys.stderr)
 
 if __name__ == "__main__":
     main()
