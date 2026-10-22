@@ -22,11 +22,40 @@ import hashlib
 import time
 
 def load_ignore_patterns(path):
-    """cxs's ignore file: one substring/path per line to skip scanning."""
-    if not path or not os.path.isfile(path):
-        return []
-    with open(path) as f:
-        return [line.strip() for line in f if line.strip() and not line.startswith("#")]
+    """cxs's ignore file: one substring/path per line to skip scanning, or
+    'md5:<hash>'/'sha256:<hash>' to ignore by exact file content instead
+    (survives a file being renamed/moved, unlike a path-based entry)."""
+    plain, md5s, sha256s = [], set(), set()
+    if path and os.path.isfile(path):
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if line.startswith("md5:"):
+                    md5s.add(line[4:].strip().lower())
+                elif line.startswith("sha256:"):
+                    sha256s.add(line[7:].strip().lower())
+                else:
+                    plain.append(line)
+    return plain, md5s, sha256s
+
+def file_hashes(fname):
+    try:
+        with open(fname, "rb") as f:
+            data = f.read()
+    except OSError:
+        return None, None
+    return hashlib.md5(data).hexdigest(), hashlib.sha256(data).hexdigest()
+
+def is_ignored(fname, ignore_patterns, md5s, sha256s):
+    if any(p in fname for p in ignore_patterns):
+        return True
+    if md5s or sha256s:
+        md5, sha256 = file_hashes(fname)
+        if md5 in md5s or sha256 in sha256s:
+            return True
+    return False
 
 def load_path_overrides(path):
     """Per-path setting overrides - cxs-style 'different settings for this
@@ -84,30 +113,94 @@ def categorize(rule_name):
     return "yara"
 
 def load_custom_rules(path):
-    """cxs's rule file: extra regexes to flag, beyond the built-in ruleset."""
-    if not path or not os.path.isfile(path):
-        return []
-    patterns = []
-    with open(path) as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            try:
-                patterns.append(re.compile(line.encode()))
-            except re.error:
-                continue
-    return patterns
+    """cxs's rule/xtra file: extra regexes to flag, or 'md5:<hash>'/
+    'sha256:<hash>' to flag an exact known-exploit file by content hash
+    (cxs's --xtra md5sum:/sha256: entries)."""
+    patterns, md5s, sha256s = [], {}, {}
+    if path and os.path.isfile(path):
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if line.startswith("md5:"):
+                    md5s[line[4:].strip().lower()] = line
+                elif line.startswith("sha256:"):
+                    sha256s[line[7:].strip().lower()] = line
+                else:
+                    try:
+                        patterns.append(re.compile(line.encode()))
+                    except re.error:
+                        continue
+    return patterns, md5s, sha256s
 
-def check_custom_rules(fname, patterns):
-    if not patterns:
+def check_custom_rules(fname, rules):
+    patterns, md5s, sha256s = rules
+    if not patterns and not md5s and not sha256s:
         return []
     try:
         with open(fname, "rb") as f:
             data = f.read()
     except OSError:
         return []
-    return [f"Custom rule: {p.pattern.decode(errors='replace')}" for p in patterns if p.search(data)]
+    hits = [f"Custom rule: {p.pattern.decode(errors='replace')}" for p in patterns if p.search(data)]
+    if md5s or sha256s:
+        md5 = hashlib.md5(data).hexdigest()
+        sha256 = hashlib.sha256(data).hexdigest()
+        if md5 in md5s:
+            hits.append("Custom rule: known exploit (md5 match)")
+        if sha256 in sha256s:
+            hits.append("Custom rule: known exploit (sha256 match)")
+    return hits
+
+ARCHIVE_EXTS = (".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2")
+MAX_ARCHIVE_MEMBERS = 2000  # cheap zip-bomb-by-member-count guard
+
+def iter_archive_members(fname):
+    """Yields (member_name, data) for each regular file inside a zip/tar
+    archive (cxs's --options Z), skipping oversized members/archives with
+    too many entries. In-memory only - members are matched against YARA
+    via match(data=...), no extraction to disk needed."""
+    import zipfile, tarfile
+    try:
+        if fname.endswith(".zip"):
+            with zipfile.ZipFile(fname) as zf:
+                infos = zf.infolist()
+                if len(infos) > MAX_ARCHIVE_MEMBERS:
+                    return
+                for info in infos:
+                    if info.is_dir() or info.file_size > 5 * 1024 * 1024:
+                        continue
+                    try:
+                        yield info.filename, zf.read(info)
+                    except Exception:
+                        continue
+        elif fname.endswith(ARCHIVE_EXTS):
+            with tarfile.open(fname) as tf:
+                members = tf.getmembers()
+                if len(members) > MAX_ARCHIVE_MEMBERS:
+                    return
+                for member in members:
+                    if not member.isfile() or member.size > 5 * 1024 * 1024:
+                        continue
+                    try:
+                        f = tf.extractfile(member)
+                        if f:
+                            yield member.name, f.read()
+                    except Exception:
+                        continue
+    except Exception:
+        return
+
+def vmrss_kb():
+    try:
+        with open("/proc/self/status") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1])
+    except OSError:
+        pass
+    return 0
 
 def clamav_scan(filenames):
     """Runs the given (already-filtered) list of files through clamd (cxs's
@@ -140,17 +233,18 @@ def clamav_scan(filenames):
             findings.append((m.group(1), m.group(2)))
     return findings
 
-def iter_files(filelist_path, ignore_patterns=None, changed_hours=None, max_size=None,
+def iter_files(filelist_path, ignore, changed_hours=None, max_size=None,
                 path_overrides=None, global_fast_php_only="0"):
     max_size = max_size or 5 * 1024 * 1024
     changed_cutoff = time.time() - float(changed_hours) * 3600 if changed_hours else None
     path_overrides = path_overrides or []
+    plain, md5s, sha256s = ignore
     with open(filelist_path) as f:
         for line in f:
             fname = line.rstrip("\n")
             if not fname:
                 continue
-            if ignore_patterns and any(p in fname for p in ignore_patterns):
+            if is_ignored(fname, plain, md5s, sha256s):
                 continue
             # Per-path "fast mode" override: a specific heavy directory can
             # be narrowed to *.php-only even while the scan as a whole
@@ -197,6 +291,8 @@ def main():
     custom_rules = load_custom_rules(os.environ.get("OPENXS_RULE_FILE", "/etc/openxs/rules"))
     path_overrides = load_path_overrides(os.environ.get("OPENXS_PATH_SETTINGS", "/etc/openxs/path_settings"))
     global_fast_php_only = os.environ.get("OPENXS_FAST_PHP_ONLY", "0")
+    vmrss_max_kb = int(os.environ.get("OPENXS_VMRSS_MAX_KB", "2000000"))
+    aborted = False
 
     if mode == "whitelist":
         entries = []
@@ -220,13 +316,26 @@ def main():
         scanned_files = []
         for fname in iter_files(filelist_path, ignore_patterns, changed_hours,
                                  path_overrides=path_overrides, global_fast_php_only=global_fast_php_only):
+            if vmrss_max_kb and vmrss_kb() > vmrss_max_kb:
+                print(f"# Aborted: VmRSS exceeded {vmrss_max_kb}kB (OPENXS_VMRSS_MAX_KB) after {total} file(s)", file=sys.stderr)
+                aborted = True
+                break
             total += 1
             scanned_files.append(fname)
             matches = rules.match(fname, fast=True)
             real = [m for m in matches if m.rule != "IsWhitelisted" and m.rule != "IsPhp"]
             custom_hits = check_custom_rules(fname, custom_rules)
-            if real or custom_hits:
-                for rule_name in [m.rule for m in real] + custom_hits:
+            # Scan inside zip/tar archives too (cxs's --options Z) - a
+            # webshell uploaded inside a zip would otherwise never be seen,
+            # since the archive's own bytes don't contain a <?php tag.
+            archive_hits = []
+            if fname.endswith(ARCHIVE_EXTS):
+                for member_name, data in iter_archive_members(fname):
+                    for m in rules.match(data=data):
+                        if m.rule not in ("IsWhitelisted", "IsPhp"):
+                            archive_hits.append(f"{m.rule} (in archive member {member_name})")
+            if real or custom_hits or archive_hits:
+                for rule_name in [m.rule for m in real] + custom_hits + archive_hits:
                     print(f"{fname}\t{rule_name}")
                     findings.append((fname, rule_name))
                 hits += 1
@@ -247,7 +356,7 @@ def main():
         if scan_root and os.path.isdir(scan_root):
             import fs_scan
             fs_findings = [(p, r) for p, r in fs_scan.scan(scan_root)
-                           if not (ignore_patterns and any(pat in p for pat in ignore_patterns))]
+                           if not is_ignored(p, *ignore_patterns)]
         for fname, rule in fs_findings:
             print(f"{fname}\t{rule}")
             findings.append((fname, rule))
@@ -260,7 +369,8 @@ def main():
                 print("# Nothing to scan: the given path(s) contained no files.", file=sys.stderr)
             else:
                 clam_note = f", {len(clam_findings)} ClamAV hit(s)" if shutil.which("clamdscan") else ""
-                print(f"# Scanned {total} file(s), {hits} flagged (YARA after whitelist suppression + ClamAV + filesystem checks){clam_note}", file=sys.stderr)
+                abort_note = " (ABORTED early, see VmRSS message above)" if aborted else ""
+                print(f"# Scanned {total} file(s), {hits} flagged (YARA after whitelist suppression + ClamAV + filesystem checks){clam_note}{abort_note}", file=sys.stderr)
 
         try:
             import openxs_db
