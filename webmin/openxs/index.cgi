@@ -13,6 +13,8 @@ my $modsec_ok = &openxs_modsecurity_installed();
 my $modsec_hook_ok = &openxs_modsecurity_hook_installed();
 my $csf_ok = &openxs_csf_present();
 my $csf_hook_ok = &openxs_csf_hook_installed();
+my $clamav_ok = &openxs_clamav_installed();
+my $clamav_running = &openxs_clamav_running();
 
 sub status_cell
 {
@@ -32,6 +34,9 @@ my ($status_html, $action_html) = @_;
 return $status_html . ($action_html ne "" ? "<div style='margin-top:4px'>$action_html</div>" : "");
 }
 
+print "<p><a href='index.cgi'>Dashboard</a> | <a href='reports.cgi'>Scan history</a> | ".
+      "<a href='reports.cgi?view=quarantine'>Quarantine</a></p>\n";
+
 print &ui_subheading("Components");
 print &ui_table_start(undef, undef, 1);
 
@@ -41,6 +46,10 @@ print &ui_table_row("Detection engine (php-malware-finder)",
 			&ui_textbox("ruleset_ref", "", 20) . " <i>(blank = latest from our fork; or a specific commit/tag)</i><br>" .
 			&ui_submit("Update now", "update"))
 		        : "<i>installed as part of the base image</i>"));
+
+print &ui_table_row("ClamAV (virus scanning, 2nd detector)",
+	&row_value($clamav_ok ? &status_cell($clamav_running, "Installed, running", "Installed, not running")
+	                      : "<i style='color:#888'>Not installed - ran without it (optional, degrades gracefully)</i>", ""));
 
 print &ui_table_row("Scan daemon (openxs-scand)",
 	&row_value($pid ? &status_cell(1, "Running (pid $pid)", "") : &status_cell(0, "", "Not running"),
@@ -64,8 +73,6 @@ my @log = -e $daemon_log ? `tail -30 $daemon_log 2>/dev/null` : ();
 print "<pre style='background:#1e1e1e;color:#e8e8e8;padding:8px;max-height:300px;overflow:auto'>";
 print @log ? join("", map { &html_escape($_) } @log) : "(no log yet)";
 print "</pre>";
-
-print "<p><a href='reports.cgi'>View scan history &raquo;</a></p>\n";
 
 print &ui_subheading("Run a manual scan");
 print &ui_form_start("scan.cgi", "post");

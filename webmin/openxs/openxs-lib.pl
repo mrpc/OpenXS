@@ -62,6 +62,18 @@ my $out = `grep -l openxs $csf_regex 2>/dev/null`;
 return $out ne "" ? 1 : 0;
 }
 
+sub openxs_clamav_installed
+{
+my $bin = `command -v clamdscan 2>/dev/null`;
+return $bin ne "" ? 1 : 0;
+}
+
+sub openxs_clamav_running
+{
+my $out = `pgrep -x clamd 2>/dev/null`;
+return $out ne "" ? 1 : 0;
+}
+
 # Simple key=value config file, used both by this module and by the shell
 # scripts (run as plain `source`-able shell variables).
 sub openxs_read_config
