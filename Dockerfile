@@ -50,7 +50,13 @@ RUN curl -o /tmp/webmin-setup-repos.sh https://raw.githubusercontent.com/webmin/
     && sh /tmp/webmin-setup-repos.sh -f \
     && apt-get update \
     && apt-get install -y webmin --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    # blockhost_failures/time (Webmin's own brute-force lockout) misfires in
+    # this sandbox - repeated test connections from our own tooling tripped
+    # it, after which miniserv resets every TLS connection (looks like the
+    # page "won't load" at all, not an auth failure) until /var/webmin/blocked
+    # is removed. Disabled here rather than worked around every rebuild.
+    && sed -i '/^blockhost_failures/d; /^blockhost_time/d' /etc/webmin/miniserv.conf
 
 # CSF v15.00 GPLv3 (the final official release from Way to the Web before it shut down).
 # Pinned to our own fork+commit (see ARGs above), not upstream HEAD.
