@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Minimal scan-history store for OpenXS (SQLite, stdlib only - no new dependency).
-Mirrors the one thing cxs's own cxs.db covered that we didn't have yet: a
-persistent record of past scans and their findings, so results aren't lost
-the moment the next scan overwrites scan_results.txt.
+Minimal scan-history + quarantine store for OpenXS (SQLite, stdlib only - no
+new dependency). Mirrors the two things cxs's own cxs.db / quarantine dir
+covered that we didn't have yet.
 """
 import os
 import sqlite3
 import time
 
 DB_PATH = os.environ.get("OPENXS_DB", "/var/lib/openxs/openxs.db")
+QUARANTINE_DIR = os.environ.get("OPENXS_QUARANTINE", "/var/lib/openxs/quarantine")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS scans (
@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS findings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     scan_id INTEGER NOT NULL REFERENCES scans(id),
     file_path TEXT NOT NULL,
-    rule_name TEXT NOT NULL
+    rule_name TEXT NOT NULL,
+    quarantine_path TEXT
 );
 """
 
@@ -52,6 +53,77 @@ def record_scan(path, files_scanned, findings):
     return scan_id
 
 
+def quarantine_file(finding_id):
+    """Moves a finding's file into the quarantine dir and records the new
+    path. Returns the quarantine path, or None if the file no longer exists
+    (already moved/deleted) or was already quarantined."""
+    conn = _connect()
+    row = conn.execute(
+        "SELECT file_path, quarantine_path FROM findings WHERE id = ?", (finding_id,)
+    ).fetchone()
+    if not row:
+        conn.close()
+        return None
+    file_path, existing_q = row
+    if existing_q:
+        conn.close()
+        return existing_q
+    if not os.path.exists(file_path):
+        conn.close()
+        return None
+
+    os.makedirs(QUARANTINE_DIR, exist_ok=True)
+    safe_name = file_path.replace("/", "_").lstrip("_")
+    q_path = os.path.join(QUARANTINE_DIR, f"{finding_id}_{safe_name}")
+    os.rename(file_path, q_path)
+    os.chmod(q_path, 0o000)
+
+    conn.execute("UPDATE findings SET quarantine_path = ? WHERE id = ?", (q_path, finding_id))
+    conn.commit()
+    conn.close()
+    return q_path
+
+
+def restore_file(finding_id):
+    """Moves a quarantined file back to its original location."""
+    conn = _connect()
+    row = conn.execute(
+        "SELECT file_path, quarantine_path FROM findings WHERE id = ?", (finding_id,)
+    ).fetchone()
+    if not row or not row[1]:
+        conn.close()
+        return False
+    file_path, q_path = row
+    if not os.path.exists(q_path):
+        conn.close()
+        return False
+    os.chmod(q_path, 0o644)
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    os.rename(q_path, file_path)
+    conn.execute("UPDATE findings SET quarantine_path = NULL WHERE id = ?", (finding_id,))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def delete_quarantined(finding_id):
+    """Permanently deletes a quarantined file."""
+    conn = _connect()
+    row = conn.execute(
+        "SELECT quarantine_path FROM findings WHERE id = ?", (finding_id,)
+    ).fetchone()
+    if not row or not row[0]:
+        conn.close()
+        return False
+    q_path = row[0]
+    if os.path.exists(q_path):
+        os.remove(q_path)
+    conn.execute("UPDATE findings SET quarantine_path = ? WHERE id = ?", ("__deleted__", finding_id))
+    conn.commit()
+    conn.close()
+    return True
+
+
 def recent_scans(limit=50):
     conn = _connect()
     rows = conn.execute(
@@ -65,7 +137,19 @@ def recent_scans(limit=50):
 def findings_for_scan(scan_id):
     conn = _connect()
     rows = conn.execute(
-        "SELECT file_path, rule_name FROM findings WHERE scan_id = ?", (scan_id,)
+        "SELECT id, file_path, rule_name, quarantine_path FROM findings WHERE scan_id = ?",
+        (scan_id,),
+    ).fetchall()
+    conn.close()
+    return rows
+
+
+def quarantined_files():
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT id, file_path, rule_name, quarantine_path FROM findings "
+        "WHERE quarantine_path IS NOT NULL AND quarantine_path != '__deleted__' "
+        "ORDER BY id DESC"
     ).fetchall()
     conn.close()
     return rows

@@ -79,6 +79,9 @@ print &ui_form_start("config.cgi", "post");
 print &ui_table_start(undef, undef, 2);
 print &ui_table_row("Alert e-mail address", &ui_textbox("email", $cfg{'EMAIL'}, 40));
 print &ui_table_row("Directory scanned by the daily cron job", &ui_textbox("scan_path", $cfg{'SCAN_PATH'}, 40));
+print &ui_table_row("Quarantine", &ui_checkbox("quarantine_enabled", "1",
+	"Move flagged files to quarantine (manual + scheduled scans only, not the real-time upload hook)",
+	$cfg{'QUARANTINE_ENABLED'} eq '1'));
 print &ui_table_end();
 print &ui_submit("Save", "save");
 print &ui_form_end();

@@ -66,7 +66,7 @@ return $out ne "" ? 1 : 0;
 # scripts (run as plain `source`-able shell variables).
 sub openxs_read_config
 {
-my %cfg = ( 'EMAIL' => 'root@localhost', 'SCAN_PATH' => '/var/www' );
+my %cfg = ( 'EMAIL' => 'root@localhost', 'SCAN_PATH' => '/var/www', 'QUARANTINE_ENABLED' => '0' );
 if (open(my $fh, '<', $config_file)) {
 	while (<$fh>) {
 		chomp;

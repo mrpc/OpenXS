@@ -109,7 +109,15 @@ def main():
         try:
             import openxs_db
             label = os.environ.get("OPENXS_SCAN_LABEL", filelist_path)
-            openxs_db.record_scan(label, total, findings)
+            scan_id = openxs_db.record_scan(label, total, findings)
+
+            if os.environ.get("OPENXS_QUARANTINE_ENABLED") == "1" and findings:
+                quarantined = 0
+                for fid, _, _, _ in openxs_db.findings_for_scan(scan_id):
+                    if openxs_db.quarantine_file(fid):
+                        quarantined += 1
+                if quarantined:
+                    print(f"# Quarantined {quarantined} file(s)", file=sys.stderr)
         except Exception as e:
             print(f"# (scan history not recorded: {e})", file=sys.stderr)
 

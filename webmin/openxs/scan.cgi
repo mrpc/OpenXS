@@ -17,7 +17,9 @@ if (!$path || !-d $path) {
 else {
 	my $filelist = "/tmp/openxs-webmin-scan-$$.txt";
 	system("find " . quotemeta($path) . " -type f -name '*.php' > $filelist");
+	my %cfg = &openxs_read_config();
 	$ENV{'OPENXS_SCAN_LABEL'} = $path;
+	$ENV{'OPENXS_QUARANTINE_ENABLED'} = ($cfg{'QUARANTINE_ENABLED'} || '0') eq '1' ? '1' : '0';
 	my $out = `python3 /opt/php-malware-finder/pmf_scan.py scan $ruleset $filelist 2>&1`;
 	unlink($filelist);
 	print "<pre style='background:#1e1e1e;color:#e8e8e8;padding:8px;max-height:400px;overflow:auto'>";
