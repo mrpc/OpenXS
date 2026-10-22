@@ -97,6 +97,19 @@ QUARANTINE_ENABLED=0
 
 Editable from the Webmin dashboard, or by hand.
 
+## Testing
+
+```sh
+pip install pytest
+pytest tests/
+```
+
+Unit tests for the pure logic (ignore/path-override parsing, archive
+scanning, the filesystem checks, the decode utility) - no YARA ruleset,
+ClamAV, or Docker sandbox required. They're not a substitute for actually
+exercising the Webmin dashboard and the mod_security/CSF integration by
+hand, which has no automated coverage yet.
+
 ## Status
 
 This is an early-stage project. What's implemented is listed above and has
