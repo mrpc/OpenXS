@@ -36,6 +36,7 @@ return $status_html . ($action_html ne "" ? "<div style='margin-top:4px'>$action
 
 print "<p><a href='index.cgi'>Dashboard</a> | <a href='reports.cgi'>Scan history</a> | ".
       "<a href='reports.cgi?view=quarantine'>Quarantine</a></p>\n";
+&openxs_show_message();
 
 print &ui_subheading("Components");
 print &ui_table_start(undef, undef, 1);

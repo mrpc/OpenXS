@@ -166,6 +166,31 @@ close($fh);
 return 1;
 }
 
+# A fire-and-forget redirect after an action (quarantine restore, daemon
+# start, ruleset update, ...) was previously silent on failure - the page
+# just reloaded looking unchanged, with nothing telling the user whether
+# anything actually happened. These two carry a one-line result message
+# through the redirect instead.
+sub openxs_redirect_with_message
+{
+my ($page, $msg, $is_err) = @_;
+my $encoded = $msg;
+$encoded =~ s/([^A-Za-z0-9_.~-])/sprintf("%%%02X", ord($1))/ge;
+my $sep = $page =~ /\?/ ? '&' : '?';
+&redirect("$page${sep}msg=$encoded" . ($is_err ? "&err=1" : ""));
+# redirect() only sends the Location header, it does not stop execution -
+# every caller here uses this mid-script to bail out early on a failure,
+# so without this the rest of the script would keep running regardless.
+exit;
+}
+
+sub openxs_show_message
+{
+return if (!defined($in{'msg'}) || $in{'msg'} eq "");
+my $color = $in{'err'} ? '#b30000' : '#2e7d32';
+print "<p style='color:$color;font-weight:bold'>" . &html_escape($in{'msg'}) . "</p>\n";
+}
+
 # Kill-switch, checked once here (every .cgi requires this file first) so
 # no individual page needs its own check: once disabled, nothing short of
 # removing the file via shell brings the UI back - if a compromised app
