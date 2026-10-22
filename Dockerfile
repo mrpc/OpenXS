@@ -68,6 +68,11 @@ COPY csf-integration/regex.custom.pm /etc/csf/regex.custom.pm
 RUN sed -i 's|CUSTOM1_LOG = "/var/log/customlog"|CUSTOM1_LOG = "/var/log/apache2/error.log"|' /etc/csf/csf.conf \
     && sed -i 's/^TESTING = "1"/TESTING = "0"/' /etc/csf/csf.conf
 
+# OpenXS Webmin module
+COPY webmin/openxs/ /usr/share/webmin/openxs/
+RUN chmod +x /usr/share/webmin/openxs/*.cgi \
+    && sed -i 's/^root: /root: openxs /' /etc/webmin/webmin.acl
+
 EXPOSE 80 443 10000
 
 COPY entrypoint.sh /entrypoint.sh
