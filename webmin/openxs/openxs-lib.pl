@@ -78,7 +78,8 @@ return $out ne "" ? 1 : 0;
 # scripts (run as plain `source`-able shell variables).
 sub openxs_read_config
 {
-my %cfg = ( 'EMAIL' => 'root@localhost', 'SCAN_PATH' => '/var/www', 'QUARANTINE_ENABLED' => '0' );
+my %cfg = ( 'EMAIL' => 'root@localhost', 'SCAN_PATH' => '/var/www', 'QUARANTINE_ENABLED' => '0',
+            'CLAMAV_SCAN_ALL' => '0', 'SCHEDULE' => '17 2 * * *' );
 if (open(my $fh, '<', $config_file)) {
 	while (<$fh>) {
 		chomp;
@@ -99,6 +100,24 @@ open(my $fh, '>', $config_file) || return 0;
 foreach my $k (sort keys %cfg) {
 	print $fh "$k=$cfg{$k}\n";
 	}
+close($fh);
+return 1;
+}
+
+sub openxs_write_schedule
+{
+my ($schedule) = @_;
+# Minimal sanity check: 5 whitespace-separated fields (standard cron
+# syntax). Reject anything else rather than write a cron file that could
+# silently never run, or - since this is root's crontab - something that
+# isn't actually a schedule at all.
+my @fields = split(/\s+/, $schedule);
+return 0 if (scalar(@fields) != 5);
+foreach my $f (@fields) {
+	return 0 if ($f !~ /^[0-9*\/,\-]+$/);
+	}
+open(my $fh, '>', '/etc/cron.d/openxs-scan') || return 0;
+print $fh "$schedule root /opt/php-malware-finder/run_scheduled_scan.sh >> /opt/php-malware-finder/cron.log 2>&1\n";
 close($fh);
 return 1;
 }

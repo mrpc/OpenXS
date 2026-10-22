@@ -56,12 +56,17 @@ def iter_files(filelist_path):
                 yield fname
 
 def main():
-    if len(sys.argv) != 4 or sys.argv[1] not in ("whitelist", "scan"):
-        print(f"Usage: {sys.argv[0]} whitelist|scan <php.yar> <filelist.txt>", file=sys.stderr)
+    if len(sys.argv) not in (4, 5) or sys.argv[1] not in ("whitelist", "scan"):
+        print(f"Usage: {sys.argv[0]} whitelist|scan <php.yar> <filelist.txt> [clamav_filelist.txt]", file=sys.stderr)
         sys.exit(1)
 
     import yara
     mode, yar_path, filelist_path = sys.argv[1], sys.argv[2], sys.argv[3]
+    # php.yar's rules require a <?php tag (IsPhp), so YARA only ever scans
+    # the PHP file list. ClamAV has no such restriction - it can usefully
+    # check a broader list (uploaded images/PDFs/etc. can carry malware
+    # too), so it takes an optional separate, wider list.
+    clamav_filelist_path = sys.argv[4] if len(sys.argv) == 5 else filelist_path
     rules = yara.compile(yar_path, includes=True, error_on_warning=False)
 
     if mode == "whitelist":
@@ -91,7 +96,7 @@ def main():
                     print(f"{fname}\t{m.rule}")
                     findings.append((fname, m.rule))
                 hits += 1
-        clam_findings = clamav_scan(filelist_path)
+        clam_findings = clamav_scan(clamav_filelist_path)
         already_flagged = {f for f, _ in findings}
         for fname, sig in clam_findings:
             print(f"{fname}\t{sig} (ClamAV)")
@@ -100,11 +105,13 @@ def main():
                 hits += 1
                 already_flagged.add(fname)
 
-        if total == 0:
+        if total == 0 and not clam_findings:
             print("# Nothing to scan: no PHP files found under the given path(s).", file=sys.stderr)
         else:
             clam_note = f", {len(clam_findings)} ClamAV hit(s)" if shutil.which("clamdscan") else ""
-            print(f"# Scanned {total} file(s), {hits} with a genuine hit (after whitelist suppression){clam_note}", file=sys.stderr)
+            if clamav_filelist_path != filelist_path:
+                clam_note += " (ClamAV also covered a wider file list, not just PHP)"
+            print(f"# Scanned {total} PHP file(s), {hits} flagged (YARA after whitelist suppression + ClamAV){clam_note}", file=sys.stderr)
 
         try:
             import openxs_db

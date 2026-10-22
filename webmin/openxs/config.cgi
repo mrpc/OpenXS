@@ -13,6 +13,12 @@ my %cfg = &openxs_read_config();
 $cfg{'EMAIL'} = &one_line($in{'email'}) if (defined($in{'email'}) && $in{'email'} ne "");
 $cfg{'SCAN_PATH'} = &one_line($in{'scan_path'}) if (defined($in{'scan_path'}) && $in{'scan_path'} ne "");
 $cfg{'QUARANTINE_ENABLED'} = (defined($in{'quarantine_enabled'}) && $in{'quarantine_enabled'} eq '1') ? '1' : '0';
+$cfg{'CLAMAV_SCAN_ALL'} = (defined($in{'clamav_scan_all'}) && $in{'clamav_scan_all'} eq '1') ? '1' : '0';
 &openxs_write_config(%cfg);
+
+if (defined($in{'schedule'}) && $in{'schedule'} ne "" && &openxs_write_schedule(&one_line($in{'schedule'}))) {
+	$cfg{'SCHEDULE'} = &one_line($in{'schedule'});
+	&openxs_write_config(%cfg);
+	}
 
 &redirect("index.cgi");

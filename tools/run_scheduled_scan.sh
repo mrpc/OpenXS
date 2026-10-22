@@ -7,6 +7,7 @@ CONFIG=/etc/openxs/openxs.conf
 EMAIL="root@localhost"
 SCAN_PATH="/var/www"
 QUARANTINE_ENABLED="0"
+CLAMAV_SCAN_ALL="0"
 # Parsed as plain data, not `source`-d: the config file is writable via the
 # Webmin settings form, and `source` would execute $()/`` in any value as
 # real shell code (e.g. a crafted EMAIL value running arbitrary commands
@@ -17,6 +18,7 @@ if [ -f "$CONFIG" ]; then
             EMAIL) EMAIL="$value" ;;
             SCAN_PATH) SCAN_PATH="$value" ;;
             QUARANTINE_ENABLED) QUARANTINE_ENABLED="$value" ;;
+            CLAMAV_SCAN_ALL) CLAMAV_SCAN_ALL="$value" ;;
         esac
     done < "$CONFIG"
 fi
@@ -25,9 +27,14 @@ HOST=$(hostname -f)
 cd /opt/php-malware-finder
 
 find "$SCAN_PATH" -type f -name '*.php' > filelist.txt
+if [ "$CLAMAV_SCAN_ALL" = "1" ]; then
+    find "$SCAN_PATH" -type f > filelist_clamav.txt
+else
+    cp filelist.txt filelist_clamav.txt
+fi
 export OPENXS_SCAN_LABEL="$SCAN_PATH"
 export OPENXS_QUARANTINE_ENABLED="$QUARANTINE_ENABLED"
-python3 pmf_scan.py scan php.yar filelist.txt > scan_results.txt 2> scan.log
+python3 pmf_scan.py scan php.yar filelist.txt filelist_clamav.txt > scan_results.txt 2> scan.log
 
 hits=$(grep -c . scan_results.txt || true)
 

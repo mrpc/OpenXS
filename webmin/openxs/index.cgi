@@ -88,9 +88,15 @@ print &ui_form_start("config.cgi", "post");
 print &ui_table_start(undef, undef, 2);
 print &ui_table_row("Alert e-mail address", &ui_textbox("email", $cfg{'EMAIL'}, 40));
 print &ui_table_row("Directory scanned by the daily cron job", &ui_textbox("scan_path", $cfg{'SCAN_PATH'}, 40));
+print &ui_table_row("Schedule (cron syntax: min hour day month weekday)",
+	&ui_textbox("schedule", $cfg{'SCHEDULE'}, 20) . " <i>e.g. '17 2 * * *' = 02:17 daily</i>");
 print &ui_table_row("Quarantine", &ui_checkbox("quarantine_enabled", "1",
 	"Move flagged files to quarantine (manual + scheduled scans only, not the real-time upload hook)",
 	$cfg{'QUARANTINE_ENABLED'} eq '1'));
+print &ui_table_row("ClamAV scope", &ui_checkbox("clamav_scan_all", "1",
+	"Let ClamAV check all files under the scan path, not just .php (YARA always stays PHP-only - ".
+	"its rules require a &lt;?php tag). Off by default: scanning every upload/media file is much slower.",
+	$cfg{'CLAMAV_SCAN_ALL'} eq '1'));
 print &ui_table_end();
 print &ui_submit("Save", "save");
 print &ui_form_end();
