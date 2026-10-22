@@ -1,0 +1,32 @@
+#!/bin/bash
+# Installs mod_security2, enables it, configures upload retention (required
+# for @inspectFile to have a real file to scan), and installs our rule.
+# Used both by install.sh (--with-modsecurity) and by the Webmin dashboard's
+# "Install" button (install_modsecurity.cgi) - single source of truth.
+set -euo pipefail
+
+MODSEC_RULE=/etc/modsecurity/openxs.conf
+
+echo "==> Installing mod_security..."
+apt-get update -qq
+apt-get install -y -qq apache2 libapache2-mod-security2
+a2enmod security2
+cp -n /etc/modsecurity/modsecurity.conf-recommended /etc/modsecurity/modsecurity.conf
+sed -i 's/SecRuleEngine DetectionOnly/SecRuleEngine On/' /etc/modsecurity/modsecurity.conf
+mkdir -p /opt/modsecurity/var/upload
+chown www-data:www-data /opt/modsecurity/var/upload
+sed -i \
+    -e 's|^#SecUploadDir /opt/modsecurity/var/upload/|SecUploadDir /opt/modsecurity/var/upload/|' \
+    -e 's|^#SecUploadKeepFiles RelevantOnly|SecUploadKeepFiles On|' \
+    -e 's|^#SecUploadFileMode 0600|SecUploadFileMode 0600|' \
+    /etc/modsecurity/modsecurity.conf
+
+cat > "$MODSEC_RULE" <<'EOF'
+SecRule FILES_TMPNAMES "@inspectFile /opt/php-malware-finder/inspectfile.sh" \
+  "id:9000001,phase:2,t:none,log,deny,status:403,msg:'openxs-scan detected malicious upload [id \"9000001\"]'"
+EOF
+echo "Wrote $MODSEC_RULE"
+
+apachectl configtest
+systemctl restart apache2 2>/dev/null || service apache2 restart
+echo "Apache restarted."
