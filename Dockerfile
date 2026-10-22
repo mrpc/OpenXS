@@ -37,8 +37,13 @@ RUN curl -o /tmp/webmin-setup-repos.sh https://raw.githubusercontent.com/webmin/
 
 # CSF v15.00 GPLv3 (the final official release from Way to the Web before it shut down,
 # community-mirrored here since download.configserver.com is dead - see README)
+# install.sh does not auto-register CSF's own Webmin module even though
+# webmin is already present at this point, so we copy it in ourselves.
 RUN git clone --depth 1 https://github.com/centminmod/configserver-scripts.git /tmp/csf-fork \
     && cd /tmp/csf-fork && tar -xzf csf.tgz -C /tmp && cd /tmp/csf && sh install.sh \
+    && cp -r /tmp/csf-fork/csf/webmin/csf /usr/share/webmin/csf \
+    && chmod +x /usr/share/webmin/csf/*.cgi \
+    && sed -i 's/^root: /root: csf /' /etc/webmin/webmin.acl \
     && rm -rf /tmp/csf-fork /tmp/csf*
 
 # mod_security: enable + OWASP core rules as a baseline starting point.
