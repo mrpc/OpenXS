@@ -19,7 +19,7 @@ else {
 	system("find " . quotemeta($path) . " -type f -name '*.php' > $filelist");
 	my $out = `python3 /opt/php-malware-finder/pmf_scan.py scan $ruleset $filelist 2>&1`;
 	unlink($filelist);
-	print "<pre style='background:#f4f4f4;padding:8px;max-height:400px;overflow:auto'>";
+	print "<pre style='background:#1e1e1e;color:#e8e8e8;padding:8px;max-height:400px;overflow:auto'>";
 	print $out ne "" ? &html_escape($out) : "(no output)";
 	print "</pre>";
 	}

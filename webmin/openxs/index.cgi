@@ -29,7 +29,7 @@ print &ui_form_end();
 
 print &ui_subheading("Daemon log (last 30 lines)");
 my @log = -e $daemon_log ? `tail -30 $daemon_log 2>/dev/null` : ();
-print "<pre style='background:#f4f4f4;padding:8px;max-height:300px;overflow:auto'>";
+print "<pre style='background:#1e1e1e;color:#e8e8e8;padding:8px;max-height:300px;overflow:auto'>";
 print @log ? join("", map { &html_escape($_) } @log) : "(no log yet)";
 print "</pre>";
 
