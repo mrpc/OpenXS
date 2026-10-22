@@ -78,6 +78,7 @@ fi
 echo "==> Our own tools..."
 cp "$HERE"/tools/*.py "$HERE"/tools/*.sh "$PMF_DIR/"
 chmod +x "$PMF_DIR"/*.py "$PMF_DIR"/*.sh
+cp -r "$HERE"/tools/openxs-rules "$PMF_DIR/"
 
 echo "==> Settings + scan-history database..."
 mkdir -p /etc/openxs /var/lib/openxs
