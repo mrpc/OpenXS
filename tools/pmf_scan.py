@@ -21,6 +21,7 @@ import subprocess
 import hashlib
 import time
 import json
+import signal
 
 def load_ignore_patterns(path):
     """cxs's ignore file: one substring/path per line to skip scanning, or
@@ -166,6 +167,42 @@ def load_custom_rules(path):
                         continue
     return patterns, md5s, sha256s
 
+class _RegexTimeout(Exception):
+    pass
+
+
+def _raise_regex_timeout(signum, frame):
+    raise _RegexTimeout()
+
+
+def _search_with_timeout(pattern, data, fname, seconds=2):
+    """A custom rule is a user-supplied regex (hand-written, or migrated
+    from cxs's cxs.xtra) - one with nested unbounded quantifiers can hit
+    Python re's catastrophic backtracking against the right input and
+    run effectively forever, consuming huge amounts of memory as it
+    backtracks. Found for real: a migrated cxs.xtra rule
+    (array\\(...){2,} shape) against a large, repetitive JSON file took
+    openxs-watchd from ~16MB to 12+GB RSS before being killed - one
+    pathological file took the whole daemon down with it. signal.alarm
+    is main-thread-only, which is fine here - every caller of this
+    function runs on the main thread (openxs-watchd's event loop and
+    pmf_scan's own CLI scan loop), never the scand's threaded socket
+    handler (that only ever runs YARA, a different, C-based matcher)."""
+    old_handler = signal.signal(signal.SIGALRM, _raise_regex_timeout)
+    try:
+        signal.alarm(seconds)
+        try:
+            return pattern.search(data)
+        finally:
+            signal.alarm(0)
+    except _RegexTimeout:
+        print(f"# Custom rule timed out (>{seconds}s) matching {fname} - "
+              f"skipped, pattern may need rewriting: {pattern.pattern!r}", file=sys.stderr)
+        return None
+    finally:
+        signal.signal(signal.SIGALRM, old_handler)
+
+
 def check_custom_rules(fname, rules):
     patterns, md5s, sha256s = rules
     if not patterns and not md5s and not sha256s:
@@ -175,7 +212,8 @@ def check_custom_rules(fname, rules):
             data = f.read()
     except OSError:
         return []
-    hits = [f"Custom rule: {p.pattern.decode(errors='replace')}" for p in patterns if p.search(data)]
+    hits = [f"Custom rule: {p.pattern.decode(errors='replace')}"
+            for p in patterns if _search_with_timeout(p, data, fname)]
     if md5s or sha256s:
         md5 = hashlib.md5(data).hexdigest()
         sha256 = hashlib.sha256(data).hexdigest()
@@ -238,16 +276,21 @@ def yara_match_via_daemon(fname, socket_path=None):
     """Queries the already-running openxs-scand for every matching rule on
     fname, instead of compiling (and holding in memory) a second copy of
     the ruleset in whatever process calls this. Returns None (not a result
-    - "couldn't check") if the daemon isn't reachable."""
+    - "couldn't check") if the daemon isn't reachable.
+
+    `with` guarantees the socket closes even if connect/sendall/recv
+    raises (a real production leak: under CPU contention from another
+    process, scand's single-threaded accept loop falls behind and recv()
+    times out often - each one used to leak the socket and its kernel
+    buffers, since s.close() was never reached on that path)."""
     import socket as socket_mod
     socket_path = socket_path or os.environ.get("OPENXS_SOCKET", "/run/openxs/scan.sock")
     try:
-        s = socket_mod.socket(socket_mod.AF_UNIX, socket_mod.SOCK_STREAM)
-        s.settimeout(5)
-        s.connect(socket_path)
-        s.sendall(f"ALL {fname}\n".encode())
-        response = s.recv(65536).decode(errors="replace").strip()
-        s.close()
+        with socket_mod.socket(socket_mod.AF_UNIX, socket_mod.SOCK_STREAM) as s:
+            s.settimeout(5)
+            s.connect(socket_path)
+            s.sendall(f"ALL {fname}\n".encode())
+            response = s.recv(65536).decode(errors="replace").strip()
         return json.loads(response)
     except Exception:
         return None
