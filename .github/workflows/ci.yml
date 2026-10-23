@@ -24,15 +24,9 @@ jobs:
 
   # webmin/openxs/*.cgi each `require` openxs-lib.pl, which `use`s
   # WebminCore - a module that only exists inside a real Webmin install,
-  # not a bare runner. `perl -c` can't meaningfully check these without
-  # one, so this builds the project's own sandbox Dockerfile (the same
-  # image used for manual testing throughout development) and runs the
-  # syntax check from inside it, where WebminCore genuinely exists.
-  perl-syntax:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: docker build -t openxs-ci .
-      - run: |
-          docker run --rm openxs-ci bash -c \
-            'for f in /usr/share/webmin/openxs/*.cgi; do perl -c "$f" || exit 1; done'
+  # so a real check means building the project's own sandbox Dockerfile.
+  # Tried that as its own CI job; dropped it - the full image (apache2 +
+  # clamav + modsecurity + webmin + fetching forks) is too slow/flaky to
+  # run on every push (one real run hung over an hour, likely on
+  # clamav-freshclam's DB download). CONTRIBUTING.md's documented manual
+  # sandbox-test step before any Perl change already covers this.
