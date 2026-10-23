@@ -18,11 +18,19 @@ if ($src eq '' || !-d "$src/.git") {
 		"from a tarball rather than git clone). Re-running install.sh from a git clone sets this.", 'warn');
 	}
 elsif ($in{'action'} eq 'apply') {
-	print &ui_subheading("Updating OpenXS...");
-	print "<pre style='background:#1e1e1e;color:#e8e8e8;padding:8px;max-height:500px;overflow:auto'>";
-	my $out = `cd $src && git pull -q origin main 2>&1 && bash install.sh 2>&1`;
-	print &html_escape($out);
-	print "</pre>";
+	# install.sh restarts Webmin itself partway through (the "Webmin
+	# module" step) - running it inline here would kill the very CGI
+	# process trying to show its output, truncating the response
+	# before the page could finish rendering. Detach it instead and
+	# point at a log file; the dashboard's own commit-hash row updates
+	# naturally once Webmin comes back.
+	my $log = "/var/log/openxs-selfupdate.log";
+	system("nohup bash -c 'cd $src && git pull -q origin main >> $log 2>&1 && bash install.sh >> $log 2>&1' > /dev/null 2>&1 &");
+	print &ui_alert_box(
+		"Update started in the background. This restarts Webmin partway through (the 'Webmin module' " .
+		"install step), so this page - and the rest of Webmin - may be briefly unreachable. Check " .
+		"<code>$log</code> on the server, or just refresh the dashboard in a minute to confirm the new version.",
+		'info');
 	}
 else {
 	my $out = `python3 $src/tools/openxs_selfupdate.py $src 2>&1`;

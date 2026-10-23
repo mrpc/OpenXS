@@ -34,22 +34,6 @@ def check_update(src_dir):
     return cur, latest, behind
 
 
-def apply_update(src_dir):
-    """Pulls and re-runs install.sh. Returns (ok, output)."""
-    before = current_commit(src_dir)
-    rc, out = _run(["git", "pull", "-q", "origin", "main"], cwd=src_dir)
-    if rc != 0:
-        return False, f"git pull failed:\n{out}"
-    install_sh = os.path.join(src_dir, "install.sh")
-    if not os.path.isfile(install_sh):
-        return False, f"{install_sh} not found after pull - can't apply."
-    rc, out = _run(["bash", install_sh], cwd=src_dir)
-    after = current_commit(src_dir)
-    ok = rc == 0
-    summary = f"{before} -> {after}\n\n{out}"
-    return ok, summary
-
-
 if __name__ == "__main__":
     import sys
     src = sys.argv[1] if len(sys.argv) > 1 else "/opt/OpenXS"
