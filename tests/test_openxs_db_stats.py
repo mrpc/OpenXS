@@ -1,6 +1,7 @@
 """Unit tests for openxs_db's daily_stats aggregate table (mirrors cxs's
 own cxsscan_counters/cxswatch_counters design - incrementally updated,
 not recomputed via GROUP BY at read time)."""
+import datetime
 import os
 import sys
 import time
@@ -119,4 +120,9 @@ def test_daily_stats_filled_oldest_first_and_includes_today_last(tmp_path, monke
     rows = db.daily_stats_filled(7)
     dates = [r[0] for r in rows]
     assert dates == sorted(dates)
-    assert dates[-1] == time.strftime("%Y-%m-%d", time.gmtime())
+    # daily_stats_filled() uses datetime.date.today() (local time, since
+    # that's what a local admin means by "today" on the dashboard) - this
+    # must compare against the same clock, not time.gmtime(), or the two
+    # disagree for a few hours around local midnight in any timezone
+    # ahead of UTC.
+    assert dates[-1] == datetime.date.today().isoformat()
