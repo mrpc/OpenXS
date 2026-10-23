@@ -29,7 +29,7 @@ def log_files():
     return sorted(files)
 
 
-def summarize(hours=24, max_rows=50):
+def summarize(max_rows=50):
     groups = {}
     cmd = ["grep", "-h", "-r", "ModSecurity: Access denied"] + log_files()
     out = subprocess.run(cmd, capture_output=True, text=True).stdout

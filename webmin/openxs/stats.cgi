@@ -27,6 +27,18 @@ for row in openxs_db.daily_stats_filled($days):
 "`;
 my @rows = grep { $_ ne "" } split(/\n/, $out);
 
+if (-d '/etc/modsecurity') {
+	my $total = `python3 -c "
+import sys
+sys.path.insert(0, '$pmf_dir')
+import openxs_modsec_log
+print(sum(r['count'] for r in openxs_modsec_log.summarize(max_rows=10000)))
+"`;
+	chomp($total);
+	print &ui_subheading("mod_security");
+	print "<p>$total block(s) found in current logs. <a href='modsec_log.cgi'>View grouped by host/path/rule &raquo;</a></p>\n";
+	}
+
 print &ui_subheading("Daily statistics (last $days days)");
 print &ui_form_start("stats.cgi", "get") .
 	"<label>Show last " . &ui_select("days", $days, [["7", "7 days"], ["30", "30 days"], ["90", "90 days"], ["365", "365 days"]]) . "</label> " .
