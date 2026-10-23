@@ -2,29 +2,35 @@
 # daemon.cgi
 # Start / stop / restart the OpenXS daemons: the scan daemon (which=scand,
 # default) used by the mod_security upload hook, or the watch daemon
-# (which=watchd) that monitors whole directories via inotify.
+# (which=watchd) that monitors whole directories via inotify. Both are
+# managed entirely through their systemd units (enable+start / disable+
+# stop) - one source of truth for "is it running" AND "will it survive a
+# reboot". A previous version started them as a raw setsid process
+# instead: running state and the unit's enabled/disabled state could then
+# silently drift apart - found for real when a watchd started this way
+# kept running fine, but systemctl still showed its unit disabled, so it
+# would have silently not come back after the next reboot.
 
 require './openxs-lib.pl';
 &ReadParse();
 
 my $which = $in{'which'} || 'scand';
 my $label = $which eq 'watchd' ? 'Watch daemon' : 'Scan daemon';
-my ($script, $log, $pid) = $which eq 'watchd'
-	? ($watchd_script, $watchd_log, &openxs_watchd_pid())
-	: ($daemon_script, $daemon_log, &openxs_daemon_pid());
+my $unit = $which eq 'watchd' ? 'openxs-watchd' : 'openxs-scand';
+my $log = $which eq 'watchd' ? $watchd_log : $daemon_log;
+
+sub unit_active
+{
+my $out = `systemctl is-active $unit 2>/dev/null`;
+chomp($out);
+return $out eq 'active';
+}
 
 if (defined($in{'stop'}) || defined($in{'restart'})) {
-	if ($pid) {
-		# Negative PID = whole process group. setsid made $pid its own
-		# group leader, so this also kills child processes (e.g. the
-		# watch daemon's inotifywait) instead of orphaning them.
-		system("kill -- -$pid 2>/dev/null; kill $pid 2>/dev/null");
-		sleep(1);
-		if (defined($in{'stop'})) {
-			my $still_there = $which eq 'watchd' ? &openxs_watchd_pid() : &openxs_daemon_pid();
-			if ($still_there) {
-				&openxs_result_page("$label did not stop (pid $still_there).", 1);
-				}
+	if (&unit_active()) {
+		system('systemctl', 'disable', '--now', $unit);
+		if (defined($in{'stop'}) && &unit_active()) {
+			&openxs_result_page("$label did not stop.", 1);
 			}
 		}
 	elsif (!defined($in{'start'}) && !defined($in{'restart'})) {
@@ -33,8 +39,7 @@ if (defined($in{'stop'}) || defined($in{'restart'})) {
 	}
 
 if (defined($in{'start'}) || defined($in{'restart'})) {
-	my $still_running = $which eq 'watchd' ? &openxs_watchd_pid() : &openxs_daemon_pid();
-	if (!$still_running) {
+	if (!&unit_active()) {
 		if ($which eq 'watchd') {
 			my %cfg = &openxs_read_config();
 			if (($cfg{'WATCH_PATHS'} || '') eq '') {
@@ -51,12 +56,9 @@ if (defined($in{'start'}) || defined($in{'restart'})) {
 					}
 				}
 			}
-		# setsid detaches into a new session/process group so the
-		# daemon survives past this CGI request's own lifetime.
-		system("setsid python3 $script >> $log 2>&1 < /dev/null &");
+		system('systemctl', 'enable', '--now', $unit);
 		sleep(1);
-		my $now_running = $which eq 'watchd' ? &openxs_watchd_pid() : &openxs_daemon_pid();
-		if (!$now_running) {
+		if (!&unit_active()) {
 			&openxs_result_page(
 				"$label did not start.", 1, undef, undef, &openxs_tail($log));
 			}
