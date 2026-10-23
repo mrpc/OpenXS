@@ -85,6 +85,18 @@ def rate_limited(fname, count, window, cooldown):
     return False
 
 
+def check_rss_guard(max_rss_kb):
+    """Safety backstop, not a fix for any specific bug - whatever grows
+    our own memory (a pathological custom rule, a future bug, anything),
+    exit (non-zero, so systemd's Restart=on-failure brings us straight
+    back) rather than silently growing until the kernel OOM-killer picks
+    some unrelated process instead. Found for real on balrog: a leak
+    here once came within ~1GB of the server's entire free memory."""
+    if max_rss_kb and pmf_scan.vmrss_kb() > max_rss_kb:
+        log(f"RSS exceeded WATCHD_MAX_RSS_MB={max_rss_kb // 1024}MB - exiting so systemd restarts us")
+        sys.exit(1)
+
+
 def log(msg):
     line = f"{time.strftime('%Y-%m-%d %H:%M:%S')} {msg}"
     print(line, flush=True)
@@ -173,6 +185,7 @@ def main():
     rate_count = int(cfg.get("WATCH_RATE_COUNT", "5") or "5")
     rate_window = float(cfg.get("WATCH_RATE_WINDOW", "10") or "10")
     rate_cooldown = float(cfg.get("WATCH_RATE_COOLDOWN", "60") or "60")
+    max_rss_kb = int(float(cfg.get("WATCHD_MAX_RSS_MB", "1024") or "1024") * 1024)
     os.environ.setdefault("OPENXS_QUARANTINE_ENABLED", cfg.get("QUARANTINE_ENABLED", "0"))
     os.environ.setdefault("OPENXS_QUARANTINE_CATEGORIES", cfg.get("QUARANTINE_CATEGORIES", "virus,yara,maldet"))
 
@@ -180,6 +193,7 @@ def main():
     cmd = ["inotifywait", "-m", "-r", "-e", "create,modify,moved_to", "--format", "%w%f"] + watch_paths
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True)
     for line in proc.stdout:
+        check_rss_guard(max_rss_kb)
         fname = line.rstrip("\n")
         if fname and not rate_limited(fname, rate_count, rate_window, rate_cooldown):
             scan_one(fname, ignore, custom_rules, path_overrides, global_fast_php_only)
