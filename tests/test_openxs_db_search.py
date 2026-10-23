@@ -79,3 +79,19 @@ def test_search_findings_includes_date_and_scan_path(tmp_path, monkeypatch):
     fid, file_path, rule_name, qpath, size, started_at, scan_path = rows[0]
     assert scan_path == "watch:/home/x/bad.php"
     assert started_at is not None
+
+
+def test_search_findings_defaults_to_newest_first(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
+    db.record_scan("/x", 1, [("/a.php", "Known exploit")])
+    db.record_scan("/x", 1, [("/b.php", "Known exploit")])
+    rows, count = db.search_findings()
+    assert [r[1] for r in rows] == ["/b.php", "/a.php"]
+
+
+def test_search_findings_sort_by_date_ascending(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
+    db.record_scan("/x", 1, [("/a.php", "Known exploit")])
+    db.record_scan("/x", 1, [("/b.php", "Known exploit")])
+    rows, count = db.search_findings(sort="date", order="asc")
+    assert [r[1] for r in rows] == ["/a.php", "/b.php"]
