@@ -3,6 +3,7 @@
 
 BEGIN { push(@INC, ".."); };
 use WebminCore;
+use JSON::PP;
 &init_config();
 
 our $socket_path = $ENV{'OPENXS_SOCKET'} || '/run/openxs/scan.sock';
@@ -120,6 +121,16 @@ sub openxs_maldet_installed
 # -x check on the canonical path, not `command -v` via backtick - the
 # latter was unreliable specifically when run from this Perl/CGI context
 return -x "/usr/local/sbin/maldet" ? 1 : 0;
+}
+
+sub openxs_full_status
+{
+# Single source of truth shared with the CLI and the MCP server
+# (tools/openxs_status.py) - returns a hashref, or undef on any failure
+# (e.g. python3 missing, bad JSON) so callers can fall back gracefully.
+my $out = `python3 $pmf_dir/openxs_status.py --json 2>/dev/null`;
+my $data = eval { decode_json($out) };
+return $data;
 }
 
 # Simple key=value config file, used both by this module and by the shell
