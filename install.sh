@@ -124,6 +124,10 @@ if command -v systemctl >/dev/null 2>&1; then
     # /etc/openxs/openxs.conf), so enabling it by default would be a
     # no-op that just confuses `systemctl status`.
     cp "$HERE/tools/openxs-watchd.service" /etc/systemd/system/openxs-watchd.service
+    # Alert-on-failure template unit, triggered by both of the above via
+    # OnFailure= - covers the kernel MemoryMax OOM-kill case, which gives
+    # the daemon's own Python code no chance to send anything itself.
+    cp "$HERE/tools/openxs-alert@.service" /etc/systemd/system/openxs-alert@.service
     systemctl daemon-reload
     systemctl enable --now openxs-scand
 else
