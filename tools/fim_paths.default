@@ -1,0 +1,29 @@
+# File Integrity Monitoring - one file or directory per line, # for comments.
+# Only hashes (SHA-256) are stored, never content - safe to include files
+# like /etc/shadow (a hash reveals nothing about what's inside it).
+# A path that doesn't exist on this server is silently skipped, not an
+# error - edit this freely, nothing here is hardcoded into the tool itself.
+
+# System / security-critical - should only change via a deliberate admin action
+/etc/passwd
+/etc/shadow
+/etc/group
+/etc/sudoers
+/etc/ssh/sshd_config
+/etc/crontab
+/etc/cron.d
+
+# CSF firewall - a compromised root often tries to whitelist itself here first
+/etc/csf/csf.conf
+/etc/csf/csf.allow
+
+# OpenXS's own configuration and detection rules - tampering here could
+# silently blind or disable the scanner itself (e.g. whitelisting a
+# webshell's own hash, or disabling quarantine)
+/etc/openxs/openxs.conf
+/etc/openxs/ignore
+/etc/openxs/rules
+/etc/openxs/path_settings
+/opt/php-malware-finder/whitelist.yar
+/etc/systemd/system/openxs-scand.service
+/etc/systemd/system/openxs-watchd.service
