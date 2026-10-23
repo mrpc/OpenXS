@@ -91,6 +91,46 @@ def fim_info():
     return info
 
 
+def version_scan_info():
+    """Same pattern as last_scan_info()/fim_info() - reads
+    version_results.txt, the WordPress core version check's own output
+    from the last scheduled scan, rather than re-running it (that check
+    makes a live network call, too slow for a status lookup)."""
+    path = os.path.join(PMF_DIR, "version_results.txt")
+    if not os.path.exists(path):
+        return {"ran": False}
+    try:
+        with open(path, errors="replace") as f:
+            text = f.read()
+    except OSError:
+        return {"ran": False}
+    return {
+        "ran": True,
+        "at": os.path.getmtime(path),
+        "summary": text.splitlines()[0].lstrip("# ") if text.strip() else None,
+    }
+
+
+def apt_security_info():
+    """Same pattern as the other *_info() functions - reads the last
+    scheduled scan's own apt_security_results.txt rather than re-running
+    `apt-get update` (a live network/package-manager call, too slow and
+    too side-effecting for a plain status lookup)."""
+    path = os.path.join(PMF_DIR, "apt_security_results.txt")
+    if not os.path.exists(path):
+        return {"ran": False}
+    try:
+        with open(path, errors="replace") as f:
+            text = f.read()
+    except OSError:
+        return {"ran": False}
+    return {
+        "ran": True,
+        "at": os.path.getmtime(path),
+        "summary": text.splitlines()[0].lstrip("# ") if text.strip() else None,
+    }
+
+
 def full_status():
     return {
         "daemons": daemon_status(),
@@ -98,6 +138,8 @@ def full_status():
         "last_scan": last_scan_info(),
         "quarantine_count": quarantine_count(),
         "fim": fim_info(),
+        "version_scan": version_scan_info(),
+        "apt_security": apt_security_info(),
     }
 
 
@@ -118,6 +160,10 @@ def main():
     print(f"Quarantined files: {status['quarantine_count']}")
     fi = status["fim"]
     print(f"File integrity: {fi.get('summary', 'no baseline yet') if fi['baselined'] else 'no baseline yet'}")
+    vs = status["version_scan"]
+    print(f"WordPress version check: {vs.get('summary', 'never ran') if vs['ran'] else 'never ran'}")
+    aps = status["apt_security"]
+    print(f"Apt security updates: {aps.get('summary', 'never ran') if aps['ran'] else 'never ran'}")
 
 
 if __name__ == "__main__":

@@ -51,3 +51,29 @@ def test_fim_info_reads_last_results(tmp_path, monkeypatch):
     info = st.fim_info()
     assert info["baselined"] is True
     assert info["summary"] == "Checked against baseline: 1 changed, 0 removed, 0 added"
+
+
+def test_version_scan_info_no_results_yet(tmp_path, monkeypatch):
+    monkeypatch.setattr(st, "PMF_DIR", str(tmp_path))
+    assert st.version_scan_info() == {"ran": False}
+
+
+def test_version_scan_info_reads_last_results(tmp_path, monkeypatch):
+    monkeypatch.setattr(st, "PMF_DIR", str(tmp_path))
+    (tmp_path / "version_results.txt").write_text("# WordPress: 2 install(s), 1 outdated\nOUTDATED\t/x\t5.0\t(latest: 6.4.2)\n")
+    info = st.version_scan_info()
+    assert info["ran"] is True
+    assert info["summary"] == "WordPress: 2 install(s), 1 outdated"
+
+
+def test_apt_security_info_no_results_yet(tmp_path, monkeypatch):
+    monkeypatch.setattr(st, "PMF_DIR", str(tmp_path))
+    assert st.apt_security_info() == {"ran": False}
+
+
+def test_apt_security_info_reads_last_results(tmp_path, monkeypatch):
+    monkeypatch.setattr(st, "PMF_DIR", str(tmp_path))
+    (tmp_path / "apt_security_results.txt").write_text("# Pending apt updates: 9 total, 9 security\nSECURITY\tlibclamav12\t1.4.3\t->\t1.4.6\n")
+    info = st.apt_security_info()
+    assert info["ran"] is True
+    assert info["summary"] == "Pending apt updates: 9 total, 9 security"
