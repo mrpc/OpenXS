@@ -434,7 +434,15 @@ def import_quarantined_finding(file_path, quarantine_src_path, rule_name, quaran
     return q_path
 
 
-def quarantined_files(limit=50, offset=0):
+QUARANTINE_SORT_COLUMNS = {
+    "date": "s.started_at",
+    "path": "f.file_path",
+    "size": "f.size",
+    "rule": "f.rule_name",
+}
+
+
+def quarantined_files(limit=50, offset=0, sort="date", order="desc"):
     """Paginated - found for real after migrating cxs's own quarantine
     (6438 files): rendering every row in one unpaginated HTML page (the
     Webmin UI's own quarantine view) was enough to hang a browser tab
@@ -448,12 +456,19 @@ def quarantined_files(limit=50, offset=0):
     import_quarantined_finding() is the real historical timestamp
     recovered from cxs's own .restore4 sidecar, not today's import
     date - findings.quarantined_at of its own doesn't exist, this was
-    missing from the UI entirely until asked for."""
+    missing from the UI entirely until asked for.
+
+    sort/order: default is date, newest first - plain f.id DESC (the
+    previous default) happened to equal "newest first" for live
+    quarantine actions, but not for a historical bulk import like the
+    one above - insertion order there isn't chronological order."""
     conn = _connect()
+    sort_col = QUARANTINE_SORT_COLUMNS.get(sort, QUARANTINE_SORT_COLUMNS["date"])
+    sort_dir = "ASC" if order == "asc" else "DESC"
     query = ("SELECT f.id, f.file_path, f.rule_name, f.quarantine_path, s.started_at "
              "FROM findings f JOIN scans s ON s.id = f.scan_id "
              "WHERE f.quarantine_path IS NOT NULL AND f.quarantine_path != '__deleted__' "
-             "ORDER BY f.id DESC")
+             f"ORDER BY {sort_col} {sort_dir}, f.id {sort_dir}")
     params = ()
     if limit is not None:
         query += " LIMIT ? OFFSET ?"
