@@ -36,6 +36,9 @@ foreach my $k ('watch_rate_count', 'watch_rate_window', 'watch_rate_cooldown') {
 $cfg{'SCAN_MODE'} = $in{'scan_mode'} eq 'accounts' ? 'accounts' : 'path';
 $cfg{'ACCOUNTS_DIR'} = &one_line($in{'accounts_dir'}) if (defined($in{'accounts_dir'}) && $in{'accounts_dir'} ne "");
 $cfg{'ACCOUNTS_SUBPATH'} = &one_line($in{'accounts_subpath'}) if (defined($in{'accounts_subpath'}));
+$cfg{'SCAN_MAILBOXES'} = (defined($in{'scan_mailboxes'}) && $in{'scan_mailboxes'} eq '1') ? '1' : '0';
+$cfg{'MAILBOX_RECENT_HOURS'} = &one_line($in{'mailbox_recent_hours'}) if (defined($in{'mailbox_recent_hours'}));
+$cfg{'MAILBOX_RECENT_HOURS'} =~ s/[^0-9]//g if ($cfg{'MAILBOX_RECENT_HOURS'} ne '');
 &openxs_write_config(%cfg);
 
 if (defined($in{'schedule'}) && $in{'schedule'} ne "") {

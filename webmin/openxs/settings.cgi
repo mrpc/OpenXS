@@ -22,6 +22,17 @@ print &ui_table_row("Accounts directory (accounts mode)", &ui_textbox("accounts_
 	" <i>one subdirectory per hosting account, e.g. /home/&lt;user&gt;</i>");
 print &ui_table_row("Web root subfolder per account (accounts mode)", &ui_textbox("accounts_subpath", $cfg{'ACCOUNTS_SUBPATH'}, 40, 0, 0, "autocomplete='off'") .
 	" <i>e.g. public_html - blank scans the whole account home dir (mail/backups too, usually not what you want)</i>");
+
+my ($mail_active, $mail_reason) = split(/\t/, `python3 $pmf_dir/mailbox_scan.py --check-active 2>/dev/null`);
+my $mail_note = $mail_active eq '1'
+	? "<br><i style='color:#888'>Note: $mail_reason - mail already appears scanned at delivery time, this may be redundant here.</i>"
+	: "";
+print &ui_table_row("Scan mailboxes for viruses (cxs's 'virusscan' - ClamAV only, not YARA)",
+	&ui_checkbox("scan_mailboxes", "1", "Scan every account's Maildir under 'Accounts directory' above",
+		$cfg{'SCAN_MAILBOXES'} eq '1') .
+	" only scan mail changed in the last " . &ui_textbox("mailbox_recent_hours", $cfg{'MAILBOX_RECENT_HOURS'}, 5) .
+	" hours <i>(blank = scan all mail every time - fine for most mailbox sizes, but a full daily re-scan on a ".
+	"very large server can be slow)</i>$mail_note");
 print &ui_table_row("Schedule (cron syntax: min hour day month weekday)",
 	&ui_textbox("schedule", $cfg{'SCHEDULE'}, 20, 0, 0, "autocomplete='off'") . " <i>e.g. '17 2 * * *' = 02:17 daily; blank = disable the scheduled scan entirely</i>");
 print &ui_table_row("Quarantine", &ui_checkbox("quarantine_enabled", "1",
