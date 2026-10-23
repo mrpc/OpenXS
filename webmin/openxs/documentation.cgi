@@ -99,6 +99,8 @@ print "<ul>".
 "<li><code>pmf_decode.py &lt;file&gt; [max_depth]</code> - manually unwrap base64/rot13/gzinflate/".
 "gzuncompress/gzdecode calls in a suspicious file, for inspecting obfuscated PHP by hand.</li>".
 "<li><code>openxs-scand.py</code> / <code>openxs-watchd.py</code> - the two daemons, see Architecture above.</li>".
+"<li><code>install_maldet.sh</code> - installs maldet if missing and applies the recommended config either way; ".
+"same button as the dashboard's \"Install\"/\"Re-apply recommended config\" for maldet.</li>".
 "</ul>";
 
 print &ui_subheading("More");
