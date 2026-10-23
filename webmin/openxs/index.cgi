@@ -174,4 +174,7 @@ print "<p>" . &ui_submit("Disable this UI completely", "disable") .
 	" <i>Cannot be undone from the UI itself - remove <code>$ui_disabled_file</code> on the server to re-enable.</i></p>\n";
 print &ui_form_end();
 
+print "<p style='text-align:center;color:#888;margin-top:2em'>&copy; 2026 OpenXS - ".
+	"<a href='https://github.com/mrpc/OpenXS' target='_blank'>github.com/mrpc/OpenXS</a></p>\n";
+
 &ui_print_footer("/", "Webmin index page");
