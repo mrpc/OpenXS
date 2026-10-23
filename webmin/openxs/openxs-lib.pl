@@ -192,7 +192,7 @@ return 1;
 # through the redirect instead.
 our $openxs_nav = "<p><a href='index.cgi'>Dashboard</a> | <a href='reports.cgi'>Scan history</a> | ".
 	"<a href='reports.cgi?view=quarantine'>Quarantine</a> | <a href='logs.cgi'>Logs</a> | ".
-	"<a href='documentation.cgi'>Documentation</a></p>\n";
+	"<a href='settings.cgi'>Settings</a> | <a href='documentation.cgi'>Documentation</a></p>\n";
 
 # Prints the result of an action directly, in the same request, instead of
 # an HTTP redirect to another page. Webmin's modern themes navigate between
