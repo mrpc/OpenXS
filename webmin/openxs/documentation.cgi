@@ -103,6 +103,25 @@ print "<ul>".
 "recommended config either way; same buttons as the dashboard's \"Install\"/\"Re-apply recommended config\".</li>".
 "</ul>";
 
+print &ui_subheading("MCP interface (for an AI agent, e.g. Claude Code)");
+print "<p>A small, read-only MCP server (<code>tools/openxs_mcp_server.py</code>) exposes the same ".
+      "information as this dashboard - daemon/detector status, last scan summary, log tails, the ".
+      "quarantine list, whitelist drift - as structured tool calls instead of SSH + grep. It only ".
+      "answers questions; it never changes anything (no quarantine restore/delete, no triggering a scan - ".
+      "those stay one click away on this dashboard). Runs over stdio via SSH, no public exposure, no ".
+      "auth of its own beyond whatever the SSH key already allows - add this to a <code>.mcp.json</code> ".
+      "on the machine you run the agent from:</p>".
+"<pre style='background:#1e1e1e;color:#e8e8e8;padding:8px'>" .
+"{
+  \"mcpServers\": {
+    \"openxs\": {
+      \"command\": \"ssh\",
+      \"args\": [\"&lt;your-ssh-alias&gt;\", \"python3\", \"/opt/php-malware-finder/openxs_mcp_server.py\"]
+    }
+  }
+}
+</pre>";
+
 print &ui_subheading("More");
 print "<p>Full source, issues and the public README: <a href='https://github.com/mrpc/OpenXS' target='_blank'>".
       "github.com/mrpc/OpenXS</a>.</p>";
