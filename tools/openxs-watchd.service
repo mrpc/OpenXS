@@ -15,7 +15,15 @@ RestartSec=2
 # kills this unit outright if it ever crosses this line, no matter what
 # the process itself is doing - Restart=on-failure brings it straight
 # back, same as the in-process checks already do for the common case.
+# MemorySwapMax=0 matters as much as MemoryMax itself: without it, the
+# cgroup tries hard to reclaim (swap out/in) before ever reaching for
+# the OOM killer - found for real that this left the process stuck for
+# minutes in D-state swap I/O, past the limit, immune to SIGKILL/SIGTERM
+# until a page fault finally resolved (a D-state process cannot be
+# killed by any signal until it leaves that state). No swap for this
+# cgroup means a breach is killed immediately, not slowly thrashed.
 MemoryMax=1536M
+MemorySwapMax=0
 
 [Install]
 WantedBy=multi-user.target
