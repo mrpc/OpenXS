@@ -248,3 +248,119 @@ def test_import_logs_apply_registers_findings_and_archives_reports(tmp_path, mon
 
     report_file = out_dir / "1613553947_42.log"
     assert report_file.read_text() == "the full report text"
+
+
+ENABLED_LINE = "7 0 * * * root /usr/sbin/cxs --quarantine /home/quarantine --allusers"
+DISABLED_LINE = "7 0 * * * root /usr/sbin/cxs --noexploitscan --quarantine /home/quarantine --allusers"
+QCLEAN_ONLY_LINE = "@weekly root /usr/sbin/cxs --quarantine /home/quarantine --qclean 180 >/dev/null 2>&1"
+NOT_CXS_BINARY_LINE = "*/10 * * * * root /etc/cxs/cxsdbupdate.pl > /dev/null 2>&1"
+
+
+def test_invokes_cxs_binary_true_for_real_binary_paths():
+    assert mig._invokes_cxs_binary("cxs --allusers") is True
+    assert mig._invokes_cxs_binary("/usr/sbin/cxs --allusers") is True
+
+
+def test_invokes_cxs_binary_false_for_unrelated_script_with_cxs_in_its_name():
+    # A real false positive found on prodserver: cxsdbupdate.pl is part of
+    # the cxs suite but isn't the scanning binary itself.
+    assert mig._invokes_cxs_binary(NOT_CXS_BINARY_LINE) is False
+
+
+def test_cron_line_runs_a_scan_false_for_qclean_only():
+    assert mig.cron_line_runs_a_scan(QCLEAN_ONLY_LINE) is False
+
+
+def test_cron_line_runs_a_scan_true_for_allusers():
+    assert mig.cron_line_runs_a_scan(ENABLED_LINE) is True
+
+
+def test_cron_line_runs_a_scan_true_for_user_flag():
+    assert mig.cron_line_runs_a_scan("cxs --user someaccount") is True
+
+
+def test_cron_line_runs_a_scan_true_for_bare_path_resource():
+    assert mig.cron_line_runs_a_scan("cxs /home/someuser/public_html") is True
+
+
+def test_cron_line_has_exploitscan_enabled_false_for_qclean_only_job():
+    # The real false positive this was fixed for: a maintenance-only
+    # job has nothing to "disable" even without --noexploitscan.
+    assert mig.cron_line_has_exploitscan_enabled(QCLEAN_ONLY_LINE) is False
+
+
+def test_cron_d_files_uses_run_parts_excluding_bak_files(monkeypatch):
+    class FakeResult:
+        stdout = "/etc/cron.d/cxs-cron\n/etc/cron.d/cxsdb-cron\n"
+    def fake_run(args, **kwargs):
+        assert args == ["run-parts", "--list", "/etc/cron.d"]
+        return FakeResult()
+    monkeypatch.setattr(mig.subprocess, "run", fake_run)
+    files = mig._cron_d_files()
+    assert files == ["/etc/cron.d/cxs-cron", "/etc/cron.d/cxsdb-cron"]
+    assert "/etc/cron.d/cxs-cron.bak-20261022" not in files
+
+
+def test_cron_d_files_falls_back_to_glob_if_run_parts_unavailable(monkeypatch, tmp_path):
+    def fake_run(args, **kwargs):
+        raise FileNotFoundError("run-parts not found")
+    monkeypatch.setattr(mig.subprocess, "run", fake_run)
+    (tmp_path / "somejob").write_text("x")
+    monkeypatch.setattr(mig.glob, "glob", lambda pattern: [str(tmp_path / "somejob")])
+    assert mig._cron_d_files() == [str(tmp_path / "somejob")]
+
+
+def test_disable_cxs_exploitscan_skips_qclean_and_non_cxs_binary_lines(monkeypatch):
+    monkeypatch.setattr(mig, "find_cxs_cron_sources", lambda: [
+        ("file", "/etc/cron.d/cxs-cron", ENABLED_LINE),
+        ("file", "/etc/cron.d/cxs-weekly", QCLEAN_ONLY_LINE),
+    ])
+    results = mig.disable_cxs_exploitscan(apply=False)
+    assert len(results) == 1
+    assert results[0][2] == ENABLED_LINE
+
+
+def test_cron_line_has_exploitscan_enabled_by_default():
+    assert mig.cron_line_has_exploitscan_enabled(ENABLED_LINE) is True
+
+
+def test_cron_line_has_exploitscan_enabled_false_when_noexploitscan_present():
+    assert mig.cron_line_has_exploitscan_enabled(DISABLED_LINE) is False
+
+
+def test_cron_line_has_exploitscan_enabled_false_on_real_prodserver_line():
+    assert mig.cron_line_has_exploitscan_enabled(REAL_CRON_LINE) is False
+
+
+def test_disable_exploitscan_in_line_appends_flag():
+    assert mig.disable_exploitscan_in_line(ENABLED_LINE) == ENABLED_LINE + " --noexploitscan"
+
+
+def test_disable_cxs_exploitscan_dry_run_skips_already_disabled(monkeypatch):
+    monkeypatch.setattr(mig, "find_cxs_cron_sources", lambda: [
+        ("file", "/etc/cron.d/cxs", ENABLED_LINE),
+        ("file", "/etc/cron.d/cxs-weekly", DISABLED_LINE),
+    ])
+    results = mig.disable_cxs_exploitscan(apply=False)
+    assert len(results) == 1
+    assert results[0][2] == ENABLED_LINE
+
+
+def test_disable_cxs_exploitscan_dry_run_does_not_write(tmp_path, monkeypatch):
+    cron_file = tmp_path / "cxs-cron"
+    cron_file.write_text(ENABLED_LINE + "\n")
+    monkeypatch.setattr(mig, "find_cxs_cron_sources", lambda: [("file", str(cron_file), ENABLED_LINE)])
+    mig.disable_cxs_exploitscan(apply=False)
+    assert cron_file.read_text() == ENABLED_LINE + "\n"
+
+
+def test_disable_cxs_exploitscan_apply_rewrites_only_that_line(tmp_path, monkeypatch):
+    cron_file = tmp_path / "cxs-cron"
+    cron_file.write_text("# a comment\n" + ENABLED_LINE + "\n@weekly root /usr/sbin/cxs --qclean 180\n")
+    monkeypatch.setattr(mig, "find_cxs_cron_sources", lambda: [("file", str(cron_file), ENABLED_LINE)])
+    results = mig.disable_cxs_exploitscan(apply=True)
+    assert len(results) == 1
+    content = cron_file.read_text()
+    assert ENABLED_LINE + " --noexploitscan" in content
+    assert "# a comment" in content  # untouched
+    assert "--qclean 180" in content  # untouched
