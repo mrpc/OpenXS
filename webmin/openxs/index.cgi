@@ -111,6 +111,21 @@ if ($full_status) {
 		&row_value($fi_text,
 			&mini_form("fim.cgi", &ui_hidden("action", "baseline") . &ui_submit("Baseline now", "go")) .
 			($fi->{'baselined'} ? &mini_form("fim.cgi", &ui_hidden("action", "check") . &ui_submit("Check now", "go")) : "")));
+
+	# version_scan.py/apt_security_check.py both make live network calls
+	# (Packagist/WordPress.org/apt-get update) - too slow for an on-demand
+	# dashboard button (a full composer check across many sites can take
+	# minutes), so these are summary-only here: last result from the
+	# daily scheduled scan, same as the whitelist drift check.
+	my $vs = $full_status->{'version_scan'};
+	my $vs_text = !$vs->{'ran'} ? "<i style='color:#888'>Runs with the next scheduled scan</i>"
+	            : &html_escape($vs->{'summary'}) . " <i>(" . &make_date($vs->{'at'}, 1) . ")</i>";
+	print &ui_table_row("WordPress / composer package versions", &row_value($vs_text, ""));
+
+	my $aps = $full_status->{'apt_security'};
+	my $aps_text = !$aps->{'ran'} ? "<i style='color:#888'>Runs with the next scheduled scan</i>"
+	             : &html_escape($aps->{'summary'}) . " <i>(" . &make_date($aps->{'at'}, 1) . ")</i>";
+	print &ui_table_row("Pending apt security updates", &row_value($aps_text, ""));
 	}
 
 print &ui_table_end();

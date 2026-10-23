@@ -31,6 +31,9 @@ LOG_PATHS = {
     "quarantine": "/var/log/openxs-quarantine.log",
     "cron": os.path.join(PMF_DIR, "cron.log"),
     "scan": os.path.join(PMF_DIR, "scan.log"),
+    "fim": os.path.join(PMF_DIR, "fim_results.txt"),
+    "version_scan": os.path.join(PMF_DIR, "version_results.txt"),
+    "apt_security": os.path.join(PMF_DIR, "apt_security_results.txt"),
 }
 WHITELIST_PATH = os.path.join(PMF_DIR, "whitelist.yar")
 
