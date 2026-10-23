@@ -319,12 +319,39 @@ def import_quarantined_finding(file_path, quarantine_src_path, rule_name, quaran
     return q_path
 
 
-def quarantined_files():
+def quarantined_files(limit=50, offset=0):
+    """Paginated - found for real after migrating cxs's own quarantine
+    (6438 files): rendering every row in one unpaginated HTML page (the
+    Webmin UI's own quarantine view) was enough to hang a browser tab
+    outright. limit=None removes the cap, for scripts that genuinely
+    need every row (e.g. migrate_from_cxs.py never calls this at all -
+    it writes directly, so this only ever affects the UI).
+
+    Returns (id, file_path, rule_name, quarantine_path, quarantined_at)
+    - the date comes from the parent scan's started_at, which for a
+    live quarantine_file() call is "now" (close enough) and for
+    import_quarantined_finding() is the real historical timestamp
+    recovered from cxs's own .restore4 sidecar, not today's import
+    date - findings.quarantined_at of its own doesn't exist, this was
+    missing from the UI entirely until asked for."""
     conn = _connect()
-    rows = conn.execute(
-        "SELECT id, file_path, rule_name, quarantine_path FROM findings "
-        "WHERE quarantine_path IS NOT NULL AND quarantine_path != '__deleted__' "
-        "ORDER BY id DESC"
-    ).fetchall()
+    query = ("SELECT f.id, f.file_path, f.rule_name, f.quarantine_path, s.started_at "
+             "FROM findings f JOIN scans s ON s.id = f.scan_id "
+             "WHERE f.quarantine_path IS NOT NULL AND f.quarantine_path != '__deleted__' "
+             "ORDER BY f.id DESC")
+    params = ()
+    if limit is not None:
+        query += " LIMIT ? OFFSET ?"
+        params = (limit, offset)
+    rows = conn.execute(query, params).fetchall()
     conn.close()
     return rows
+
+
+def quarantined_files_count():
+    conn = _connect()
+    count = conn.execute(
+        "SELECT COUNT(*) FROM findings WHERE quarantine_path IS NOT NULL AND quarantine_path != '__deleted__'"
+    ).fetchone()[0]
+    conn.close()
+    return count
