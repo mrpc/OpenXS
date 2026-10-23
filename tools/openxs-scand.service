@@ -8,6 +8,10 @@ RuntimeDirectory=openxs
 ExecStart=/usr/bin/python3 /opt/php-malware-finder/openxs-scand.py
 Restart=on-failure
 RestartSec=2
+# Same kernel-enforced hard backstop as openxs-watchd.service - see
+# that file's comment. Independent of the in-process OPENXS_SCAND_MAX_RSS_MB
+# check.
+MemoryMax=1536M
 
 [Install]
 WantedBy=multi-user.target
