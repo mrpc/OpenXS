@@ -347,6 +347,53 @@ def derive_source(scan_path):
     return "Scan"
 
 
+# Mirrors pmf_scan.categorize()'s suffix convention - duplicated here
+# (not imported) to keep this module dependency-free of pmf_scan.py;
+# keep both in sync if a new category/suffix is ever added.
+_CATEGORY_SQL = {
+    "virus": "f.rule_name LIKE '%(ClamAV)'",
+    "maldet": "f.rule_name LIKE '%(maldet)'",
+    "oldversion": "f.rule_name LIKE '%(oldversion)'",
+    "fs": "f.rule_name IN ('SUID file', 'world-writable directory', 'symlink', 'socket', "
+          "'core dump file', 'Linux binary or executable file', 'Windows binary or executable file', "
+          "'hidden directory owned by nobody')",
+    "yara": "f.rule_name NOT LIKE '%(ClamAV)' AND f.rule_name NOT LIKE '%(maldet)' AND "
+            "f.rule_name NOT LIKE '%(oldversion)' AND f.rule_name NOT IN ('SUID file', "
+            "'world-writable directory', 'symlink', 'socket', 'core dump file', "
+            "'Linux binary or executable file', 'Windows binary or executable file', "
+            "'hidden directory owned by nobody')",
+}
+
+
+def search_findings(category=None, search=None, limit=50, offset=0):
+    """Unified findings browser query (cxs's own tabbed All/Exploits/
+    Virus/Old Versions/... view, which this mirrors) - every finding
+    ever recorded, not just quarantined ones, with its scan's date and
+    path for derive_user()/derive_source(). category: one of
+    _CATEGORY_SQL's keys, or None for everything. search: substring
+    match against the file path, case-insensitive."""
+    conn = _connect()
+    where = []
+    params = []
+    if category and category in _CATEGORY_SQL:
+        where.append(_CATEGORY_SQL[category])
+    if search:
+        where.append("f.file_path LIKE ?")
+        params.append(f"%{search}%")
+    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+    query = (
+        "SELECT f.id, f.file_path, f.rule_name, f.quarantine_path, f.size, s.started_at, s.path "
+        "FROM findings f JOIN scans s ON s.id = f.scan_id "
+        f"{where_sql} ORDER BY f.id DESC LIMIT ? OFFSET ?"
+    )
+    rows = conn.execute(query, (*params, limit, offset)).fetchall()
+    count = conn.execute(
+        f"SELECT COUNT(*) FROM findings f JOIN scans s ON s.id = f.scan_id {where_sql}", params
+    ).fetchone()[0]
+    conn.close()
+    return rows, count
+
+
 def import_quarantined_finding(file_path, quarantine_src_path, rule_name, quarantined_at=None):
     """For migrate_from_cxs.py: registers a file that's ALREADY sitting in
     some other tool's quarantine (not a live scan hit) so it shows up in
