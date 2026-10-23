@@ -364,3 +364,48 @@ def test_disable_cxs_exploitscan_apply_rewrites_only_that_line(tmp_path, monkeyp
     assert ENABLED_LINE + " --noexploitscan" in content
     assert "# a comment" in content  # untouched
     assert "--qclean 180" in content  # untouched
+
+
+def test_invokes_cxs_suite_includes_binary_and_helper_scripts():
+    assert mig._invokes_cxs_suite(ENABLED_LINE) is True
+    assert mig._invokes_cxs_suite(NOT_CXS_BINARY_LINE) is True  # /etc/cxs/cxsdbupdate.pl
+    assert mig._invokes_cxs_suite("* * * * * root /usr/bin/true") is False
+
+
+def test_comment_out_cron_line_prefixes_with_marker():
+    out = mig.comment_out_cron_line(ENABLED_LINE)
+    assert out.startswith("# disabled by OpenXS migration")
+    assert ENABLED_LINE in out
+
+
+def test_disable_cxs_entirely_includes_everything_not_just_scans(monkeypatch):
+    monkeypatch.setattr(mig, "find_cxs_cron_sources", lambda match=None: [
+        ("file", "/etc/cron.d/cxs-cron", ENABLED_LINE),
+        ("file", "/etc/cron.d/cxs-weekly", QCLEAN_ONLY_LINE),
+        ("file", "/etc/cron.d/cxsdb-cron", NOT_CXS_BINARY_LINE),
+    ])
+    monkeypatch.setattr(mig.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(AssertionError("apply=False must not run anything")))
+    cron_changes, watch_stopped = mig.disable_cxs_entirely(apply=False)
+    assert len(cron_changes) == 3  # qclean and cxsdbupdate.pl both included, unlike disable_cxs_exploitscan
+    assert watch_stopped is None
+
+
+def test_disable_cxs_entirely_apply_rewrites_all_and_stops_watch(tmp_path, monkeypatch):
+    cron_file = tmp_path / "cxs-cron"
+    cron_file.write_text(ENABLED_LINE + "\n")
+    monkeypatch.setattr(mig, "find_cxs_cron_sources", lambda match=None: [("file", str(cron_file), ENABLED_LINE)])
+
+    calls = []
+    class FakeResult:
+        returncode = 1  # pgrep: no cxswatch process found
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        return FakeResult()
+    monkeypatch.setattr(mig.subprocess, "run", fake_run)
+    monkeypatch.setattr(mig.time, "sleep", lambda s: None)
+
+    cron_changes, watch_stopped = mig.disable_cxs_entirely(apply=True)
+    assert len(cron_changes) == 1
+    assert "# disabled by OpenXS migration" in cron_file.read_text()
+    assert ["cxs", "--Wstop"] in calls
+    assert watch_stopped is True

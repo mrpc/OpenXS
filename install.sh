@@ -172,20 +172,20 @@ if [ "$(systemctl is-active maldet 2>/dev/null)" = "active" ]; then
 fi
 
 echo "==> Checking for an existing cxs (ConfigServer eXploit Scanner) install..."
-cxs_preview=$(python3 "$PMF_DIR/migrate_from_cxs.py" disable-exploitscan 2>/dev/null) || true
+cxs_preview=$(python3 "$PMF_DIR/migrate_from_cxs.py" disable-cxs 2>/dev/null) || true
 if echo "$cxs_preview" | grep -q '^+ '; then
     echo "$cxs_preview"
     echo
     if [ -t 0 ]; then
-        read -r -p "Disable cxs's own exploitscan in the cron entrie(s) above, since OpenXS already replaces it? Nothing else about cxs is touched. [y/N] " answer
+        read -r -p "Disable cxs entirely (every cron entry above, and its Watch daemon), since OpenXS already replaces it? [y/N] " answer
         if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
-            python3 "$PMF_DIR/migrate_from_cxs.py" disable-exploitscan --apply
+            python3 "$PMF_DIR/migrate_from_cxs.py" disable-cxs --apply
         else
-            echo "    Skipped. Re-run later: python3 $PMF_DIR/migrate_from_cxs.py disable-exploitscan --apply"
+            echo "    Skipped. Re-run later: python3 $PMF_DIR/migrate_from_cxs.py disable-cxs --apply"
         fi
     else
         echo "    Not running interactively - skipped."
-        echo "    Re-run later: python3 $PMF_DIR/migrate_from_cxs.py disable-exploitscan --apply"
+        echo "    Re-run later: python3 $PMF_DIR/migrate_from_cxs.py disable-cxs --apply"
     fi
 fi
 
