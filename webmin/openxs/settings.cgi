@@ -50,6 +50,9 @@ print &ui_table_row("Ignore file", "<a href='edit_file.cgi?f=ignore'>Edit /etc/o
 print &ui_table_row("Custom rule file", "<a href='edit_file.cgi?f=rules'>Edit /etc/openxs/rules &raquo;</a> <i>one extra regex per line to additionally flag</i>");
 print &ui_table_row("Per-path settings", "<a href='edit_file.cgi?f=path_settings'>Edit /etc/openxs/path_settings &raquo;</a> <i>one override per line: ".
 	"<code>/some/path fast_php_only=1,quarantine_enabled=0</code> - longest matching path wins.</i>");
+print &ui_table_row("File integrity monitoring - watched paths", "<a href='edit_file.cgi?f=fim_paths'>Edit /etc/openxs/fim_paths &raquo;</a> ".
+	"<i>one file or directory per line, e.g. /etc/passwd or your framework's core folder - hashed and checked for drift ".
+	"(Dashboard's 'Baseline now' / 'Check now', or automatically with the daily scheduled scan).</i>");
 print &ui_table_row("Watch paths (for the watch daemon)",
 	&ui_textbox("watch_paths", $cfg{'WATCH_PATHS'}, 60, 0, 0, "autocomplete='off'") .
 	" <i>comma-separated directories to monitor continuously. Blank = every account's web root ".

@@ -16,6 +16,8 @@ my %logs = (
 	"Watch daemon (openxs-watchd)" => $watchd_log,
 	"Scheduled scan (cron)" => "$pmf_dir/cron.log",
 	"Scheduled scan - scanner's own stderr" => "$pmf_dir/scan.log",
+	"Quarantine actions" => "/var/log/openxs-quarantine.log",
+	"File integrity - last check" => "$pmf_dir/fim_results.txt",
 );
 
 foreach my $title (sort keys %logs) {

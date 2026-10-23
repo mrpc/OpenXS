@@ -24,6 +24,7 @@ our %editable_files = (
 	'ignore' => '/etc/openxs/ignore',
 	'rules' => '/etc/openxs/rules',
 	'path_settings' => '/etc/openxs/path_settings',
+	'fim_paths' => '/etc/openxs/fim_paths',
 	'csf_blocklists' => '/etc/csf/csf.blocklists',
 );
 

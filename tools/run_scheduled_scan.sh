@@ -84,9 +84,19 @@ python3 pmf_scan.py scan php.yar filelist.txt > scan_results.txt 2> scan.log
 drift_output=$(python3 check_whitelist_drift.py whitelist.yar 2>&1) || true
 drift_count=$(echo "$drift_output" | grep -c '^CHANGED\|^MISSING' || true)
 
+# File integrity monitoring: configured files/dirs (/etc/openxs/fim_paths)
+# checked against their last recorded baseline - unlike the whitelist
+# drift check above, this watches arbitrary important files (configs,
+# framework core, OpenXS's own code), not just our own exploit-scan
+# whitelist entries. Nothing to check until someone runs
+# `openxs_fim.py baseline` at least once (empty config = no-op, exit 0).
+fim_output=$(python3 openxs_fim.py 2>&1) || true
+echo "$fim_output" > fim_results.txt
+fim_count=$(echo "$fim_output" | grep -c '^CHANGED\|^REMOVED\|^ADDED' || true)
+
 hits=$(grep -c . scan_results.txt || true)
 
-if [ "$hits" -gt 0 ] || [ "$drift_count" -gt 0 ]; then
+if [ "$hits" -gt 0 ] || [ "$drift_count" -gt 0 ] || [ "$fim_count" -gt 0 ]; then
     {
         if [ "$hits" -gt 0 ]; then
             echo "OpenXS: $hits genuine hit(s) on $HOST ($SCAN_LABEL)"
@@ -97,6 +107,11 @@ if [ "$hits" -gt 0 ] || [ "$drift_count" -gt 0 ]; then
         if [ "$drift_count" -gt 0 ]; then
             echo "=== Whitelist drift: $drift_count file(s) changed since being whitelisted (need re-validation) ==="
             echo "$drift_output"
+            echo ""
         fi
-    } | mail -s "[$HOST] OpenXS: $hits hit(s), $drift_count drift" "$EMAIL"
+        if [ "$fim_count" -gt 0 ]; then
+            echo "=== File integrity: $fim_count file(s) differ from their baseline ==="
+            echo "$fim_output"
+        fi
+    } | mail -s "[$HOST] OpenXS: $hits hit(s), $drift_count drift, $fim_count integrity" "$EMAIL"
 fi

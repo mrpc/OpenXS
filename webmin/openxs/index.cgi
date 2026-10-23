@@ -102,6 +102,15 @@ if ($full_status) {
 	print &ui_table_row("Last scheduled/manual scan", &row_value($ls_text, ""));
 	print &ui_table_row("Quarantined files",
 		&row_value($full_status->{'quarantine_count'}, "<a href='reports.cgi?view=quarantine'>View quarantine &raquo;</a>"));
+
+	my $fi = $full_status->{'fim'};
+	my $fi_text = !$fi->{'baselined'} ? "<i style='color:#888'>No baseline yet - add paths in Settings, then run 'Baseline now' below</i>"
+	            : $fi->{'summary'} ? &html_escape($fi->{'summary'}) . ($fi->{'checked_at'} ? " <i>(" . &make_date($fi->{'checked_at'}, 1) . ")</i>" : "")
+	            : "<i style='color:#888'>Baselined, not checked yet (runs with the next scheduled scan)</i>";
+	print &ui_table_row("File integrity monitoring",
+		&row_value($fi_text,
+			&mini_form("fim.cgi", &ui_hidden("action", "baseline") . &ui_submit("Baseline now", "go")) .
+			($fi->{'baselined'} ? &mini_form("fim.cgi", &ui_hidden("action", "check") . &ui_submit("Check now", "go")) : "")));
 	}
 
 print &ui_table_end();
