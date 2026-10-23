@@ -8,6 +8,8 @@ require './openxs-lib.pl';
 &ui_print_header(undef, 'OpenXS Exploit Scanner', "");
 
 my $pid = &openxs_daemon_pid();
+my $watchd_pid = &openxs_watchd_pid();
+my %cfg_early = &openxs_read_config();
 my $has_socket = &openxs_socket_exists();
 my $pmf_ok = &openxs_pmf_installed();
 my $modsec_ok = &openxs_modsecurity_installed();
@@ -36,6 +38,11 @@ return $status_html . ($action_html ne "" ? "<div style='margin-top:4px'>$action
 }
 
 print $openxs_nav;
+
+print "<div style='display:flex;gap:16px;margin:16px 0;flex-wrap:wrap'>" .
+	&openxs_resource_widget("Scan daemon", $pid, 1024) .
+	&openxs_resource_widget("Watch daemon", $watchd_pid, $cfg_early{'WATCHD_MAX_RSS_MB'}) .
+	"</div>";
 
 print &ui_subheading("Components");
 print &ui_table_start(undef, undef, 1);
@@ -66,8 +73,6 @@ print &ui_table_row("Scan daemon (openxs-scand, shared YARA engine - powers the 
 			&ui_hidden("which", "scand") .
 			&ui_submit("Start", "start") . &ui_submit("Stop", "stop") . &ui_submit("Restart", "restart"))));
 
-my $watchd_pid = &openxs_watchd_pid();
-my %cfg_early = &openxs_read_config();
 print &ui_table_row("Watch daemon (openxs-watchd, account-wide inotify monitor) <i>early/evolving</i>",
 	&row_value($watchd_pid ? &status_cell(1, "Running (pid $watchd_pid)" . &openxs_proc_stats($watchd_pid), "")
 	           : (($cfg_early{'WATCH_PATHS'} || '') eq '' ? "<i style='color:#888'>Not running - set 'Watch paths' below first</i>"

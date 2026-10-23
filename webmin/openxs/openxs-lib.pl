@@ -185,6 +185,41 @@ my $mb = sprintf("%.0f", $rss_kb / 1024);
 return " - ${mb}MB RAM, ${cpu}% CPU";
 }
 
+# Big top-of-dashboard widget version of openxs_proc_stats() - added
+# right after a daemon's own memory nearly exhausted the server's free
+# RAM with nothing prominent enough on the dashboard to catch it early.
+# $limit_mb colors it (green/amber/red) relative to that daemon's own
+# configured safety backstop (WATCHD_MAX_RSS_MB et al), so "getting
+# close to its own limit" is visible before it actually trips.
+sub openxs_resource_widget
+{
+my ($label, $pid, $limit_mb) = @_;
+my $box_style = "flex:1;min-width:200px;border-radius:6px;padding:16px;text-align:center";
+if (!$pid) {
+	return "<div style='$box_style;background:#f5f5f5;border:2px solid #ddd'>".
+		"<div style='font-size:13px;color:#888;margin-bottom:6px'>$label</div>".
+		"<div style='font-size:22px;color:#888'>Not running</div></div>";
+	}
+my $out = `ps -o rss=,%cpu= -p $pid 2>/dev/null`;
+$out =~ s/^\s+//;
+my ($rss_kb, $cpu) = split(/\s+/, $out);
+if ($rss_kb eq '' || $rss_kb !~ /^\d+$/) {
+	return "<div style='$box_style;background:#f5f5f5;border:2px solid #ddd'>".
+		"<div style='font-size:13px;color:#888;margin-bottom:6px'>$label</div>".
+		"<div style='font-size:22px;color:#888'>Unknown</div></div>";
+	}
+my $mb = $rss_kb / 1024;
+my $pct = $limit_mb ? ($mb / $limit_mb * 100) : 0;
+my $color = $pct >= 90 ? '#b30000' : ($pct >= 50 ? '#b38f00' : '#2e7d32');
+my $mb_fmt = sprintf("%.0f", $mb);
+return "<div style='$box_style;background:#fff;border:2px solid $color'>".
+	"<div style='font-size:13px;color:#555;margin-bottom:6px'>$label (pid $pid)</div>".
+	"<div style='font-size:34px;font-weight:bold;color:$color;line-height:1.1'>${mb_fmt}<span style='font-size:16px'>MB</span></div>".
+	"<div style='font-size:12px;color:#888'>RAM" . ($limit_mb ? " of ${limit_mb}MB limit" : "") . "</div>".
+	"<div style='font-size:22px;font-weight:bold;margin-top:10px;color:#333'>${cpu}<span style='font-size:14px'>%</span></div>".
+	"<div style='font-size:12px;color:#888'>CPU</div></div>";
+}
+
 sub openxs_full_status
 {
 # Single source of truth shared with the CLI and the MCP server
