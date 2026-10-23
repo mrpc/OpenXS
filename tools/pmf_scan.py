@@ -52,10 +52,26 @@ def load_ignore_patterns(path):
                     plain.append(line)
     return plain, md5s, sha256s, regexes
 
-def file_hashes(fname):
+def file_hashes(fname, max_size=5 * 1024 * 1024):
+    """Real production incident: called unconditionally from is_ignored()
+    with no size check at all (unlike the YARA/custom-rules/ClamAV path,
+    which has always capped at max_size before ever touching a file's
+    content) - a single f.read() with no size argument reads until EOF,
+    and if the file is being actively, heavily appended to while we're
+    mid-read (an unrotated PHP error log in a tight error-logging loop,
+    found for real on prodserver), the read can keep extending right along
+    with the file's own growth. Took openxs-watchd from ~17MB to over
+    1.5GB in under a second, server-wide memory down to under 1GB free
+    at one point - not a slow leak, a single read() given no limit at
+    all. A multi-megabyte file isn't a plausible exploit signature
+    match anyway (cxs's own hash-based ignore entries are for known-bad
+    shells, which are small), so skipping the check past max_size costs
+    nothing real."""
     try:
+        if os.path.getsize(fname) > max_size:
+            return None, None
         with open(fname, "rb") as f:
-            data = f.read()
+            data = f.read(max_size)
     except OSError:
         return None, None
     return hashlib.md5(data).hexdigest(), hashlib.sha256(data).hexdigest()

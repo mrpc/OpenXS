@@ -292,3 +292,35 @@ def test_yara_match_via_daemon_closes_socket_on_connect_failure(tmp_path):
         assert result is None
     after = len(os.listdir(fd_dir))
     assert after <= before + 2  # small slack, no per-call growth
+
+
+def test_file_hashes_normal_small_file(tmp_path):
+    f = tmp_path / "small.txt"
+    write(f, "known exploit content")
+    md5, sha256 = pmf_scan.file_hashes(str(f))
+    assert md5 == hashlib.md5(b"known exploit content").hexdigest()
+    assert sha256 == hashlib.sha256(b"known exploit content").hexdigest()
+
+
+def test_file_hashes_skips_files_over_max_size(tmp_path):
+    # Real production incident: an actively, heavily-appended-to file
+    # (an unrotated PHP error log in a tight logging loop) made an
+    # unbounded f.read() in is_ignored()'s hash check balloon to 1.5GB+
+    # within a second - this was the only file-content read in the
+    # whole codebase with no size cap at all.
+    f = tmp_path / "huge.txt"
+    f.write_bytes(b"x" * 1000)
+    md5, sha256 = pmf_scan.file_hashes(str(f), max_size=500)
+    assert md5 is None
+    assert sha256 is None
+
+
+def test_file_hashes_read_is_bounded_even_if_size_check_is_stale(tmp_path):
+    # Defense against the actual race: the file could grow between the
+    # getsize() check and the read() call (another process appending to
+    # it concurrently) - f.read(max_size) must cap what's actually read
+    # regardless, not just skip based on a stale size() snapshot.
+    f = tmp_path / "borderline.txt"
+    f.write_bytes(b"y" * 400)  # under max_size=500, so the read proceeds
+    md5, sha256 = pmf_scan.file_hashes(str(f), max_size=500)
+    assert md5 == hashlib.md5(b"y" * 400).hexdigest()
