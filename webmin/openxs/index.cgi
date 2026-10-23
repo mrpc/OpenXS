@@ -61,7 +61,7 @@ print &ui_table_row("maldet (Linux Malware Detect, 3rd detector)",
 			&ui_submit($maldet_ok ? "Re-apply recommended config" : "Install", "install"))));
 
 print &ui_table_row("Scan daemon (openxs-scand, shared YARA engine - powers the upload hook + watch daemon)",
-	&row_value($pid ? &status_cell(1, "Running (pid $pid)", "") : &status_cell(0, "", "Not running"),
+	&row_value($pid ? &status_cell(1, "Running (pid $pid)" . &openxs_proc_stats($pid), "") : &status_cell(0, "", "Not running"),
 		&mini_form("daemon.cgi",
 			&ui_hidden("which", "scand") .
 			&ui_submit("Start", "start") . &ui_submit("Stop", "stop") . &ui_submit("Restart", "restart"))));
@@ -69,7 +69,7 @@ print &ui_table_row("Scan daemon (openxs-scand, shared YARA engine - powers the 
 my $watchd_pid = &openxs_watchd_pid();
 my %cfg_early = &openxs_read_config();
 print &ui_table_row("Watch daemon (openxs-watchd, account-wide inotify monitor) <i>early/evolving</i>",
-	&row_value($watchd_pid ? &status_cell(1, "Running (pid $watchd_pid)", "")
+	&row_value($watchd_pid ? &status_cell(1, "Running (pid $watchd_pid)" . &openxs_proc_stats($watchd_pid), "")
 	           : (($cfg_early{'WATCH_PATHS'} || '') eq '' ? "<i style='color:#888'>Not running - set 'Watch paths' below first</i>"
 	                                                       : &status_cell(0, "", "Not running")),
 		&mini_form("daemon.cgi",

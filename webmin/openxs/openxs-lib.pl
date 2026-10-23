@@ -169,6 +169,22 @@ else {
 	}
 }
 
+# Found a real need for this the hard way: openxs-watchd's own RSS grew
+# from ~17MB to over 8.3GB in under 20 minutes (a leak in its rate-
+# limiter state, since fixed) with nothing on the dashboard showing it -
+# the only way anyone noticed was a server-wide memory check run by hand.
+sub openxs_proc_stats
+{
+my ($pid) = @_;
+return "" if (!$pid);
+my $out = `ps -o rss=,%cpu= -p $pid 2>/dev/null`;
+$out =~ s/^\s+//;
+my ($rss_kb, $cpu) = split(/\s+/, $out);
+return "" if ($rss_kb eq '' || $rss_kb !~ /^\d+$/);
+my $mb = sprintf("%.0f", $rss_kb / 1024);
+return " - ${mb}MB RAM, ${cpu}% CPU";
+}
+
 sub openxs_full_status
 {
 # Single source of truth shared with the CLI and the MCP server
