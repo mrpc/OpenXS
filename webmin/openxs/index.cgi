@@ -130,6 +130,13 @@ print &ui_table_row("CSF firewall auto-block hook",
 		($csf_ok && !$csf_hook_ok) ? &mini_form("install_csf_hook.cgi", &ui_submit("Install", "install")) : "")
 	. ($csf_ok && -d "/usr/share/webmin/csf" ? "<div style='margin-top:4px'><a href='../csf/'>Open CSF Firewall module &raquo;</a></div>" : ""));
 
+my $status_widgets_ok = -e "/etc/webmin/status/services/openxs-watchd.serv";
+if (-d "/etc/webmin/status") {
+	print &ui_table_row("Servers Status dashboard widget",
+		&row_value(&status_cell($status_widgets_ok, "Added - watchd/scand show on Webmin's main status page", "Not added"),
+			$status_widgets_ok ? "" : &mini_form("install_status_widgets.cgi", &ui_submit("Add", "install"))));
+	}
+
 if ($csf_ok) {
 	my $active_feeds = `grep -c '^[A-Z]' /etc/csf/csf.blocklists 2>/dev/null`;
 	chomp($active_feeds);
