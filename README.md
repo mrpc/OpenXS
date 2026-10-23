@@ -61,8 +61,10 @@ product.
 - **Migration from cxs**: `tools/migrate_from_cxs.py` reads an existing
   cxs install's settings, custom ignore/exploit rules, quarantine, and
   historical scan logs, and imports what it can into OpenXS - reporting
-  clearly (never silently) anything it can't translate. Dry-run by
-  default.
+  clearly (never silently) anything it can't translate - plus
+  `disable-cxs` to retire cxs entirely (every cron entry, its Watch
+  daemon) once OpenXS covers what it did. Dry-run by default throughout,
+  `install.sh` previews and asks before applying anything.
 - **MCP server**: a minimal, read-only MCP server
   (`tools/openxs_mcp_server.py`) exposes status/logs/findings as
   structured tool calls instead of SSH + grep - meant to run over SSH
