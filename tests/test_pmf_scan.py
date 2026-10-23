@@ -4,6 +4,7 @@ Run with: pytest tests/
 import hashlib
 import os
 import sys
+import time
 import zipfile
 import tarfile
 
@@ -132,6 +133,26 @@ def test_check_custom_rules_hash_match(tmp_path):
     assert any("md5 match" in h for h in hits)
 
 
+def test_check_custom_rules_pathological_regex_does_not_hang(tmp_path):
+    # Real production incident: a migrated cxs.xtra rule with this exact
+    # nested-quantifier shape hit catastrophic backtracking against a
+    # large, repetitive file and took openxs-watchd from ~16MB to over
+    # 12GB RSS before being killed by hand - a single bad rule took the
+    # whole daemon down. A classic ReDoS pattern (a+)+ against adversarial
+    # input must return (not match, but not hang) within a couple of
+    # seconds, not run effectively forever.
+    f = tmp_path / "pools.json"
+    write(f, "a" * 40 + "!")  # near-matches, never completes - forces backtracking
+    rules_path = tmp_path / "rules"
+    rules_path.write_text(r"(a+)+b" + "\n")
+    rules = pmf_scan.load_custom_rules(str(rules_path))
+    start = time.time()
+    hits = pmf_scan.check_custom_rules(str(f), rules)
+    elapsed = time.time() - start
+    assert hits == []
+    assert elapsed < 5  # the timeout is 2s - well under an unbounded hang
+
+
 def test_categorize_maldet():
     assert pmf_scan.categorize("Linux.Trojan.Agent (maldet)") == "maldet"
 
@@ -254,3 +275,20 @@ def test_iter_files_fast_php_only_filters_non_php(tmp_path):
     ignore = ([], set(), set(), [])
     result = list(pmf_scan.iter_files(str(filelist), ignore, global_fast_php_only="1"))
     assert result == [str(php_file)]
+
+
+def test_yara_match_via_daemon_closes_socket_on_connect_failure(tmp_path):
+    # Real production leak: openxs-watchd calls this once per file event,
+    # and under CPU contention from another busy process, scand (or, here,
+    # a dead/nonexistent socket path) fails before a reply ever comes back
+    # - the old code left the socket object unclosed on that path (relying
+    # on GC), which piled up under sustained high event volume. Open FD
+    # count must not grow across repeated failed calls.
+    dead_socket = str(tmp_path / "nothing-listening-here.sock")
+    fd_dir = f"/proc/{os.getpid()}/fd"
+    before = len(os.listdir(fd_dir))
+    for _ in range(50):
+        result = pmf_scan.yara_match_via_daemon("/some/file.php", socket_path=dead_socket)
+        assert result is None
+    after = len(os.listdir(fd_dir))
+    assert after <= before + 2  # small slack, no per-call growth
