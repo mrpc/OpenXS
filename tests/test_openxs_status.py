@@ -77,3 +77,20 @@ def test_apt_security_info_reads_last_results(tmp_path, monkeypatch):
     info = st.apt_security_info()
     assert info["ran"] is True
     assert info["summary"] == "Pending apt updates: 9 total, 9 security"
+
+
+def test_mailbox_scan_info_not_run_or_disabled(tmp_path, monkeypatch):
+    monkeypatch.setattr(st, "PMF_DIR", str(tmp_path))
+    assert st.mailbox_scan_info() == {"ran": False}
+
+
+def test_mailbox_scan_info_reads_last_results(tmp_path, monkeypatch):
+    monkeypatch.setattr(st, "PMF_DIR", str(tmp_path))
+    (tmp_path / "mailbox_results.txt").write_text(
+        "# Note: mail already appears scanned at delivery time (amavis is active) - this check may be redundant here\n"
+        "# Mailbox scan: 1 infected file(s) found\n"
+        "VIRUS\t/home/x/Maildir/cur/msg\tEicar-Test-Signature\n"
+    )
+    info = st.mailbox_scan_info()
+    assert info["ran"] is True
+    assert info["summary"] == "Mailbox scan: 1 infected file(s) found"

@@ -23,9 +23,10 @@ print "<p>OpenXS detects malicious PHP (webshells, obfuscated code) and other co
       "maldet (Linux Malware Detect - its own independently-maintained MD5/HEX/YARA signature set; ".
       "report-only here, its own auto-quarantine is disabled for scans OpenXS triggers), ".
       "filesystem-level checks (SUID files, world-writable directories, symlinks, core dumps, stray ".
-      "binaries), and whatever you add to the custom rule file. A separate, fourth check - ".
-      "<b>file integrity monitoring</b> - runs alongside these: not malware detection, but drift detection ".
-      "for files you've explicitly said matter (see below).</p>";
+      "binaries), and whatever you add to the custom rule file. Two further, independent checks run alongside ".
+      "these: <b>file integrity monitoring</b> (not malware detection, but drift detection for files you've ".
+      "explicitly said matter) and <b>mailbox virus scanning</b> (opt-in, cxs's separate virusscan feature) - ".
+      "see below.</p>";
 
 print &ui_subheading("Architecture: the two daemons");
 print "<p><b>openxs-scand</b> compiles the full ruleset (php.yar + whitelist.yar + ".
@@ -57,6 +58,8 @@ WATCH_PATHS=                       # comma-separated dirs for the watch daemon; 
 WATCH_RATE_COUNT=5                 # watch daemon: ignore a file after this many scans...
 WATCH_RATE_WINDOW=10                # ...within this many seconds...
 WATCH_RATE_COOLDOWN=60              # ...for this many seconds (cxs's --Wrateignore)
+SCAN_MAILBOXES=0                    # scan every account's Maildir for viruses (ClamAV only)
+MAILBOX_RECENT_HOURS=               # blank = scan all mail every time; N = only mail from the last N hours
 </pre>";
 
 print &ui_subheading("Ignore file - /etc/openxs/ignore");
@@ -100,6 +103,19 @@ print "<p>Two independent, read-only checks run with the daily scheduled scan (n
       "<li><b>Pending apt security updates</b> (<code>apt_security_check.py</code>): <code>apt-get -s dist-upgrade</code> ".
       "(simulate only, never installs anything), filtered to packages whose origin includes a security repo - ".
       "portable across Debian and Ubuntu, unlike Ubuntu-only tools like update-notifier's apt-check.</li></ul>";
+
+print &ui_subheading("Mailbox virus scanning (SCAN_MAILBOXES)");
+print "<p>cxs had two separate scans: <code>exploitscan</code> (YARA, web content - what the rest of OpenXS ".
+      "replicates) and <code>virusscan</code> (ClamAV, mail). This is the latter, still opt-in (off by default) ".
+      "since not every server even has Maildir-format mail under its accounts directory, and some already scan ".
+      "mail at delivery time via amavisd-new or clamav-milter - the Settings page checks for and notes this, but ".
+      "never assumes it: confirmed on our own largest mail-handling server that neither was actually running ".
+      "despite Postfix having two other milters configured (greylisting, DKIM) that look superficially similar.</p>".
+      "<p>ClamAV only, not the full YARA ruleset - email attachments aren't PHP webshells. Finds every ".
+      "<code>Maildir</code> directory under the accounts directory (handles both a flat <code>/home/&lt;user&gt;/".
+      "Maildir</code> and a Virtualmin sub-server's nested <code>/home/&lt;user&gt;/homes/&lt;domain&gt;/".
+      "Maildir</code>), scans every message under any <code>cur</code>/<code>new</code>/<code>tmp</code> folder - ".
+      "including IMAP subfolders like <code>.Spam</code>, which have their own.</p>";
 
 print &ui_subheading("File integrity monitoring - /etc/openxs/fim_paths");
 print "<p>A different, broader check than the whitelist drift check above: hashes (SHA-256 - never content, so ".

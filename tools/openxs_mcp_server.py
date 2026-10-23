@@ -34,6 +34,7 @@ LOG_PATHS = {
     "fim": os.path.join(PMF_DIR, "fim_results.txt"),
     "version_scan": os.path.join(PMF_DIR, "version_results.txt"),
     "apt_security": os.path.join(PMF_DIR, "apt_security_results.txt"),
+    "mailbox_scan": os.path.join(PMF_DIR, "mailbox_results.txt"),
 }
 WHITELIST_PATH = os.path.join(PMF_DIR, "whitelist.yar")
 
