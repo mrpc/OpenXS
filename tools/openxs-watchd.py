@@ -73,8 +73,8 @@ def log(msg):
 
 
 def scan_one(fname, ignore, custom_rules, path_overrides, global_fast_php_only):
-    plain, md5s, sha256s = ignore
-    if pmf_scan.is_ignored(fname, plain, md5s, sha256s):
+    plain, md5s, sha256s, regexes = ignore
+    if pmf_scan.is_ignored(fname, plain, md5s, sha256s, regexes):
         return
     if not os.path.isfile(fname):
         return  # deleted/moved again already
