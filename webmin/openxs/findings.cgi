@@ -93,9 +93,13 @@ else {
 			my ($fid, $f, $r, $q, $size, $ts, $user, $source, $gone) = split(/\t/, $row);
 			my $date = $ts ne '' && $ts ne 'None' ? &make_date($ts, 1) : "<i>unknown</i>";
 			my $size_h = $size ne '' ? "${size}B" : "-";
-			my $links = $gone eq '1'
-				? "<i style='color:#888'>(file gone)</i> <a href='finding_logs.cgi?id=$fid'>[Who hit this?]</a>"
-				: "<a href='view_file.cgi?id=$fid'>[View]</a> <a href='finding_logs.cgi?id=$fid'>[Who hit this?]</a>";
+			my $btn_style = "display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;font-size:11px;".
+				"border-radius:3px;text-decoration:none;white-space:nowrap";
+			my $view_btn = "<a href='view_file.cgi?id=$fid' style='$btn_style;background:#eef3fa;color:#2b5a8c;border:1px solid #c3d6ea'>View</a>";
+			my $logs_btn = "<a href='finding_logs.cgi?id=$fid' style='$btn_style;background:#fdf3e7;color:#8a5a1f;border:1px solid #edd6b3'>Who hit this?</a>";
+			my $links = "<div style='margin-top:3px'>" .
+				($gone eq '1' ? "<span style='$btn_style;background:#f0f0f0;color:#888;border:1px solid #ddd'>file gone</span> " : "$view_btn ") .
+				$logs_btn . "</div>";
 			my $status = ($gone eq '1' && $q eq '')
 				? "<i style='color:#888'>File gone</i>"
 				: &openxs_quarantine_action_links($fid, $q, undef);
