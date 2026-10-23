@@ -43,8 +43,10 @@ sys.path.insert(0, '$pmf_dir')
 import openxs_db
 total = openxs_db.quarantined_files_count()
 print('TOTAL\\t' + str(total))
-for fid, f, r, q, ts in openxs_db.quarantined_files(limit=$page_size, offset=$offset, sort='$sort', order='$order'):
-    print(str(fid) + '\\t' + f + '\\t' + r + '\\t' + q + '\\t' + str(ts))
+for fid, f, r, q, ts, size, scan_path in openxs_db.quarantined_files(limit=$page_size, offset=$offset, sort='$sort', order='$order'):
+    user = openxs_db.derive_user(f) or ''
+    source = openxs_db.derive_source(scan_path)
+    print(str(fid) + '\\t' + f + '\\t' + r + '\\t' + q + '\\t' + str(ts) + '\\t' + user + '\\t' + source + '\\t' + str(size or ''))
 "`;
 	my @all_lines = grep { $_ ne "" } split(/\n/, $out);
 	my $total = 0;
@@ -61,13 +63,16 @@ for fid, f, r, q, ts in openxs_db.quarantined_files(limit=$page_size, offset=$of
 		# Clicking a sortable header: same column again flips asc/desc,
 		# a different column starts it at desc (newest/largest/Z-first).
 		print &ui_columns_start([
-			&quarantine_sort_header($sort, $order, "date", "Quarantined"),
+			&quarantine_sort_header($sort, $order, "date", "Quarantined"), "User", "Source",
 			&quarantine_sort_header($sort, $order, "path", "Original path"),
-			&quarantine_sort_header($sort, $order, "rule", "Rule"), "Status"]);
+			&quarantine_sort_header($sort, $order, "rule", "Rule"),
+			&quarantine_sort_header($sort, $order, "size", "Size"), "Status"]);
 		foreach my $row (@rows) {
-			my ($fid, $f, $r, $q, $ts) = split(/\t/, $row);
+			my ($fid, $f, $r, $q, $ts, $user, $source, $size) = split(/\t/, $row);
 			my $date = $ts ne '' && $ts ne 'None' ? &make_date($ts, 1) : "<i>unknown</i>";
-			print &ui_columns_row([$date, &html_escape($f), &html_escape($r), &quarantine_action_links($fid, $q)]);
+			my $size_h = $size ne '' ? "${size}B" : "-";
+			print &ui_columns_row([$date, &html_escape($user), &html_escape($source),
+				&html_escape($f), &html_escape($r), $size_h, &quarantine_action_links($fid, $q)]);
 			}
 		print &ui_columns_end();
 		print "<p>";
