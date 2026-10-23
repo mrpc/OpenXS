@@ -22,6 +22,7 @@ $cfg{'THROTTLE_LOAD'} =~ s/[^0-9.]//g if ($cfg{'THROTTLE_LOAD'} ne '');
 my @qcats;
 push(@qcats, 'virus') if (defined($in{'qcat_virus'}) && $in{'qcat_virus'} eq '1');
 push(@qcats, 'yara') if (defined($in{'qcat_yara'}) && $in{'qcat_yara'} eq '1');
+push(@qcats, 'maldet') if (defined($in{'qcat_maldet'}) && $in{'qcat_maldet'} eq '1');
 push(@qcats, 'fs') if (defined($in{'qcat_fs'}) && $in{'qcat_fs'} eq '1');
 $cfg{'QUARANTINE_CATEGORIES'} = join(',', @qcats);
 $cfg{'WATCH_PATHS'} = &one_line($in{'watch_paths'}) if (defined($in{'watch_paths'}));

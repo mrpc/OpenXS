@@ -107,6 +107,38 @@ def test_check_custom_rules_hash_match(tmp_path):
     assert any("md5 match" in h for h in hits)
 
 
+def test_categorize_maldet():
+    assert pmf_scan.categorize("Linux.Trojan.Agent (maldet)") == "maldet"
+
+
+def test_maldet_scan_no_binary_returns_empty(monkeypatch):
+    monkeypatch.setattr(pmf_scan.shutil, "which", lambda name: None)
+    assert pmf_scan.maldet_scan(["/tmp/a.php"]) == []
+
+
+def test_maldet_scan_empty_filelist_returns_empty():
+    assert pmf_scan.maldet_scan([]) == []
+
+
+def test_maldet_scan_parses_event_log_hits(tmp_path, monkeypatch):
+    monkeypatch.setattr(pmf_scan.shutil, "which", lambda name: "/usr/local/sbin/maldet" if name == "maldet" else None)
+
+    class FakeResult:
+        stdout = "maldet(12345): {scan} signatures loaded: 1000\n"
+
+    monkeypatch.setattr(pmf_scan.subprocess, "run", lambda *a, **k: FakeResult())
+
+    event_log = tmp_path / "event_log"
+    event_log.write_text(
+        "Oct 23 2026 maldet(99999): {hit} malware hit {HEX}other.sig found for /tmp/unrelated.php\n"
+        "Oct 23 2026 maldet(12345): {hit} malware hit {HEX}test.test.eicar.1040 found for /tmp/a.php\n"
+    )
+    monkeypatch.setattr(pmf_scan, "MALDET_EVENT_LOG", str(event_log))
+
+    findings = pmf_scan.maldet_scan(["/tmp/a.php"])
+    assert findings == [("/tmp/a.php", "{HEX}test.test.eicar.1040")]
+
+
 def test_check_custom_rules_no_match(tmp_path):
     f = tmp_path / "clean.php"
     write(f, "<?php echo 'hi'; ?>")

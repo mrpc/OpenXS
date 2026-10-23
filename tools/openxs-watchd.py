@@ -109,7 +109,7 @@ def scan_one(fname, ignore, custom_rules, path_overrides, global_fast_php_only):
         if q_enabled == "1":
             allowed = set(pmf_scan.effective_setting(
                 fname, path_overrides, "quarantine_categories",
-                os.environ.get("OPENXS_QUARANTINE_CATEGORIES", "virus,yara")).split(","))
+                os.environ.get("OPENXS_QUARANTINE_CATEGORIES", "virus,yara,maldet")).split(","))
             for fid, _, rule_name, _ in openxs_db.findings_for_scan(scan_id):
                 if pmf_scan.categorize(rule_name) in allowed:
                     openxs_db.quarantine_file(fid)
@@ -151,7 +151,7 @@ def main():
     rate_window = float(cfg.get("WATCH_RATE_WINDOW", "10") or "10")
     rate_cooldown = float(cfg.get("WATCH_RATE_COOLDOWN", "60") or "60")
     os.environ.setdefault("OPENXS_QUARANTINE_ENABLED", cfg.get("QUARANTINE_ENABLED", "0"))
-    os.environ.setdefault("OPENXS_QUARANTINE_CATEGORIES", cfg.get("QUARANTINE_CATEGORIES", "virus,yara"))
+    os.environ.setdefault("OPENXS_QUARANTINE_CATEGORIES", cfg.get("QUARANTINE_CATEGORIES", "virus,yara,maldet"))
 
     log(f"Starting, watching: {', '.join(watch_paths)}")
     cmd = ["inotifywait", "-m", "-r", "-e", "create,modify,moved_to", "--format", "%w%f"] + watch_paths

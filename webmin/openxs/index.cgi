@@ -50,6 +50,11 @@ print &ui_table_row("ClamAV (virus scanning, 2nd detector)",
 	&row_value($clamav_ok ? &status_cell($clamav_running, "Installed, running", "Installed, not running")
 	                      : "<i style='color:#888'>Not installed - ran without it (optional, degrades gracefully)</i>", ""));
 
+my $maldet_ok = &openxs_maldet_installed();
+print &ui_table_row("maldet (Linux Malware Detect, 3rd detector)",
+	&row_value($maldet_ok ? &status_cell(1, "Installed - own MD5/HEX/YARA signature set", "")
+	                      : "<i style='color:#888'>Not installed - ran without it (optional, degrades gracefully)</i>", ""));
+
 print &ui_table_row("Scan daemon (openxs-scand, shared YARA engine - powers the upload hook + watch daemon)",
 	&row_value($pid ? &status_cell(1, "Running (pid $pid)", "") : &status_cell(0, "", "Not running"),
 		&mini_form("daemon.cgi",
@@ -123,6 +128,7 @@ my %qcats = map { $_ => 1 } split(/,/, $cfg{'QUARANTINE_CATEGORIES'});
 print &ui_table_row("...which categories to quarantine",
 	&ui_checkbox("qcat_virus", "1", "Viruses (ClamAV)", $qcats{'virus'}) . "<br>" .
 	&ui_checkbox("qcat_yara", "1", "Known exploits (YARA + custom rules)", $qcats{'yara'}) . "<br>" .
+	&ui_checkbox("qcat_maldet", "1", "Known exploits (maldet - MD5/HEX/YARA)", $qcats{'maldet'}) . "<br>" .
 	&ui_checkbox("qcat_fs", "1", "Filesystem indicators (SUID/symlinks/binaries - <b>not recommended</b>: ".
 		"these are often legitimate parts of the server)", $qcats{'fs'}));
 print &ui_table_row("Fast mode (.php files only)", &ui_checkbox("fast_php_only", "1",
