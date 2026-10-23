@@ -209,7 +209,8 @@ my %cfg = ( 'EMAIL' => 'root@localhost', 'SCAN_PATH' => '/var/www', 'QUARANTINE_
             # had a toggle at all (run_scheduled_scan.sh ran them
             # unconditionally), so an existing config file with neither
             # key set must keep working exactly as before.
-            'VERSION_SCAN_ENABLED' => '1', 'APT_SECURITY_ENABLED' => '1' );
+            'VERSION_SCAN_ENABLED' => '1', 'APT_SECURITY_ENABLED' => '1',
+            'WATCHD_MAX_RSS_MB' => '1024' );
 if (open(my $fh, '<', $config_file)) {
 	while (<$fh>) {
 		chomp;

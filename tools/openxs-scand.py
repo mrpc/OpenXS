@@ -43,6 +43,10 @@ RULESET = os.environ.get("OPENXS_RULESET", "/opt/php-malware-finder/php.yar")
 SOCKET_PATH = os.environ.get("OPENXS_SOCKET", "/run/openxs/scan.sock")
 MAX_FILE_SIZE = 5 * 1024 * 1024
 LOG = "/var/log/openxs-scand.log"
+# Same backstop as openxs-watchd.py's WATCHD_MAX_RSS_MB - os._exit (not
+# sys.exit) because this runs in a ThreadingMixIn worker thread, where
+# sys.exit only ends that one thread, not the whole process.
+MAX_RSS_KB = int(float(os.environ.get("OPENXS_SCAND_MAX_RSS_MB", "1024") or "1024") * 1024)
 
 _rules_lock = threading.Lock()
 _rules = None
@@ -75,6 +79,9 @@ def handle_sighup(signum, frame):
 
 class ScanHandler(socketserver.BaseRequestHandler):
     def handle(self):
+        if MAX_RSS_KB and pmf_scan.vmrss_kb() > MAX_RSS_KB:
+            log(f"RSS exceeded OPENXS_SCAND_MAX_RSS_MB={MAX_RSS_KB // 1024}MB - exiting so systemd restarts us")
+            os._exit(1)
         data = self.request.recv(4096).strip()
         text = data.decode("utf-8", errors="replace")
         all_mode = text.startswith("ALL ")

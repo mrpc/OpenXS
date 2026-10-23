@@ -78,6 +78,11 @@ print &ui_table_row("Watch daemon rate limit",
 	"s if it's scanned more than " . &ui_textbox("watch_rate_count", $cfg{'WATCH_RATE_COUNT'}, 5) .
 	" times within " . &ui_textbox("watch_rate_window", $cfg{'WATCH_RATE_WINDOW'}, 5) .
 	"s <i>(cxs's --Wrateignore - stops a constantly-rewritten file, e.g. a log, from being rescanned on every single write)</i>");
+print &ui_table_row("Watch daemon memory limit",
+	&ui_textbox("watchd_max_rss_mb", $cfg{'WATCHD_MAX_RSS_MB'}, 8) .
+	"MB <i>safety backstop - if watchd's own memory ever exceeds this (a runaway custom rule, a future bug, " .
+	"anything), it exits on its own and systemd restarts it, instead of growing unchecked until the kernel's " .
+	"OOM killer picks some unrelated process instead. Normal usage is a few tens of MB.</i>");
 print &ui_table_end();
 print &ui_submit("Save", "save");
 print &ui_form_end();
