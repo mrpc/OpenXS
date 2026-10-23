@@ -53,8 +53,7 @@ if ! apt-get update -qq; then
     echo "ERROR: apt-get update failed - check network/apt sources and retry." >&2
     exit 1
 fi
-apt-get install -y -qq git python3 python3-yara yara mailutils cron \
-    clamav-daemon clamav-freshclam inotify-tools
+apt-get install -y -qq git python3 python3-yara yara mailutils cron inotify-tools
 
 echo "==> Detection engine (php-malware-finder)..."
 if [ -d "$PMF_DIR" ] && [ ! -d "$PMF_DIR/.git" ]; then
@@ -84,6 +83,9 @@ cp "$HERE"/tools/*.py "$HERE"/tools/*.sh "$PMF_DIR/"
 chmod +x "$PMF_DIR"/*.py "$PMF_DIR"/*.sh
 cp -r "$HERE"/tools/openxs-rules "$PMF_DIR/"
 
+echo "==> ClamAV (2nd detector)..."
+bash "$PMF_DIR/install_clamav.sh"
+
 echo "==> Settings + scan-history database..."
 mkdir -p /etc/openxs /var/lib/openxs
 if [ ! -f /etc/openxs/openxs.conf ]; then
@@ -100,8 +102,6 @@ if command -v systemctl >/dev/null 2>&1; then
     cp "$HERE/tools/openxs-watchd.service" /etc/systemd/system/openxs-watchd.service
     systemctl daemon-reload
     systemctl enable --now openxs-scand
-    echo "==> ClamAV..."
-    systemctl enable --now clamav-daemon clamav-freshclam 2>/dev/null || true
 else
     echo "    systemd not available on this host - start the daemon manually:"
     echo "    python3 $PMF_DIR/openxs-scand.py &"
