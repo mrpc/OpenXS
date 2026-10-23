@@ -39,19 +39,64 @@ CREATE TABLE IF NOT EXISTS daily_stats (
 """
 
 
+_schema_initialized_for = None  # DB_PATH this process already ran the schema/migration for
+_connections = {}  # DB_PATH -> the one real sqlite3.Connection this process keeps open for it
+
+
+class _KeepOpenConnection:
+    """Wraps the real, cached connection so every existing conn.close()
+    call site (there are over a dozen in this file) becomes a safe
+    no-op, instead of having to rewrite each one - the real connection
+    stays open and is reused across calls in this process rather than
+    reconnecting every time (see _connect()'s own docstring for why
+    that matters)."""
+    def __init__(self, real_conn):
+        self._real = real_conn
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+    def close(self):
+        pass  # no-op - the real connection is cached and reused
+
+
 def _connect():
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.executescript(SCHEMA)
-    # Added after the initial release - ALTER TABLE, not a CREATE TABLE
-    # clause, since that only applies to a table that doesn't exist yet
-    # and an existing openxs.db already has the old `scans` schema.
-    for column in ("duration REAL", "load_avg REAL"):
-        try:
-            conn.execute(f"ALTER TABLE scans ADD COLUMN {column}")
-        except sqlite3.OperationalError:
-            pass  # already added in a previous run
-    return conn
+    """Benchmarked three things before landing here, since a guess
+    would've been wrong twice over: SQLite's default fsync-per-commit
+    was ~13ms/call (not schema DDL re-execution, which a first fix
+    wrongly assumed); switching to WAL+NORMAL (SQLite's own documented
+    safe pairing - still durable against an application crash, only
+    synchronous=OFF risks real corruption and is never used here) cut
+    that to ~0.006ms/call *once a connection is reused*, but opening a
+    brand new connection every call turned out to cost ~25ms on its
+    own, becoming the new bottleneck. This matters because
+    openxs-watchd.py calls record_scan() (and this) on every single
+    file-change event it reacts to - real, compounding overhead on a
+    busy shared-hosting server with frequent file writes, not just an
+    occasional cron-triggered scan's problem."""
+    global _schema_initialized_for
+    if DB_PATH not in _connections:
+        os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+        real_conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        real_conn.execute("PRAGMA journal_mode=WAL")
+        real_conn.execute("PRAGMA synchronous=NORMAL")
+        _connections[DB_PATH] = real_conn
+    conn = _connections[DB_PATH]
+    # Only the first call for this DB_PATH actually runs the schema/
+    # migration DDL - cheap already, but no reason to repeat it either.
+    if _schema_initialized_for != DB_PATH:
+        conn.executescript(SCHEMA)
+        # Added after the initial release - ALTER TABLE, not a CREATE
+        # TABLE clause, since that only applies to a table that doesn't
+        # exist yet and an existing openxs.db already has the old
+        # `scans` schema.
+        for column in ("duration REAL", "load_avg REAL"):
+            try:
+                conn.execute(f"ALTER TABLE scans ADD COLUMN {column}")
+            except sqlite3.OperationalError:
+                pass  # already added in a previous run
+        _schema_initialized_for = DB_PATH
+    return _KeepOpenConnection(conn)
 
 
 def record_scan(path, files_scanned, findings, duration=None, load_avg=None):
