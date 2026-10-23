@@ -131,6 +131,29 @@ def apt_security_info():
     }
 
 
+def mailbox_scan_info():
+    """Same pattern as the other *_info() functions - reads the last
+    scheduled scan's own mailbox_results.txt. Returns ran=False both when
+    it has never run AND when SCAN_MAILBOXES is off (no file either way -
+    callers don't need to tell the two apart, "nothing to show" covers
+    both)."""
+    path = os.path.join(PMF_DIR, "mailbox_results.txt")
+    if not os.path.exists(path):
+        return {"ran": False}
+    try:
+        with open(path, errors="replace") as f:
+            text = f.read()
+    except OSError:
+        return {"ran": False}
+    lines = [l for l in text.splitlines() if l.strip()]
+    summary = next((l.lstrip("# ") for l in lines if l.startswith("# Mailbox scan:")), None)
+    return {
+        "ran": True,
+        "at": os.path.getmtime(path),
+        "summary": summary,
+    }
+
+
 def full_status():
     return {
         "daemons": daemon_status(),
@@ -140,6 +163,7 @@ def full_status():
         "fim": fim_info(),
         "version_scan": version_scan_info(),
         "apt_security": apt_security_info(),
+        "mailbox_scan": mailbox_scan_info(),
     }
 
 
@@ -164,6 +188,8 @@ def main():
     print(f"WordPress version check: {vs.get('summary', 'never ran') if vs['ran'] else 'never ran'}")
     aps = status["apt_security"]
     print(f"Apt security updates: {aps.get('summary', 'never ran') if aps['ran'] else 'never ran'}")
+    mb = status["mailbox_scan"]
+    print(f"Mailbox virus scan: {mb.get('summary', 'never ran / disabled') if mb['ran'] else 'never ran / disabled'}")
 
 
 if __name__ == "__main__":

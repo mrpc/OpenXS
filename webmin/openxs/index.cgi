@@ -126,6 +126,11 @@ if ($full_status) {
 	my $aps_text = !$aps->{'ran'} ? "<i style='color:#888'>Runs with the next scheduled scan</i>"
 	             : &html_escape($aps->{'summary'}) . " <i>(" . &make_date($aps->{'at'}, 1) . ")</i>";
 	print &ui_table_row("Pending apt security updates", &row_value($aps_text, ""));
+
+	my $mb = $full_status->{'mailbox_scan'};
+	my $mb_text = !$mb->{'ran'} ? "<i style='color:#888'>Off by default - enable in Settings (cxs's 'virusscan')</i>"
+	            : &html_escape($mb->{'summary'}) . " <i>(" . &make_date($mb->{'at'}, 1) . ")</i>";
+	print &ui_table_row("Mailbox virus scan", &row_value($mb_text, "<a href='settings.cgi'>Settings &raquo;</a>"));
 	}
 
 print &ui_table_end();

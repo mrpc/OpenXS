@@ -15,6 +15,8 @@ CHANGED_HOURS=""
 THROTTLE_LOAD=""
 QUIET="0"
 QUARANTINE_CATEGORIES="virus,yara,maldet"
+SCAN_MAILBOXES="0"
+MAILBOX_RECENT_HOURS=""
 # Parsed as plain data, not `source`-d: the config file is writable via the
 # Webmin settings form, and `source` would execute $()/`` in any value as
 # real shell code (e.g. a crafted EMAIL value running arbitrary commands
@@ -33,6 +35,8 @@ if [ -f "$CONFIG" ]; then
             THROTTLE_LOAD) THROTTLE_LOAD="$value" ;;
             QUIET) QUIET="$value" ;;
             QUARANTINE_CATEGORIES) QUARANTINE_CATEGORIES="$value" ;;
+            SCAN_MAILBOXES) SCAN_MAILBOXES="$value" ;;
+            MAILBOX_RECENT_HOURS) MAILBOX_RECENT_HOURS="$value" ;;
         esac
     done < "$CONFIG"
 fi
@@ -106,9 +110,25 @@ apt_output=$(python3 apt_security_check.py 2>&1) || true
 echo "$apt_output" > apt_security_results.txt
 apt_count=$(echo "$apt_output" | grep -c '^SECURITY' || true)
 
+# Mailbox virus scanning - opt-in, cxs's separate "virusscan" feature
+# (ClamAV only, not the YARA ruleset - email attachments aren't PHP
+# webshells). Off by default: not every server even has Maildir-format
+# mail under ACCOUNTS_DIR, and some already scan at delivery time via
+# amavisd/clamav-milter - mailbox_scan.py notes that, but never assumes
+# it (confirmed on prod-host-3: neither was active there despite being our
+# largest mail-handling server).
+mailbox_output=""
+mailbox_count=0
+if [ "$SCAN_MAILBOXES" = "1" ]; then
+    export OPENXS_MAILBOX_RECENT_HOURS="$MAILBOX_RECENT_HOURS"
+    mailbox_output=$(python3 mailbox_scan.py "$ACCOUNTS_DIR" 2>&1) || true
+    echo "$mailbox_output" > mailbox_results.txt
+    mailbox_count=$(echo "$mailbox_output" | grep -c '^VIRUS' || true)
+fi
+
 hits=$(grep -c . scan_results.txt || true)
 
-if [ "$hits" -gt 0 ] || [ "$drift_count" -gt 0 ] || [ "$fim_count" -gt 0 ] || [ "$version_count" -gt 0 ] || [ "$apt_count" -gt 0 ]; then
+if [ "$hits" -gt 0 ] || [ "$drift_count" -gt 0 ] || [ "$fim_count" -gt 0 ] || [ "$version_count" -gt 0 ] || [ "$apt_count" -gt 0 ] || [ "$mailbox_count" -gt 0 ]; then
     {
         if [ "$hits" -gt 0 ]; then
             echo "OpenXS: $hits genuine hit(s) on $HOST ($SCAN_LABEL)"
@@ -134,6 +154,11 @@ if [ "$hits" -gt 0 ] || [ "$drift_count" -gt 0 ] || [ "$fim_count" -gt 0 ] || [ 
         if [ "$apt_count" -gt 0 ]; then
             echo "=== Pending apt security updates: $apt_count package(s) ==="
             echo "$apt_output"
+            echo ""
         fi
-    } | mail -s "[$HOST] OpenXS: $hits hit(s), $drift_count drift, $fim_count integrity, $version_count outdated, $apt_count apt-security" "$EMAIL"
+        if [ "$mailbox_count" -gt 0 ]; then
+            echo "=== Mailbox virus scan: $mailbox_count infected file(s) ==="
+            echo "$mailbox_output"
+        fi
+    } | mail -s "[$HOST] OpenXS: $hits hit(s), $drift_count drift, $fim_count integrity, $version_count outdated, $apt_count apt-security, $mailbox_count mail-virus" "$EMAIL"
 fi
