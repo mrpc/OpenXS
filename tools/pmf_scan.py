@@ -409,7 +409,7 @@ def iter_files(filelist_path, ignore, changed_hours=None, max_size=None,
     changed_cutoff = time.time() - float(changed_hours) * 3600 if changed_hours else None
     path_overrides = path_overrides or []
     plain, md5s, sha256s, regexes = ignore
-    with open(filelist_path) as f:
+    with open(filelist_path, errors="surrogateescape") as f:
         for line in f:
             fname = line.rstrip("\n")
             if not fname:

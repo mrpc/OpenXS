@@ -263,6 +263,21 @@ def test_iter_files_respects_ignore_and_size(tmp_path):
     assert result == [str(keep)]
 
 
+def test_iter_files_tolerates_non_utf8_bytes_in_filelist(tmp_path):
+    keep = tmp_path / "keep.php"
+    write(keep, "<?php ?>")
+
+    filelist = tmp_path / "filelist.txt"
+    # A line with a raw non-UTF8 byte (e.g. a weirdly-encoded uploaded
+    # filename) must not crash the whole scan.
+    filelist.write_bytes(b"/home/site/public_html/uploads/bad\xb4name.jpg\n" +
+                          str(keep).encode() + b"\n")
+
+    ignore = ([], set(), set(), [])
+    result = list(pmf_scan.iter_files(str(filelist), ignore))
+    assert str(keep) in result
+
+
 def test_iter_files_fast_php_only_filters_non_php(tmp_path):
     php_file = tmp_path / "a.php"
     write(php_file, "<?php ?>")
