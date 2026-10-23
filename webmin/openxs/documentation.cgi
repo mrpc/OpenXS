@@ -44,7 +44,7 @@ ACCOUNTS_DIR=/home                 # one subdirectory per account, used when SCA
 ACCOUNTS_SUBPATH=public_html       # web root per account; blank = whole account home dir
 SCHEDULE=17 2 * * *                # cron syntax; blank = scheduled scan disabled
 QUARANTINE_ENABLED=0               # move flagged files to quarantine
-QUARANTINE_CATEGORIES=virus,yara   # which categories to quarantine: virus, yara, fs
+QUARANTINE_CATEGORIES=virus,yara,maldet   # which categories to quarantine: virus, yara, maldet, fs
 FAST_PHP_ONLY=0                    # 1 = only scan *.php (faster, misses disguised payloads)
 CHANGED_HOURS=                     # blank = no time filter; N = only files changed in the last N hours
 THROTTLE_LOAD=                     # blank = disabled; pause scanning if load average exceeds this
