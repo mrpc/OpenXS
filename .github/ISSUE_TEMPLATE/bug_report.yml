@@ -1,0 +1,44 @@
+name: Bug report
+description: Something isn't working as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Security issue?** Don't file it here - see [SECURITY.md](../blob/main/.github/SECURITY.md)
+        for private reporting instead.
+  - type: input
+    id: version
+    attributes:
+      label: OpenXS version / commit
+      description: Output of `cd /opt/php-malware-finder && git -C /opt/php-malware-finder log -1 --format=%h` if installed from git, or the release version
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS/distro, PHP version, Webmin/Virtualmin version, whether this is the daemon, the CLI, or the Webmin UI
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected instead, and the exact error message/log line if there is one
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: e.g. /var/log/openxs-watchd.log, /var/log/openxs-scand.log, or the Webmin page's own error - redact anything sensitive (paths with real domain/account names are usually fine, credentials are not)
+      render: shell
+    validations:
+      required: false

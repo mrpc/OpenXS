@@ -28,11 +28,35 @@ import sys
 import os
 import subprocess
 import time
+import signal
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pmf_scan
 
 LOG = "/var/log/openxs-watchd.log"
+
+# tracemalloc, gated by the same debug flag as _mem() below - chasing a
+# leak whose exact source line kept eluding plain before/after RSS
+# checkpoints (it explodes somewhere inside a single scan_one() call,
+# fast enough that no checkpoint after it is ever reached). This dumps
+# the top allocations by source line automatically the first time RSS
+# crosses 300MB (well above normal ~15-50MB, well below the 1536MB
+# kernel backstop - leaves time to actually log before the kill).
+_TRACEMALLOC_ON = os.environ.get("OPENXS_WATCHD_MEM_DEBUG") == "1"
+if _TRACEMALLOC_ON:
+    import tracemalloc
+    tracemalloc.start(10)
+_tracemalloc_dumped = [False]
+
+
+def _dump_tracemalloc():
+    if not _TRACEMALLOC_ON or _tracemalloc_dumped[0]:
+        return
+    _tracemalloc_dumped[0] = True
+    snapshot = tracemalloc.take_snapshot()
+    log("TRACEMALLOC top 10 allocations by source line:")
+    for stat in snapshot.statistics("lineno")[:10]:
+        log(f"  {stat}")
 
 # Per-file recent-event timestamps and cooldown-until times, both module-
 # level so a single daemon process (one inotifywait loop, no threading)
@@ -125,6 +149,8 @@ def _mem(label, fname=""):
     _last_rss_kb[0] = rss
     if delta > 1024:  # only log >1MB jumps - otherwise every event logs noise
         log(f"MEM {label} {fname}: {rss // 1024}MB (+{delta // 1024}MB)")
+    if rss > 300 * 1024:
+        _dump_tracemalloc()
 
 
 def scan_one(fname, ignore, custom_rules, path_overrides, global_fast_php_only):
@@ -144,6 +170,7 @@ def scan_one(fname, ignore, custom_rules, path_overrides, global_fast_php_only):
     if not (0 < size < 5 * 1024 * 1024):
         return
 
+    _mem("pre-yara", fname)
     findings = []
     matches = pmf_scan.yara_match_via_daemon(fname)
     _mem("after-yara", fname)
