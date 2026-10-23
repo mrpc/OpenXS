@@ -188,7 +188,12 @@ my %cfg = ( 'EMAIL' => 'root@localhost', 'SCAN_PATH' => '/var/www', 'QUARANTINE_
             'THROTTLE_LOAD' => '', 'QUIET' => '0', 'QUARANTINE_CATEGORIES' => 'virus,yara,maldet',
             'WATCH_PATHS' => '', 'SCAN_MODE' => 'path', 'ACCOUNTS_DIR' => '/home',
             'ACCOUNTS_SUBPATH' => 'public_html', 'WATCH_RATE_COUNT' => '5',
-            'WATCH_RATE_WINDOW' => '10', 'WATCH_RATE_COOLDOWN' => '60' );
+            'WATCH_RATE_WINDOW' => '10', 'WATCH_RATE_COOLDOWN' => '60',
+            # Both default on - that was the only behavior before these
+            # had a toggle at all (run_scheduled_scan.sh ran them
+            # unconditionally), so an existing config file with neither
+            # key set must keep working exactly as before.
+            'VERSION_SCAN_ENABLED' => '1', 'APT_SECURITY_ENABLED' => '1' );
 if (open(my $fh, '<', $config_file)) {
 	while (<$fh>) {
 		chomp;
