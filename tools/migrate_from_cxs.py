@@ -12,12 +12,14 @@ that its own crondaily.conf there is unused dead config: the actual
 active cron job uses explicit CLI flags instead, which is why this
 reads a cron line rather than only a config file.
 
-Five independent, separately-runnable subcommands (dry-run by default -
+Six independent, separately-runnable subcommands (dry-run by default -
 pass --apply to actually write anything). Everything reads cxs without
-touching it, except disable-exploitscan, which (only with --apply, and
-only after showing exactly what it would change) edits cxs's own cron
-entry to add --noexploitscan - the one piece of cxs this migration is
-meant to make redundant.
+touching it, except disable-exploitscan (edits cxs's own cron entry to
+add --noexploitscan - the one piece of cxs this migration replaces) and
+disable-cxs (comments out every cxs cron entry and stops its Watch
+daemon - for fully retiring cxs once OpenXS covers everything it did).
+Both only act with --apply, and only after showing exactly what they
+would change.
 """
 import argparse
 import base64
@@ -28,6 +30,7 @@ import shlex
 import sqlite3
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import openxs_db
@@ -86,20 +89,32 @@ def _cron_d_files():
     return glob.glob("/etc/cron.d/*")
 
 
-def find_cxs_cron_sources():
-    """Scans crontab -l and /etc/cron.d/* for non-commented lines invoking
-    cxs - returns every candidate found as (source_type, path, line)
-    triples, since a server can easily have more than one (daily +
-    weekly, say) and there's no reliable way to know which is "the real"
-    one without asking. source_type is "crontab" (path is None) or
-    "file" (path is the /etc/cron.d/* file it came from) - needed so a
-    caller that wants to edit a line back knows exactly where it lives,
-    not just what it says."""
+def _invokes_cxs_suite(line):
+    """Broader than _invokes_cxs_binary() - true for any cron line that
+    touches anything in the cxs suite (the binary itself, or any of its
+    own helper scripts under /etc/cxs/, like cxsdbupdate.pl) - used by
+    disable_cxs_entirely(), which (unlike disable_cxs_exploitscan())
+    turns off everything cxs-related, not just the one piece OpenXS's
+    own detection replaces."""
+    return _invokes_cxs_binary(line) or "/etc/cxs/" in line
+
+
+def find_cxs_cron_sources(match=_invokes_cxs_binary):
+    """Scans crontab -l and /etc/cron.d/* for non-commented lines
+    matching `match` (by default, lines invoking the cxs binary itself -
+    pass match=_invokes_cxs_suite for every cxs-related cron entry, not
+    just scan invocations). Returns every candidate found as
+    (source_type, path, line) triples, since a server can easily have
+    more than one (daily + weekly, say) and there's no reliable way to
+    know which is "the real" one without asking. source_type is
+    "crontab" (path is None) or "file" (path is the /etc/cron.d/* file
+    it came from) - needed so a caller that wants to edit a line back
+    knows exactly where it lives, not just what it says."""
     sources = []
     try:
         out = subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=5).stdout
         for line in out.splitlines():
-            if line.strip() and not line.strip().startswith("#") and _invokes_cxs_binary(line):
+            if line.strip() and not line.strip().startswith("#") and match(line):
                 sources.append(("crontab", None, line.strip()))
     except Exception:
         pass
@@ -107,7 +122,7 @@ def find_cxs_cron_sources():
         try:
             with open(path, errors="replace") as f:
                 for line in f:
-                    if line.strip() and not line.strip().startswith("#") and _invokes_cxs_binary(line):
+                    if line.strip() and not line.strip().startswith("#") and match(line):
                         sources.append(("file", path, line.rstrip("\n")))
         except OSError:
             pass
@@ -278,31 +293,73 @@ def disable_exploitscan_in_line(line):
     return line.rstrip() + " --noexploitscan"
 
 
+def _rewrite_cron_line(source_type, path, old_line, new_line):
+    """Replaces exactly one line in its real source - the user crontab
+    (via `crontab -l` | edit | `crontab -`) or the specific
+    /etc/cron.d/* file - leaving everything else untouched."""
+    if source_type == "crontab":
+        current = subprocess.run(["crontab", "-l"], capture_output=True, text=True).stdout
+        subprocess.run(["crontab", "-"], input=current.replace(old_line, new_line), text=True)
+    else:
+        with open(path) as f:
+            content = f.read()
+        with open(path, "w") as f:
+            f.write(content.replace(old_line, new_line))
+
+
 def disable_cxs_exploitscan(apply=False):
     """Returns a list of (source_type, path, old_line, new_line) for
     every cxs cron entry that currently has exploitscan enabled -
     typically redundant once OpenXS is handling exploit detection
-    instead. With apply=True, rewrites each source in place (the user
-    crontab via `crontab -`, or the specific /etc/cron.d/* file),
-    replacing only that exact line - never touches cxs's own binary,
-    config, ignore/xtra files, or quarantine."""
+    instead. With apply=True, rewrites each source in place. Narrower
+    than disable_cxs_entirely() below - only touches the one piece
+    OpenXS's own detection replaces, leaving cxs's other cron jobs
+    (qclean, cxsdbupdate.pl) and its Watch daemon running."""
     results = []
     for source_type, path, line in find_cxs_cron_sources():
         if not cron_line_has_exploitscan_enabled(line):
             continue
         new_line = disable_exploitscan_in_line(line)
         results.append((source_type, path, line, new_line))
-        if not apply:
-            continue
-        if source_type == "crontab":
-            current = subprocess.run(["crontab", "-l"], capture_output=True, text=True).stdout
-            subprocess.run(["crontab", "-"], input=current.replace(line, new_line), text=True)
-        else:
-            with open(path) as f:
-                content = f.read()
-            with open(path, "w") as f:
-                f.write(content.replace(line, new_line))
+        if apply:
+            _rewrite_cron_line(source_type, path, line, new_line)
     return results
+
+
+def comment_out_cron_line(line):
+    return "# disabled by OpenXS migration (cxs no longer needed): " + line
+
+
+def disable_cxs_entirely(apply=False):
+    """Comments out every cxs-suite cron entry (not just ones that scan -
+    the daily exploitscan, the qclean maintenance job, and
+    cxsdbupdate.pl's queue-processing job are all included, since none
+    of it does anything useful once OpenXS has fully replaced cxs), and
+    stops cxs's own Watch daemon via its documented `cxs --Wstop` (not a
+    raw kill - cxswatch runs several worker processes, and --Wstop is
+    cxs's own, safe way to bring all of them down together).
+
+    Returns (cron_changes, watch_stopped). cron_changes: list of
+    (source_type, path, old_line, new_line). watch_stopped: None in a
+    dry run; True/False (whether no cxswatch process remained after)
+    once apply=True actually ran --Wstop."""
+    cron_changes = []
+    for source_type, path, line in find_cxs_cron_sources(match=_invokes_cxs_suite):
+        new_line = comment_out_cron_line(line)
+        cron_changes.append((source_type, path, line, new_line))
+        if apply:
+            _rewrite_cron_line(source_type, path, line, new_line)
+
+    watch_stopped = None
+    if apply:
+        try:
+            subprocess.run(["cxs", "--Wstop"], capture_output=True, timeout=30)
+            time.sleep(1)
+            watch_stopped = subprocess.run(["pgrep", "-x", "cxswatch"], capture_output=True).returncode != 0
+        except Exception:
+            watch_stopped = False
+
+    return cron_changes, watch_stopped
 
 
 def write_conf_merged(conf, config_path="/etc/openxs/openxs.conf"):
@@ -650,6 +707,26 @@ def cmd_disable_exploitscan(args):
         print(f"\n# Dry run - {len(results)} entrie(s) would change. Pass --apply to actually make this change")
 
 
+def cmd_disable_cxs(args):
+    cron_changes, watch_stopped = disable_cxs_entirely(apply=args.apply)
+    if not cron_changes:
+        print("# No cxs cron entries found.")
+    for source_type, path, old_line, new_line in cron_changes:
+        where = path if source_type == "file" else "crontab -l"
+        print(f"# {where}:")
+        print(f"- {old_line}")
+        print(f"+ {new_line}")
+    if args.apply:
+        print(f"\n# Disabled {len(cron_changes)} cxs cron entrie(s).")
+        if watch_stopped is True:
+            print("# cxs Watch daemon (cxswatch) stopped.")
+        elif watch_stopped is False:
+            print("# cxs Watch daemon (cxswatch) may still be running - check `pgrep cxswatch` manually.")
+    else:
+        print(f"\n# Dry run - {len(cron_changes)} cron entrie(s) would be disabled, and `cxs --Wstop` "
+              f"would be run to stop its Watch daemon. Pass --apply to actually do this.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -679,6 +756,10 @@ def main():
     p = sub.add_parser("disable-exploitscan", help="Disable cxs's own exploitscan in its cron entries (OpenXS already replaces it) - nothing else about cxs is touched")
     p.add_argument("--apply", action="store_true")
     p.set_defaults(func=cmd_disable_exploitscan)
+
+    p = sub.add_parser("disable-cxs", help="Disable cxs entirely - every cxs cron entry (not just exploitscan) and its Watch daemon")
+    p.add_argument("--apply", action="store_true")
+    p.set_defaults(func=cmd_disable_cxs)
 
     args = parser.parse_args()
     args.func(args)
