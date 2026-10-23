@@ -113,6 +113,9 @@ cat > /etc/cron.d/openxs-scan <<'EOF'
 EOF
 chmod 644 /etc/cron.d/openxs-scan
 
+echo "==> Log rotation..."
+cp "$HERE/tools/openxs-logrotate.conf" /etc/logrotate.d/openxs
+
 if [ -d /usr/share/webmin ]; then
     echo "==> Webmin module..."
     rm -rf /usr/share/webmin/openxs

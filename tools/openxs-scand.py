@@ -34,6 +34,7 @@ import socket
 import socketserver
 import sys
 import threading
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pmf_scan
@@ -41,9 +42,20 @@ import pmf_scan
 RULESET = os.environ.get("OPENXS_RULESET", "/opt/php-malware-finder/php.yar")
 SOCKET_PATH = os.environ.get("OPENXS_SOCKET", "/run/openxs/scan.sock")
 MAX_FILE_SIZE = 5 * 1024 * 1024
+LOG = "/var/log/openxs-scand.log"
 
 _rules_lock = threading.Lock()
 _rules = None
+
+
+def log(msg):
+    line = f"{time.strftime('%Y-%m-%d %H:%M:%S')} {msg}"
+    print(line, file=sys.stderr, flush=True)
+    try:
+        with open(LOG, "a") as f:
+            f.write(line + "\n")
+    except OSError:
+        pass
 
 
 def load_rules():
@@ -51,14 +63,14 @@ def load_rules():
     compiled = pmf_scan.compile_ruleset(RULESET)
     with _rules_lock:
         _rules = compiled
-    print(f"openxs-scand: ruleset loaded from {RULESET}", file=sys.stderr)
+    log(f"ruleset loaded from {RULESET}")
 
 
 def handle_sighup(signum, frame):
     try:
         load_rules()
     except Exception as e:
-        print(f"openxs-scand: reload failed: {e}", file=sys.stderr)
+        log(f"reload failed: {e}")
 
 
 class ScanHandler(socketserver.BaseRequestHandler):
@@ -108,7 +120,7 @@ def main():
 
     server = ThreadingUnixServer(SOCKET_PATH, ScanHandler)
     os.chmod(SOCKET_PATH, 0o666)  # readable/writable by the webserver user
-    print(f"openxs-scand: listening on {SOCKET_PATH}", file=sys.stderr)
+    log(f"listening on {SOCKET_PATH}")
     server.serve_forever()
 
 
