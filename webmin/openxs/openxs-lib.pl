@@ -116,13 +116,19 @@ my $out = `pgrep -x clamd 2>/dev/null`;
 return $out ne "" ? 1 : 0;
 }
 
+sub openxs_maldet_installed
+{
+my $bin = `command -v maldet 2>/dev/null`;
+return $bin ne "" ? 1 : 0;
+}
+
 # Simple key=value config file, used both by this module and by the shell
 # scripts (run as plain `source`-able shell variables).
 sub openxs_read_config
 {
 my %cfg = ( 'EMAIL' => 'root@localhost', 'SCAN_PATH' => '/var/www', 'QUARANTINE_ENABLED' => '0',
             'FAST_PHP_ONLY' => '0', 'SCHEDULE' => '17 2 * * *', 'CHANGED_HOURS' => '',
-            'THROTTLE_LOAD' => '', 'QUIET' => '0', 'QUARANTINE_CATEGORIES' => 'virus,yara',
+            'THROTTLE_LOAD' => '', 'QUIET' => '0', 'QUARANTINE_CATEGORIES' => 'virus,yara,maldet',
             'WATCH_PATHS' => '', 'SCAN_MODE' => 'path', 'ACCOUNTS_DIR' => '/home',
             'ACCOUNTS_SUBPATH' => 'public_html', 'WATCH_RATE_COUNT' => '5',
             'WATCH_RATE_WINDOW' => '10', 'WATCH_RATE_COOLDOWN' => '60' );

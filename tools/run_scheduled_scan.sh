@@ -14,7 +14,7 @@ FAST_PHP_ONLY="0"
 CHANGED_HOURS=""
 THROTTLE_LOAD=""
 QUIET="0"
-QUARANTINE_CATEGORIES="virus,yara"
+QUARANTINE_CATEGORIES="virus,yara,maldet"
 # Parsed as plain data, not `source`-d: the config file is writable via the
 # Webmin settings form, and `source` would execute $()/`` in any value as
 # real shell code (e.g. a crafted EMAIL value running arbitrary commands

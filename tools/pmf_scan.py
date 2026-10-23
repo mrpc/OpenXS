@@ -109,6 +109,8 @@ def categorize(rule_name):
     legitimate part of the server, so they get their own category."""
     if rule_name.endswith("(ClamAV)"):
         return "virus"
+    if rule_name.endswith("(maldet)"):
+        return "maldet"
     if rule_name in FS_RULES:
         return "fs"
     return "yara"
@@ -252,6 +254,60 @@ def clamav_scan(filenames):
             findings.append((m.group(1), m.group(2)))
     return findings
 
+MALDET_EVENT_LOG = "/usr/local/maldetect/logs/event_log"
+
+def maldet_scan(filenames):
+    """Runs the given file list through Linux Malware Detect (maldet) -
+    its own independently-maintained signature set (rfxn.com: MD5 exact
+    hashes + HEX patterns + its own YARA rules), as a third detector on
+    top of php-malware-finder's rules and ClamAV. Returns a list of
+    (path, signature) tuples. Silently returns [] if maldet isn't
+    installed or the list is empty - optional extra detector, not a
+    hard requirement.
+
+    quarantine_hits=0 is forced for this invocation: maldet's own default
+    config auto-quarantines hits immediately, which would silently move
+    files out from under OpenXS's own (opt-in, categorized) quarantine
+    pipeline. Detection here is report-only - OpenXS decides what to do
+    with a maldet finding the same way it decides for a YARA/ClamAV one.
+    """
+    maldet_bin = shutil.which("maldet")
+    if not maldet_bin or not filenames:
+        return []
+    import tempfile
+    try:
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as tf:
+            tf.write("\n".join(filenames))
+            tmp_path = tf.name
+        out = subprocess.run(
+            [maldet_bin, "-co", "quarantine_hits=0,scan_clamscan=1", "-f", tmp_path],
+            capture_output=True, text=True, timeout=600,
+        ).stdout
+    except Exception:
+        return []
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except (OSError, NameError):
+            pass
+
+    m = re.search(r"maldet\((\d+)\):", out)
+    if not m:
+        return []
+    pid_marker = f"maldet({m.group(1)}): {{hit}}"
+    findings = []
+    try:
+        with open(MALDET_EVENT_LOG) as f:
+            for line in f:
+                if pid_marker not in line:
+                    continue
+                hm = re.search(r"malware hit (\S+) found for (.+?)\s*$", line)
+                if hm:
+                    findings.append((hm.group(2), hm.group(1)))
+    except OSError:
+        pass
+    return findings
+
 def iter_files(filelist_path, ignore, changed_hours=None, max_size=None,
                 path_overrides=None, global_fast_php_only="0"):
     max_size = max_size or 5 * 1024 * 1024
@@ -371,6 +427,14 @@ def main():
                 hits += 1
                 already_flagged.add(fname)
 
+        maldet_findings = maldet_scan(scanned_files)
+        for fname, sig in maldet_findings:
+            print(f"{fname}\t{sig} (maldet)")
+            findings.append((fname, f"{sig} (maldet)"))
+            if fname not in already_flagged:
+                hits += 1
+                already_flagged.add(fname)
+
         # Filesystem-level compromise indicators (SUID files, world-writable
         # dirs, symlinks, sockets, core dumps, stray binaries) - content-
         # agnostic checks that don't go through YARA/ClamAV at all.
@@ -393,7 +457,7 @@ def main():
             else:
                 clam_note = f", {len(clam_findings)} ClamAV hit(s)" if shutil.which("clamdscan") else ""
                 abort_note = " (ABORTED early, see VmRSS message above)" if aborted else ""
-                print(f"# Scanned {total} file(s), {hits} flagged (YARA after whitelist suppression + ClamAV + filesystem checks){clam_note}{abort_note}", file=sys.stderr)
+                print(f"# Scanned {total} file(s), {hits} flagged (YARA after whitelist suppression + ClamAV + maldet + filesystem checks){clam_note}{abort_note}", file=sys.stderr)
 
         try:
             import openxs_db
@@ -408,7 +472,7 @@ def main():
                 # finding's path can override both whether quarantine is
                 # on at all and which categories, via path_overrides.
                 global_enabled = os.environ.get("OPENXS_QUARANTINE_ENABLED", "0")
-                global_cats = os.environ.get("OPENXS_QUARANTINE_CATEGORIES", "virus,yara")
+                global_cats = os.environ.get("OPENXS_QUARANTINE_CATEGORIES", "virus,yara,maldet")
                 quarantined = 0
                 for fid, fpath, rule_name, _ in openxs_db.findings_for_scan(scan_id):
                     q_enabled = effective_setting(fpath, path_overrides, "quarantine_enabled", global_enabled)
