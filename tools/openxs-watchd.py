@@ -107,7 +107,28 @@ def log(msg):
         pass
 
 
+# Per-phase memory logging, opt-in (OPENXS_WATCHD_MEM_DEBUG=1) - off by
+# default to avoid permanently bloating the log, turned on specifically
+# while chasing a real leak that recurred even after the earlier regex-
+# backtracking fix. _mem() only ever logs on a GROWTH between phases
+# (not every phase of every event), so a healthy run stays quiet and a
+# leaking one shows exactly which phase, for which file, is responsible.
+_MEM_DEBUG = os.environ.get("OPENXS_WATCHD_MEM_DEBUG") == "1"
+_last_rss_kb = [0]
+
+
+def _mem(label, fname=""):
+    if not _MEM_DEBUG:
+        return
+    rss = pmf_scan.vmrss_kb()
+    delta = rss - _last_rss_kb[0]
+    _last_rss_kb[0] = rss
+    if delta > 1024:  # only log >1MB jumps - otherwise every event logs noise
+        log(f"MEM {label} {fname}: {rss // 1024}MB (+{delta // 1024}MB)")
+
+
 def scan_one(fname, ignore, custom_rules, path_overrides, global_fast_php_only):
+    _mem("start", fname)
     plain, md5s, sha256s, regexes = ignore
     if pmf_scan.is_ignored(fname, plain, md5s, sha256s, regexes):
         return
@@ -125,13 +146,16 @@ def scan_one(fname, ignore, custom_rules, path_overrides, global_fast_php_only):
 
     findings = []
     matches = pmf_scan.yara_match_via_daemon(fname)
+    _mem("after-yara", fname)
     if matches is None:
         log(f"openxs-scand unreachable, skipping YARA check for {fname}")
     else:
         findings += [(fname, rule) for rule in matches if rule not in ("IsWhitelisted", "IsPhp")]
     findings += [(fname, r) for r in pmf_scan.check_custom_rules(fname, custom_rules)]
+    _mem("after-custom-rules", fname)
     for f, sig in pmf_scan.clamav_scan([fname]):
         findings.append((f, f"{sig} (ClamAV)"))
+    _mem("after-clamav", fname)
 
     if not findings:
         return
@@ -150,6 +174,7 @@ def scan_one(fname, ignore, custom_rules, path_overrides, global_fast_php_only):
                     openxs_db.quarantine_file(fid)
     except Exception as e:
         log(f"(not recorded: {e})")
+    _mem("after-db-record", fname)
 
 
 def main():
