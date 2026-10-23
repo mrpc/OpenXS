@@ -95,3 +95,17 @@ def test_search_findings_sort_by_date_ascending(tmp_path, monkeypatch):
     db.record_scan("/x", 1, [("/b.php", "Known exploit")])
     rows, count = db.search_findings(sort="date", order="asc")
     assert [r[1] for r in rows] == ["/a.php", "/b.php"]
+
+
+def test_finding_by_id_returns_row(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
+    db.record_scan("/x", 1, [("/a.php", "Known exploit")])
+    fid = db.search_findings()[0][0][0]
+    row = db.finding_by_id(fid)
+    assert row[0] == "/a.php"
+    assert row[1] == "Known exploit"
+
+
+def test_finding_by_id_returns_none_for_missing_id(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
+    assert db.finding_by_id(999999) is None
