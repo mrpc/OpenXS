@@ -91,7 +91,7 @@ else {
 		print &ui_columns_row([
 			&ui_checkbox("id", $fid, "", 0),
 			$date, &html_escape($user), &html_escape($source),
-				&html_escape($f) . " <a href='view_file.cgi?id=$fid'>[View]</a>", &html_escape($r), $size_h,
+				&html_escape($f) . " <a href='view_file.cgi?id=$fid'>[View]</a> <a href='finding_logs.cgi?id=$fid'>[Who hit this?]</a>", &html_escape($r), $size_h,
 			&openxs_quarantine_action_links($fid, $q, undef),
 			]);
 		}
