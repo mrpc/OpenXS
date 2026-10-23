@@ -36,6 +36,11 @@ foreach my $k ('watch_rate_count', 'watch_rate_window', 'watch_rate_cooldown') {
 $cfg{'SCAN_MODE'} = $in{'scan_mode'} eq 'accounts' ? 'accounts' : 'path';
 $cfg{'ACCOUNTS_DIR'} = &one_line($in{'accounts_dir'}) if (defined($in{'accounts_dir'}) && $in{'accounts_dir'} ne "");
 $cfg{'ACCOUNTS_SUBPATH'} = &one_line($in{'accounts_subpath'}) if (defined($in{'accounts_subpath'}));
+if (defined($in{'watchd_max_rss_mb'}) && $in{'watchd_max_rss_mb'} ne "") {
+	my $v = $in{'watchd_max_rss_mb'};
+	$v =~ s/[^0-9]//g;
+	$cfg{'WATCHD_MAX_RSS_MB'} = $v if ($v ne "");
+	}
 $cfg{'VERSION_SCAN_ENABLED'} = (defined($in{'version_scan_enabled'}) && $in{'version_scan_enabled'} eq '1') ? '1' : '0';
 $cfg{'APT_SECURITY_ENABLED'} = (defined($in{'apt_security_enabled'}) && $in{'apt_security_enabled'} eq '1') ? '1' : '0';
 $cfg{'SCAN_MAILBOXES'} = (defined($in{'scan_mailboxes'}) && $in{'scan_mailboxes'} eq '1') ? '1' : '0';

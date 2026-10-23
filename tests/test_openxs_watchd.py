@@ -4,6 +4,8 @@ import os
 import sys
 import time
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
 
 spec = importlib.util.spec_from_file_location(
@@ -81,3 +83,20 @@ def test_stale_entries_are_swept_so_one_off_files_dont_leak_forever(monkeypatch)
     monkeypatch.setattr(time, "time", lambda: base + 100)
     openxs_watchd.rate_limited("/unrelated.log", count=5, window=10, cooldown=60)
     assert len(openxs_watchd._recent) == 1  # only /unrelated.log remains
+
+
+def test_check_rss_guard_exits_when_over_limit(monkeypatch):
+    monkeypatch.setattr(openxs_watchd.pmf_scan, "vmrss_kb", lambda: 2_000_000)
+    with pytest.raises(SystemExit) as exc:
+        openxs_watchd.check_rss_guard(max_rss_kb=1_000_000)
+    assert exc.value.code == 1
+
+
+def test_check_rss_guard_does_nothing_under_limit(monkeypatch):
+    monkeypatch.setattr(openxs_watchd.pmf_scan, "vmrss_kb", lambda: 500_000)
+    openxs_watchd.check_rss_guard(max_rss_kb=1_000_000)  # must not raise
+
+
+def test_check_rss_guard_disabled_when_limit_is_zero(monkeypatch):
+    monkeypatch.setattr(openxs_watchd.pmf_scan, "vmrss_kb", lambda: 99_999_999)
+    openxs_watchd.check_rss_guard(max_rss_kb=0)  # must not raise
