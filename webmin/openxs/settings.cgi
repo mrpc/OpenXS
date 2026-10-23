@@ -65,6 +65,11 @@ print &ui_table_row("Ignore file", "<a href='edit_file.cgi?f=ignore'>Edit /etc/o
 print &ui_table_row("Custom rule file", "<a href='edit_file.cgi?f=rules'>Edit /etc/openxs/rules &raquo;</a> <i>one extra regex per line to additionally flag</i>");
 print &ui_table_row("Per-path settings", "<a href='edit_file.cgi?f=path_settings'>Edit /etc/openxs/path_settings &raquo;</a> <i>one override per line: ".
 	"<code>/some/path fast_php_only=1,quarantine_enabled=0</code> - longest matching path wins.</i>");
+if (-d '/etc/modsecurity') {
+	print &ui_table_row("mod_security path exclusions", "<a href='edit_file.cgi?f=modsec_exclusions'>Edit /etc/openxs/modsec_exclusions &raquo;</a> ".
+		"<i>one path prefix per line (e.g. /admin) - fully disables ModSecurity/CRS for matching requests. ".
+		"For a real false positive on a first-party endpoint (analytics beacon, already-authenticated admin area), not a general bypass.</i>");
+	}
 print &ui_table_row("File integrity monitoring - watched paths", "<a href='edit_file.cgi?f=fim_paths'>Edit /etc/openxs/fim_paths &raquo;</a> ".
 	"<i>one file or directory per line, e.g. /etc/passwd or your framework's core folder - hashed and checked for drift ".
 	"(Dashboard's 'Baseline now' / 'Check now', or automatically with the daily scheduled scan).</i>");
