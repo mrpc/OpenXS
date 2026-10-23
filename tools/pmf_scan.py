@@ -270,6 +270,13 @@ def maldet_scan(filenames):
     files out from under OpenXS's own (opt-in, categorized) quarantine
     pipeline. Detection here is report-only - OpenXS decides what to do
     with a maldet finding the same way it decides for a YARA/ClamAV one.
+
+    scan_clamscan=0 is also forced: maldet uses ClamAV as its own default
+    scan engine when available (conf.maldet's own "scan_clamscan=1"),
+    which means every file would get ClamAV-scanned twice in the same
+    pass - once by our own clamav_scan() above, once again inside maldet.
+    Forcing this off makes maldet use only its own independent MD5/HEX/
+    YARA signatures here, since ClamAV coverage is already handled.
     """
     maldet_bin = shutil.which("maldet")
     if not maldet_bin or not filenames:
@@ -280,7 +287,7 @@ def maldet_scan(filenames):
             tf.write("\n".join(filenames))
             tmp_path = tf.name
         out = subprocess.run(
-            [maldet_bin, "-co", "quarantine_hits=0,scan_clamscan=1", "-f", tmp_path],
+            [maldet_bin, "-co", "quarantine_hits=0,scan_clamscan=0", "-f", tmp_path],
             capture_output=True, text=True, timeout=600,
         ).stdout
     except Exception:
