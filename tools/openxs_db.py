@@ -328,6 +328,20 @@ def findings_for_scan(scan_id):
     return rows
 
 
+def finding_by_id(finding_id):
+    """For the "View" page - a user looking at a bare rule name (or a
+    migrated custom-rule pattern) wanting to see the actual matched
+    content before deciding whether a finding is a false positive.
+    Returns (file_path, rule_name, quarantine_path, size) or None."""
+    conn = _connect()
+    row = conn.execute(
+        "SELECT file_path, rule_name, quarantine_path, size FROM findings WHERE id = ?",
+        (finding_id,),
+    ).fetchone()
+    conn.close()
+    return row
+
+
 def derive_user(file_path, accounts_dir=None):
     """Best-effort account/user name for a finding - cxs's own UI shows
     this as a column (derived from its own accounts-mode path layout,
