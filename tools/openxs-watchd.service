@@ -1,6 +1,12 @@
 [Unit]
 Description=OpenXS watch daemon (account-wide inotify monitor)
 After=network.target
+# Fires openxs-alert@.service (sends an email) on ANY failure of this
+# unit - including the MemoryMax/MemorySwapMax=0 OOM-kill below, which
+# gives this process's own Python code no chance to run anything before
+# SIGKILL. The in-process checks (check_rss_guard) already log their own
+# reason; this is what actually reaches the admin's inbox either way.
+OnFailure=openxs-alert@%N.service
 
 [Service]
 Type=simple

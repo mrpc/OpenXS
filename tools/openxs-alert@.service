@@ -1,0 +1,6 @@
+[Unit]
+Description=Send an alert email - %i failed
+
+[Service]
+Type=oneshot
+ExecStart=/opt/php-malware-finder/openxs_alert.sh %i

@@ -1,6 +1,9 @@
 [Unit]
 Description=OpenXS exploit-scan daemon
 After=network.target
+# See openxs-watchd.service's own comment - fires an alert email on any
+# failure of this unit, OOM-kill included.
+OnFailure=openxs-alert@%N.service
 
 [Service]
 Type=simple
