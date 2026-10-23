@@ -106,8 +106,7 @@ return $out ne "" ? 1 : 0;
 
 sub openxs_clamav_installed
 {
-my $bin = `command -v clamdscan 2>/dev/null`;
-return $bin ne "" ? 1 : 0;
+return -x "/usr/bin/clamdscan" ? 1 : 0;
 }
 
 sub openxs_clamav_running

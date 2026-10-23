@@ -48,7 +48,9 @@ print &ui_table_row("Detection engine (php-malware-finder)",
 
 print &ui_table_row("ClamAV (virus scanning, 2nd detector)",
 	&row_value($clamav_ok ? &status_cell($clamav_running, "Installed, running", "Installed, not running")
-	                      : "<i style='color:#888'>Not installed - ran without it (optional, degrades gracefully)</i>", ""));
+	                      : "<i style='color:#888'>Not installed - ran without it (optional, degrades gracefully)</i>",
+		&mini_form("install_clamav.cgi",
+			&ui_submit($clamav_ok ? "Re-apply recommended config" : "Install", "install"))));
 
 my $maldet_ok = &openxs_maldet_installed();
 print &ui_table_row("maldet (Linux Malware Detect, 3rd detector)",
