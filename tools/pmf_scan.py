@@ -25,8 +25,13 @@ import json
 def load_ignore_patterns(path):
     """cxs's ignore file: one substring/path per line to skip scanning, or
     'md5:<hash>'/'sha256:<hash>' to ignore by exact file content instead
-    (survives a file being renamed/moved, unlike a path-based entry)."""
-    plain, md5s, sha256s = [], set(), set()
+    (survives a file being renamed/moved, unlike a path-based entry), or
+    'regex:<pattern>' for a path pattern too broad for a plain substring
+    (e.g. anchored at the start, or with alternation) - added for
+    migrate_from_cxs.py's sake, which otherwise had no lossless way to
+    carry over cxs's own regex-based ignore entries (pdir:/pfile:/psym:/
+    puser:/match:), compiled once here rather than per-file."""
+    plain, md5s, sha256s, regexes = [], set(), set(), []
     if path and os.path.isfile(path):
         with open(path) as f:
             for line in f:
@@ -37,9 +42,14 @@ def load_ignore_patterns(path):
                     md5s.add(line[4:].strip().lower())
                 elif line.startswith("sha256:"):
                     sha256s.add(line[7:].strip().lower())
+                elif line.startswith("regex:"):
+                    try:
+                        regexes.append(re.compile(line[6:].strip()))
+                    except re.error as e:
+                        print(f"# Ignoring invalid regex ignore entry '{line}': {e}", file=sys.stderr)
                 else:
                     plain.append(line)
-    return plain, md5s, sha256s
+    return plain, md5s, sha256s, regexes
 
 def file_hashes(fname):
     try:
@@ -49,8 +59,10 @@ def file_hashes(fname):
         return None, None
     return hashlib.md5(data).hexdigest(), hashlib.sha256(data).hexdigest()
 
-def is_ignored(fname, ignore_patterns, md5s, sha256s):
+def is_ignored(fname, ignore_patterns, md5s, sha256s, regexes=()):
     if any(p in fname for p in ignore_patterns):
+        return True
+    if any(r.search(fname) for r in regexes):
         return True
     if md5s or sha256s:
         md5, sha256 = file_hashes(fname)
@@ -335,13 +347,13 @@ def iter_files(filelist_path, ignore, changed_hours=None, max_size=None,
     max_size = max_size or 5 * 1024 * 1024
     changed_cutoff = time.time() - float(changed_hours) * 3600 if changed_hours else None
     path_overrides = path_overrides or []
-    plain, md5s, sha256s = ignore
+    plain, md5s, sha256s, regexes = ignore
     with open(filelist_path) as f:
         for line in f:
             fname = line.rstrip("\n")
             if not fname:
                 continue
-            if is_ignored(fname, plain, md5s, sha256s):
+            if is_ignored(fname, plain, md5s, sha256s, regexes):
                 continue
             # Per-path "fast mode" override: a specific heavy directory can
             # be narrowed to *.php-only even while the scan as a whole
