@@ -92,6 +92,12 @@ if [ ! -f /etc/openxs/openxs.conf ]; then
     printf 'EMAIL=root@localhost\nSCAN_PATH=/var/www\nQUARANTINE_ENABLED=0\n' > /etc/openxs/openxs.conf
 fi
 
+echo "==> File integrity monitoring - initial baseline..."
+if [ ! -f /etc/openxs/fim_paths ]; then
+    cp "$HERE/tools/fim_paths.default" /etc/openxs/fim_paths
+fi
+python3 "$PMF_DIR/openxs_fim.py" baseline || true
+
 echo "==> Scan daemon (systemd service)..."
 if command -v systemctl >/dev/null 2>&1; then
     cp "$HERE/tools/openxs-scand.service" /etc/systemd/system/openxs-scand.service
