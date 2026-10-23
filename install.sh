@@ -8,7 +8,9 @@
 #
 # mod_security and the CSF firewall hook are optional (real-time upload
 # blocking) - pass --with-modsecurity and/or --with-csf-hook to install them
-# now, or install them later from the Webmin dashboard.
+# now, or install them later from the Webmin dashboard. maldet (a third,
+# independent detector) is also optional - pass --with-maldet, or install
+# it later from the dashboard the same way.
 #
 # Safe to re-run (idempotent).
 set -euo pipefail
@@ -22,10 +24,12 @@ PMF_COMMIT="${PMF_COMMIT:-b8698eb605cc06bc0585902d7fb7f4943113cc5d}"
 
 WITH_MODSECURITY=0
 WITH_CSF_HOOK=0
+WITH_MALDET=0
 for arg in "$@"; do
     case "$arg" in
         --with-modsecurity) WITH_MODSECURITY=1 ;;
         --with-csf-hook) WITH_CSF_HOOK=1 ;;
+        --with-maldet) WITH_MALDET=1 ;;
         *) echo "Unknown option: $arg" >&2; exit 1 ;;
     esac
 done
@@ -141,6 +145,13 @@ if [ -f /etc/csf/csf.conf ]; then
     fi
 else
     echo "    CSF not found on this server - nothing to hook into. Skipping."
+fi
+
+echo "==> maldet (third, independent detector)..."
+if [ "$WITH_MALDET" = "1" ]; then
+    bash "$PMF_DIR/install_maldet.sh"
+else
+    echo "    Skipped (pass --with-maldet, or install/reconfigure later from the Webmin dashboard)."
 fi
 
 echo "==> Done."

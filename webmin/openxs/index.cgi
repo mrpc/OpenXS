@@ -53,7 +53,9 @@ print &ui_table_row("ClamAV (virus scanning, 2nd detector)",
 my $maldet_ok = &openxs_maldet_installed();
 print &ui_table_row("maldet (Linux Malware Detect, 3rd detector)",
 	&row_value($maldet_ok ? &status_cell(1, "Installed - own MD5/HEX/YARA signature set", "")
-	                      : "<i style='color:#888'>Not installed - ran without it (optional, degrades gracefully)</i>", ""));
+	                      : "<i style='color:#888'>Not installed - ran without it (optional, degrades gracefully)</i>",
+		&mini_form("install_maldet.cgi",
+			&ui_submit($maldet_ok ? "Re-apply recommended config" : "Install", "install"))));
 
 print &ui_table_row("Scan daemon (openxs-scand, shared YARA engine - powers the upload hook + watch daemon)",
 	&row_value($pid ? &status_cell(1, "Running (pid $pid)", "") : &status_cell(0, "", "Not running"),

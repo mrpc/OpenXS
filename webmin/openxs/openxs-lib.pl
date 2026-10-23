@@ -118,8 +118,9 @@ return $out ne "" ? 1 : 0;
 
 sub openxs_maldet_installed
 {
-my $bin = `command -v maldet 2>/dev/null`;
-return $bin ne "" ? 1 : 0;
+# -x check on the canonical path, not `command -v` via backtick - the
+# latter was unreliable specifically when run from this Perl/CGI context
+return -x "/usr/local/sbin/maldet" ? 1 : 0;
 }
 
 # Simple key=value config file, used both by this module and by the shell
