@@ -335,14 +335,19 @@ def disable_cxs_entirely(apply=False):
     the daily exploitscan, the qclean maintenance job, and
     cxsdbupdate.pl's queue-processing job are all included, since none
     of it does anything useful once OpenXS has fully replaced cxs), and
-    stops cxs's own Watch daemon via its documented `cxs --Wstop` (not a
-    raw kill - cxswatch runs several worker processes, and --Wstop is
-    cxs's own, safe way to bring all of them down together).
+    stops cxs's own Watch daemon via its documented `cxs --Wstop` first,
+    falling back to a direct SIGTERM (via cxswatch's own PID file,
+    /run/cxswatch.pid) if that didn't actually work - found for real on
+    prod-host-3: --Wstop reported "cxswatch process not found" and left all
+    4 of its processes running untouched, even though the PID file's
+    own content matched the real running PID exactly. Unmaintained
+    software with its own latent bugs, not something to trust blindly
+    even when it claims success.
 
     Returns (cron_changes, watch_stopped). cron_changes: list of
     (source_type, path, old_line, new_line). watch_stopped: None in a
     dry run; True/False (whether no cxswatch process remained after)
-    once apply=True actually ran --Wstop."""
+    once apply=True actually tried to stop it."""
     cron_changes = []
     for source_type, path, line in find_cxs_cron_sources(match=_invokes_cxs_suite):
         new_line = comment_out_cron_line(line)
@@ -352,14 +357,42 @@ def disable_cxs_entirely(apply=False):
 
     watch_stopped = None
     if apply:
-        try:
-            subprocess.run(["cxs", "--Wstop"], capture_output=True, timeout=30)
-            time.sleep(1)
-            watch_stopped = subprocess.run(["pgrep", "-x", "cxswatch"], capture_output=True).returncode != 0
-        except Exception:
-            watch_stopped = False
+        watch_stopped = _stop_cxswatch()
 
     return cron_changes, watch_stopped
+
+
+def _cxswatch_running():
+    return subprocess.run(["pgrep", "-x", "cxswatch"], capture_output=True).returncode == 0
+
+
+def _stop_cxswatch(pidfile="/run/cxswatch.pid"):
+    """Tries cxs's own documented --Wstop first; if cxswatch is still
+    running afterwards (verified found on prod-host-3: --Wstop claimed
+    "process not found" and changed nothing, even with a PID file whose
+    own content matched the real running process), falls back to a
+    direct SIGTERM via that same PID file, then SIGKILL if it's still
+    alive a few seconds later. Returns True if no cxswatch process
+    remains either way."""
+    try:
+        subprocess.run(["cxs", "--Wstop"], capture_output=True, timeout=30)
+        time.sleep(1)
+    except Exception:
+        pass
+    if not _cxswatch_running():
+        return True
+
+    try:
+        with open(pidfile) as f:
+            pid = int(f.read().strip())
+        os.kill(pid, signal.SIGTERM)
+        time.sleep(2)
+        if _cxswatch_running():
+            os.kill(pid, signal.SIGKILL)
+            time.sleep(1)
+    except Exception:
+        pass
+    return not _cxswatch_running()
 
 
 def write_conf_merged(conf, config_path="/etc/openxs/openxs.conf"):
