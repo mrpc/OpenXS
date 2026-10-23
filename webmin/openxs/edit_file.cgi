@@ -23,6 +23,15 @@ else {
 			print $fh $content;
 			close($fh);
 			print "<p style='color:green'>Saved $path.</p>\n";
+			if ($key eq 'modsec_exclusions') {
+				# This file is just the source list - the actual Apache
+				# config it controls has to be regenerated and Apache
+				# reloaded for a change here to take effect.
+				my $out = `python3 $pmf_dir/openxs_modsec_exclusions.py 2>&1`;
+				system("apache2ctl -t 2>/dev/null && (systemctl reload apache2 2>/dev/null || service apache2 reload 2>/dev/null)");
+				print "<pre style='background:#1e1e1e;color:#e8e8e8;padding:8px'>" . &html_escape($out) . "</pre>";
+				print "<p style='color:green'>Regenerated /etc/modsecurity/openxs-exclusions.conf and reloaded Apache.</p>\n";
+				}
 			}
 		}
 	my @lines = -e $path ? &read_file_lines($path, 1) : ();
