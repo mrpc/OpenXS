@@ -13,6 +13,19 @@ my $scan_id = $in{'scan_id'};
 $scan_id =~ s/[^0-9]//g;
 my $view_quarantine = $in{'view'} eq 'quarantine';
 
+sub quarantine_action_form
+{
+# A POST form, not a plain <a href> - a raw link navigates out of
+# Webmin's themed frame entirely instead of staying inside it, the same
+# way every other action on this module already works via mini_form().
+my ($action, $fid, $label, $tags) = @_;
+return &ui_form_start("quarantine.cgi", "post") .
+	&ui_hidden("action", $action) . &ui_hidden("id", $fid) .
+	&ui_hidden("scan_id", $scan_id) .
+	&ui_submit($label, "go", 0, $tags) .
+	&ui_form_end();
+}
+
 sub quarantine_action_links
 {
 my ($fid, $qpath) = @_;
@@ -21,12 +34,12 @@ if ($qpath eq "__deleted__") {
 	}
 elsif ($qpath ne "") {
 	return "<b style='color:#b30000'>Quarantined</b><br>".
-	       "<a href='quarantine.cgi?action=restore&id=$fid'>Restore</a> | ".
-	       "<a href='quarantine.cgi?action=delete&id=$fid' ".
-	       "onclick=\"return confirm('Permanently delete this file?')\">Delete</a>";
+	       &quarantine_action_form("restore", $fid, "Restore") .
+	       &quarantine_action_form("delete", $fid, "Delete",
+	       	"onclick=\"return confirm('Permanently delete this file?')\"");
 	}
 else {
-	return "<a href='quarantine.cgi?action=quarantine&id=$fid'>Quarantine now</a>";
+	return &quarantine_action_form("quarantine", $fid, "Quarantine now");
 	}
 }
 
