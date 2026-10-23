@@ -50,6 +50,9 @@ CHANGED_HOURS=                     # blank = no time filter; N = only files chan
 THROTTLE_LOAD=                     # blank = disabled; pause scanning if load average exceeds this
 QUIET=0                            # suppress the scan summary line (for cron)
 WATCH_PATHS=                       # comma-separated dirs for the watch daemon; blank = every account's web root
+WATCH_RATE_COUNT=5                 # watch daemon: ignore a file after this many scans...
+WATCH_RATE_WINDOW=10                # ...within this many seconds...
+WATCH_RATE_COOLDOWN=60              # ...for this many seconds (cxs's --Wrateignore)
 </pre>";
 
 print &ui_subheading("Ignore file - /etc/openxs/ignore");

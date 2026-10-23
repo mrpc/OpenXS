@@ -13,8 +13,12 @@ v1 scope, deliberately kept small:
   - YARA + custom rules + ClamAV per changed file, reusing pmf_scan's
     own functions - no fs_scan (that's a directory-level sweep, a
     different shape of check than "a file just changed")
-  - no rate-limiting/debounce yet (cxs's --Wsleep/--Wrateignore) - a
-    file saved many times in a row will be rescanned every time
+
+Rate limiting (cxs's --Wrateignore): if the same file is scanned more
+than WATCH_RATE_COUNT times within WATCH_RATE_WINDOW seconds (a log file
+or cache file being rewritten constantly, say), it's ignored for
+WATCH_RATE_COOLDOWN seconds instead of being rescanned on every single
+write.
 
 YARA matching goes through openxs-scand's socket (requires it to be
 running) rather than compiling the ruleset again here - one compiled
@@ -29,6 +33,33 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pmf_scan
 
 LOG = "/var/log/openxs-watchd.log"
+
+# Per-file recent-event timestamps and cooldown-until times, both module-
+# level so a single daemon process (one inotifywait loop, no threading)
+# can just check/update them inline - no locking needed.
+_recent = {}
+_ignored_until = {}
+
+
+def rate_limited(fname, count, window, cooldown):
+    """True if fname has been scanned too often recently and should be
+    skipped. Clears its own state once the cooldown expires."""
+    now = time.time()
+    until = _ignored_until.get(fname)
+    if until is not None:
+        if now < until:
+            return True
+        del _ignored_until[fname]
+        _recent.pop(fname, None)
+
+    times = [t for t in _recent.get(fname, []) if now - t < window]
+    times.append(now)
+    _recent[fname] = times
+    if len(times) > count:
+        _ignored_until[fname] = now + cooldown
+        log(f"RATE-LIMITED {fname}: scanned {len(times)} times in {window}s, ignoring for {cooldown}s")
+        return True
+    return False
 
 
 def log(msg):
@@ -116,6 +147,9 @@ def main():
     custom_rules = pmf_scan.load_custom_rules(os.environ.get("OPENXS_RULE_FILE", "/etc/openxs/rules"))
     path_overrides = pmf_scan.load_path_overrides(os.environ.get("OPENXS_PATH_SETTINGS", "/etc/openxs/path_settings"))
     global_fast_php_only = cfg.get("FAST_PHP_ONLY", "0")
+    rate_count = int(cfg.get("WATCH_RATE_COUNT", "5") or "5")
+    rate_window = float(cfg.get("WATCH_RATE_WINDOW", "10") or "10")
+    rate_cooldown = float(cfg.get("WATCH_RATE_COOLDOWN", "60") or "60")
     os.environ.setdefault("OPENXS_QUARANTINE_ENABLED", cfg.get("QUARANTINE_ENABLED", "0"))
     os.environ.setdefault("OPENXS_QUARANTINE_CATEGORIES", cfg.get("QUARANTINE_CATEGORIES", "virus,yara"))
 
@@ -124,7 +158,7 @@ def main():
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True)
     for line in proc.stdout:
         fname = line.rstrip("\n")
-        if fname:
+        if fname and not rate_limited(fname, rate_count, rate_window, rate_cooldown):
             scan_one(fname, ignore, custom_rules, path_overrides, global_fast_php_only)
 
 
