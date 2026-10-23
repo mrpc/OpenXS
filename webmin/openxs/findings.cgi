@@ -55,7 +55,7 @@ print &ui_form_start("findings.cgi", "get") .
 my $search_arg = $search eq "" ? "None" : "'" . ($search =~ s/'/\\'/gr) . "'";
 my $cat_arg = $cat eq "" ? "None" : "'$cat'";
 my $out = `python3 -c "
-import sys
+import sys, os
 sys.path.insert(0, '$pmf_dir')
 import openxs_db
 rows, total = openxs_db.search_findings(category=$cat_arg, search=$search_arg, limit=$page_size, offset=$offset, sort='$sort', order='$order')
@@ -63,7 +63,12 @@ print('TOTAL\\t' + str(total))
 for fid, f, r, q, size, ts, scan_path in rows:
     user = openxs_db.derive_user(f) or ''
     source = openxs_db.derive_source(scan_path)
-    print(str(fid) + '\\t' + f + '\\t' + r + '\\t' + (q or '') + '\\t' + str(size or '') + '\\t' + str(ts) + '\\t' + user + '\\t' + source)
+    # Same path view_file.cgi would read - a quarantined file is gone
+    # from its original location by design, so check the quarantine
+    # copy for those; only flag it \"gone\" if neither copy exists.
+    check_path = q if (q and q not in ('', '__deleted__')) else f
+    gone = int(not os.path.exists(check_path))
+    print(str(fid) + '\\t' + f + '\\t' + r + '\\t' + (q or '') + '\\t' + str(size or '') + '\\t' + str(ts) + '\\t' + user + '\\t' + source + '\\t' + str(gone))
 "`;
 my @all_lines = grep { $_ ne "" } split(/\n/, $out);
 my $total = 0;
@@ -85,16 +90,22 @@ else {
 		&findings_sort_header($sort, $order, $base_qs, "rule", "Rule"),
 		&findings_sort_header($sort, $order, $base_qs, "size", "Size"), "Status"]);
 	foreach my $row (@all_lines) {
-		my ($fid, $f, $r, $q, $size, $ts, $user, $source) = split(/\t/, $row);
-		my $date = $ts ne '' && $ts ne 'None' ? &make_date($ts, 1) : "<i>unknown</i>";
-		my $size_h = $size ne '' ? "${size}B" : "-";
-		print &ui_columns_row([
-			&ui_checkbox("id", $fid, "", 0),
-			$date, &html_escape($user), &html_escape($source),
-				&html_escape($f) . " <a href='view_file.cgi?id=$fid'>[View]</a> <a href='finding_logs.cgi?id=$fid'>[Who hit this?]</a>", &html_escape($r), $size_h,
-			&openxs_quarantine_action_links($fid, $q, undef),
-			]);
-		}
+			my ($fid, $f, $r, $q, $size, $ts, $user, $source, $gone) = split(/\t/, $row);
+			my $date = $ts ne '' && $ts ne 'None' ? &make_date($ts, 1) : "<i>unknown</i>";
+			my $size_h = $size ne '' ? "${size}B" : "-";
+			my $links = $gone eq '1'
+				? "<i style='color:#888'>(file gone)</i> <a href='finding_logs.cgi?id=$fid'>[Who hit this?]</a>"
+				: "<a href='view_file.cgi?id=$fid'>[View]</a> <a href='finding_logs.cgi?id=$fid'>[Who hit this?]</a>";
+			my $status = ($gone eq '1' && $q eq '')
+				? "<i style='color:#888'>File gone</i>"
+				: &openxs_quarantine_action_links($fid, $q, undef);
+			print &ui_columns_row([
+				&ui_checkbox("id", $fid, "", 0),
+				$date, &html_escape($user), &html_escape($source),
+				&html_escape($f) . " " . $links, &html_escape($r), $size_h,
+				$status,
+				]);
+			}
 	print &ui_columns_end();
 	print "<p>" .
 		&ui_submit("Quarantine selected", "bulk_quarantine") . " " .
