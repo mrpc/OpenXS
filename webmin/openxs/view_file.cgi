@@ -44,7 +44,8 @@ try:
     with open(read_path, 'rb') as f:
         data = f.read(MAX_PREVIEW + 1)
 except OSError as e:
-    print(f'ERROR\\t{e}')
+    kind = 'NOTEXIST' if e.errno == 2 else 'OTHER'
+    print(f'ERROR\\t{kind}\\t{e}')
     sys.exit()
 
 truncated = len(data) > MAX_PREVIEW
@@ -73,7 +74,11 @@ my @hlines = split(/\n/, $header);
 if ($hlines[0] eq 'NOTFOUND') {
 	print "<p>No such finding.</p>\n";
 	}
-elsif ($hlines[0] =~ /^ERROR\t(.+)$/) {
+elsif ($hlines[0] =~ /^ERROR\tNOTEXIST\t/) {
+	print "<p>This file no longer exists on disk - it may have been deleted, moved, " .
+		"or cleaned up since this finding was recorded (common for older, migrated findings).</p>\n";
+	}
+elsif ($hlines[0] =~ /^ERROR\t[A-Z]+\t(.+)$/) {
 	print "<p>Could not read the file: " . &html_escape($1) . "</p>\n";
 	}
 elsif ($hlines[0] =~ /^OK\t([^\t]*)\t([01])\t(\d*)$/) {
