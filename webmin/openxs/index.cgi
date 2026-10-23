@@ -146,6 +146,11 @@ print &ui_table_row("Watch paths (for the watch daemon above)",
 	" <i>comma-separated directories to monitor continuously. Blank = every account's web root ".
 	"(Accounts directory/subpath below), same as accounts-mode scanning. ".
 	"Restart the watch daemon after changing this.</i>");
+print &ui_table_row("Watch daemon rate limit",
+	"ignore a file for " . &ui_textbox("watch_rate_cooldown", $cfg{'WATCH_RATE_COOLDOWN'}, 5) .
+	"s if it's scanned more than " . &ui_textbox("watch_rate_count", $cfg{'WATCH_RATE_COUNT'}, 5) .
+	" times within " . &ui_textbox("watch_rate_window", $cfg{'WATCH_RATE_WINDOW'}, 5) .
+	"s <i>(cxs's --Wrateignore - stops a constantly-rewritten file, e.g. a log, from being rescanned on every single write)</i>");
 print &ui_table_end();
 print &ui_submit("Save", "save");
 print &ui_form_end();
