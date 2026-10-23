@@ -163,4 +163,30 @@ else
     echo "    Skipped (pass --with-maldet, or install/reconfigure later from the Webmin dashboard)."
 fi
 
+if [ "$(systemctl is-active maldet 2>/dev/null)" = "active" ]; then
+    echo "==> Note: maldet's own --monitor daemon (maldet.service) is already running on this server."
+    echo "    If you later enable OpenXS's own watch daemon (watchd), both would watch the same"
+    echo "    directories independently (double inotify watches, double work per file change) -"
+    echo "    watchd already gets 100% of maldet's detection value via its own integration. The"
+    echo "    Webmin dashboard will offer to disable maldet's monitor the first time you start watchd."
+fi
+
+echo "==> Checking for an existing cxs (ConfigServer eXploit Scanner) install..."
+cxs_preview=$(python3 "$PMF_DIR/migrate_from_cxs.py" disable-exploitscan 2>/dev/null) || true
+if echo "$cxs_preview" | grep -q '^+ '; then
+    echo "$cxs_preview"
+    echo
+    if [ -t 0 ]; then
+        read -r -p "Disable cxs's own exploitscan in the cron entrie(s) above, since OpenXS already replaces it? Nothing else about cxs is touched. [y/N] " answer
+        if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
+            python3 "$PMF_DIR/migrate_from_cxs.py" disable-exploitscan --apply
+        else
+            echo "    Skipped. Re-run later: python3 $PMF_DIR/migrate_from_cxs.py disable-exploitscan --apply"
+        fi
+    else
+        echo "    Not running interactively - skipped."
+        echo "    Re-run later: python3 $PMF_DIR/migrate_from_cxs.py disable-exploitscan --apply"
+    fi
+fi
+
 echo "==> Done."
