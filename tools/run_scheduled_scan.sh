@@ -77,12 +77,26 @@ export OPENXS_QUARANTINE_CATEGORIES="$QUARANTINE_CATEGORIES"
 export OPENXS_FAST_PHP_ONLY="$FAST_PHP_ONLY"
 python3 pmf_scan.py scan php.yar filelist.txt > scan_results.txt 2> scan.log
 
+# Proactive whitelist-drift check: a whitelisted file whose content has
+# since changed would start matching again anyway on its own next scan -
+# this flags it clearly and separately, as "needs re-validation" rather
+# than mixed in as an unexplained new hit.
+drift_output=$(python3 check_whitelist_drift.py whitelist.yar 2>&1) || true
+drift_count=$(echo "$drift_output" | grep -c '^CHANGED\|^MISSING' || true)
+
 hits=$(grep -c . scan_results.txt || true)
 
-if [ "$hits" -gt 0 ]; then
+if [ "$hits" -gt 0 ] || [ "$drift_count" -gt 0 ]; then
     {
-        echo "OpenXS: $hits genuine hit(s) on $HOST ($SCAN_LABEL)"
-        echo ""
-        cat scan_results.txt
-    } | mail -s "[$HOST] OpenXS: $hits hit(s)" "$EMAIL"
+        if [ "$hits" -gt 0 ]; then
+            echo "OpenXS: $hits genuine hit(s) on $HOST ($SCAN_LABEL)"
+            echo ""
+            cat scan_results.txt
+            echo ""
+        fi
+        if [ "$drift_count" -gt 0 ]; then
+            echo "=== Whitelist drift: $drift_count file(s) changed since being whitelisted (need re-validation) ==="
+            echo "$drift_output"
+        fi
+    } | mail -s "[$HOST] OpenXS: $hits hit(s), $drift_count drift" "$EMAIL"
 fi
