@@ -461,13 +461,16 @@ def quarantined_files(limit=50, offset=0, sort="date", order="desc"):
     need every row (e.g. migrate_from_cxs.py never calls this at all -
     it writes directly, so this only ever affects the UI).
 
-    Returns (id, file_path, rule_name, quarantine_path, quarantined_at)
-    - the date comes from the parent scan's started_at, which for a
-    live quarantine_file() call is "now" (close enough) and for
-    import_quarantined_finding() is the real historical timestamp
-    recovered from cxs's own .restore4 sidecar, not today's import
-    date - findings.quarantined_at of its own doesn't exist, this was
-    missing from the UI entirely until asked for.
+    Returns (id, file_path, rule_name, quarantine_path, quarantined_at,
+    size, scan_path) - the date comes from the parent scan's
+    started_at, which for a live quarantine_file() call is "now"
+    (close enough) and for import_quarantined_finding() is the real
+    historical timestamp recovered from cxs's own .restore4 sidecar,
+    not today's import date - findings.quarantined_at of its own
+    doesn't exist, this was missing from the UI entirely until asked
+    for. size/scan_path are for derive_user()/derive_source(), same
+    User/Source columns findings.cgi already has - the quarantine view
+    is findings.cgi filtered to one status, so it shouldn't show less.
 
     sort/order: default is date, newest first - plain f.id DESC (the
     previous default) happened to equal "newest first" for live
@@ -476,7 +479,7 @@ def quarantined_files(limit=50, offset=0, sort="date", order="desc"):
     conn = _connect()
     sort_col = FINDING_SORT_COLUMNS.get(sort, FINDING_SORT_COLUMNS["date"])
     sort_dir = "ASC" if order == "asc" else "DESC"
-    query = ("SELECT f.id, f.file_path, f.rule_name, f.quarantine_path, s.started_at "
+    query = ("SELECT f.id, f.file_path, f.rule_name, f.quarantine_path, s.started_at, f.size, s.path "
              "FROM findings f JOIN scans s ON s.id = f.scan_id "
              "WHERE f.quarantine_path IS NOT NULL AND f.quarantine_path != '__deleted__' "
              f"ORDER BY {sort_col} {sort_dir}, f.id {sort_dir}")
