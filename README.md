@@ -26,6 +26,20 @@ product.
   (YARA, LGPL-3.0) — detects obfuscated PHP, webshells, and known exploit
   patterns.
 - **Virus scanning**: ClamAV, as a second detector alongside YARA.
+- **Known-exploit database (maldet)**: [Linux Malware Detect](https://github.com/rfxn/linux-malware-detect)
+  as a third, independent detector (its own MD5/HEX/YARA signature set) -
+  optional, one-click installer from the dashboard, report-only (its own
+  auto-quarantine is disabled for scans OpenXS triggers).
+- **Version checks**: WordPress core (against WordPress.org's own API) and
+  Composer packages (against Packagist - no built-in knowledge of any
+  specific package needed) for outdated versions, plus pending apt
+  security updates - an initial, narrower `sversionscan` equivalent.
+- **File integrity monitoring**: SHA-256 baseline of a configured list of
+  important files (configs, this scanner's own whitelist/rules), reports
+  drift against it - pre-seeded with a reasoned default list on install.
+- **Mailbox virus scanning**: opt-in ClamAV scan of every account's
+  Maildir - cxs's separate `virusscan` feature, which had no equivalent
+  before this.
 - **Real-time upload blocking**: a mod_security `@inspectFile` hook runs
   both detectors on every file upload, before it's ever accepted by the
   web app.
@@ -38,11 +52,25 @@ product.
   webroot on scan (not on the real-time hook, which already blocks the
   request), with restore/delete from the UI.
 - **Scan history**: a small local SQLite database, so results survive
-  past the next scan.
+  past the next scan - including per-scan duration (broken down by
+  detector) and system load, for answering "is it optimized", not just
+  "is it working".
+- **Statistics**: daily aggregate counters (scans, hits, quarantined,
+  avg. duration - mirrors cxs's own daily counter tables) with a simple
+  chart, no external JS/CDN required.
+- **Migration from cxs**: `tools/migrate_from_cxs.py` reads an existing
+  cxs install's settings, custom ignore/exploit rules, quarantine, and
+  historical scan logs, and imports what it can into OpenXS - reporting
+  clearly (never silently) anything it can't translate. Dry-run by
+  default.
+- **MCP server**: a minimal, read-only MCP server
+  (`tools/openxs_mcp_server.py`) exposes status/logs/findings as
+  structured tool calls instead of SSH + grep - meant to run over SSH
+  stdio from an operator's own machine, no public exposure.
 - **Webmin module**: dashboard (per-component install status, with
-  one-click installers for mod_security/the CSF hook), daemon control,
-  settings (alert e-mail, scan path, quarantine toggle), scan history,
-  and quarantine management.
+  one-click installers for ClamAV/maldet/mod_security/the CSF hook),
+  daemon control, settings (its own page, separate from the dashboard),
+  scan history, statistics, and quarantine management.
 
 ## Architecture
 
@@ -120,13 +148,14 @@ on non-apt systems rather than failing halfway through.
 
 Still on the roadmap, deliberately incremental rather than all-at-once:
 
-- `sversionscan` equivalent — detecting outdated/vulnerable versions of
-  installed CMSs and plugins (cxs covered 700+ applications; this needs
-  its own data model and isn't a quick addition).
-- Per-category detection strictness (cxs let you choose exactly which
-  heuristics trigger a report vs. a quarantine action).
-- Server-level security audit (missing security updates, known
-  vulnerable packages).
+- Full `sversionscan` coverage — WordPress core and Composer packages are
+  covered; the other ~200 CMSs/plugins (and any vulnerable-version
+  database beyond "what's the latest release") cxs covered are not.
+- Support for hosting control panels beyond Webmin/Virtualmin (our own
+  fleet's panel, and all of OpenXS's UI/accounts-mode assumptions so
+  far) — CyberPanel, HestiaCP, CloudPanel. Each has its own account
+  layout and plugin/module system; needs its own investigation per
+  panel before any code.
 - Testing `install.sh` against more environments: other Debian/Ubuntu
   releases, RHEL/CentOS-family systems (would need a yum/dnf code path),
   and against the actual CSF version (v14.24, pre-GPLv3) still running on
