@@ -1,0 +1,13 @@
+version: 2
+updates:
+  # No requirements.txt - this project is deliberately stdlib-only
+  # Python (see README). The only pinned external versions worth
+  # tracking here are the GitHub Actions themselves.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "monthly"
