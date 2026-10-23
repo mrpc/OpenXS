@@ -20,6 +20,8 @@ print "<p>OpenXS detects malicious PHP (webshells, obfuscated code) and other co
       "<li><b>Scheduled/manual scans</b>: a daily cron job and the dashboard's 'Scan now' button, ".
       "covering everything under the scan path regardless of when it last changed.</li></ul>".
       "<p>All three go through the same detectors: YARA (php-malware-finder + our own rules), ClamAV, ".
+      "maldet (Linux Malware Detect - its own independently-maintained MD5/HEX/YARA signature set; ".
+      "report-only here, its own auto-quarantine is disabled for scans OpenXS triggers), ".
       "filesystem-level checks (SUID files, world-writable directories, symlinks, core dumps, stray ".
       "binaries), and whatever you add to the custom rule file.</p>";
 
