@@ -13,37 +13,18 @@ my $scan_id = $in{'scan_id'};
 $scan_id =~ s/[^0-9]//g;
 my $view_quarantine = $in{'view'} eq 'quarantine';
 
-sub quarantine_action_form
-{
-# A POST form, not a plain <a href> - a raw link navigates out of
-# Webmin's themed frame entirely instead of staying inside it, the same
-# way every other action on this module already works via mini_form().
-my ($action, $fid, $label, $tags) = @_;
-# display:inline-block - these sit next to each other in the Status
-# column (e.g. Restore + Delete), not one per line making every row of
-# a 50-row page needlessly tall.
-return &ui_form_start("quarantine.cgi", "post", undef, "style='display:inline-block;margin-right:4px'") .
-	&ui_hidden("action", $action) . &ui_hidden("id", $fid) .
-	&ui_hidden("scan_id", $scan_id) .
-	&ui_submit($label, "go", 0, $tags) .
-	&ui_form_end();
-}
-
 sub quarantine_action_links
 {
 my ($fid, $qpath) = @_;
-if ($qpath eq "__deleted__") {
-	return "<i>Deleted</i>";
-	}
-elsif ($qpath ne "") {
-	return "<b style='color:#b30000'>Quarantined</b><br>".
-	       &quarantine_action_form("restore", $fid, "Restore") .
-	       &quarantine_action_form("delete", $fid, "Delete",
-	       	"onclick=\"return confirm('Permanently delete this file?')\"");
-	}
-else {
-	return &quarantine_action_form("quarantine", $fid, "Quarantine now");
-	}
+return &openxs_quarantine_action_links($fid, $qpath, $scan_id);
+}
+
+sub quarantine_sort_header
+{
+my ($sort, $order, $col, $label) = @_;
+my $next_order = ($sort eq $col && $order eq 'desc') ? 'asc' : 'desc';
+my $arrow = $sort eq $col ? ($order eq 'desc' ? ' &#9660;' : ' &#9650;') : '';
+return "<a href='reports.cgi?view=quarantine&qsort=$col&qorder=$next_order'>$label$arrow</a>";
 }
 
 if ($view_quarantine) {
@@ -53,13 +34,16 @@ if ($view_quarantine) {
 	$page = 0 if ($page eq '');
 	my $page_size = 50;
 	my $offset = $page * $page_size;
+	my $sort = $in{'qsort'};
+	$sort = "date" unless ($sort =~ /^(date|path|size|rule)$/);
+	my $order = $in{'qorder'} eq 'asc' ? 'asc' : 'desc';  # default: newest first
 	my $out = `python3 -c "
 import sys
 sys.path.insert(0, '$pmf_dir')
 import openxs_db
 total = openxs_db.quarantined_files_count()
 print('TOTAL\\t' + str(total))
-for fid, f, r, q, ts in openxs_db.quarantined_files(limit=$page_size, offset=$offset):
+for fid, f, r, q, ts in openxs_db.quarantined_files(limit=$page_size, offset=$offset, sort='$sort', order='$order'):
     print(str(fid) + '\\t' + f + '\\t' + r + '\\t' + q + '\\t' + str(ts))
 "`;
 	my @all_lines = grep { $_ ne "" } split(/\n/, $out);
@@ -74,7 +58,12 @@ for fid, f, r, q, ts in openxs_db.quarantined_files(limit=$page_size, offset=$of
 		}
 	else {
 		print "<p>$total file(s) in quarantine - showing " . ($offset + 1) . "-" . ($offset + scalar(@rows)) . "</p>\n";
-		print &ui_columns_start(["Quarantined", "Original path", "Rule", "Status"]);
+		# Clicking a sortable header: same column again flips asc/desc,
+		# a different column starts it at desc (newest/largest/Z-first).
+		print &ui_columns_start([
+			&quarantine_sort_header($sort, $order, "date", "Quarantined"),
+			&quarantine_sort_header($sort, $order, "path", "Original path"),
+			&quarantine_sort_header($sort, $order, "rule", "Rule"), "Status"]);
 		foreach my $row (@rows) {
 			my ($fid, $f, $r, $q, $ts) = split(/\t/, $row);
 			my $date = $ts ne '' && $ts ne 'None' ? &make_date($ts, 1) : "<i>unknown</i>";
@@ -82,8 +71,9 @@ for fid, f, r, q, ts in openxs_db.quarantined_files(limit=$page_size, offset=$of
 			}
 		print &ui_columns_end();
 		print "<p>";
-		print "<a href='reports.cgi?view=quarantine&qpage=" . ($page - 1) . "'>&laquo; Previous</a> " if ($page > 0);
-		print "<a href='reports.cgi?view=quarantine&qpage=" . ($page + 1) . "'>Next &raquo;</a>" if ($offset + $page_size < $total);
+		my $sort_qs = "qsort=$sort&qorder=$order";
+		print "<a href='reports.cgi?view=quarantine&$sort_qs&qpage=" . ($page - 1) . "'>&laquo; Previous</a> " if ($page > 0);
+		print "<a href='reports.cgi?view=quarantine&$sort_qs&qpage=" . ($page + 1) . "'>Next &raquo;</a>" if ($offset + $page_size < $total);
 		print "</p>\n";
 		}
 	print "<p><a href='reports.cgi'>&laquo; Scan history</a></p>\n";
