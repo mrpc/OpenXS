@@ -17,7 +17,7 @@ QUARANTINE_DIR = os.environ.get("OPENXS_QUARANTINE", "/var/lib/openxs/quarantine
 # a fresh process can skip all migration DDL with one cheap read instead
 # of re-running CREATE TABLE IF NOT EXISTS + several ALTER TABLE/except
 # attempts on every single process start.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS scans (
@@ -46,6 +46,13 @@ CREATE TABLE IF NOT EXISTS daily_stats (
     total_duration REAL NOT NULL DEFAULT 0,
     duration_count INTEGER NOT NULL DEFAULT 0
 );
+-- Added once real production data (6438 migrated findings) showed
+-- search_findings()/quarantined_files() sorting by date - a JOIN across
+-- these two tables - doing a full scan+sort every time: ~35ms cold,
+-- against ~0.1ms for the old, index-backed "ORDER BY f.id" alone.
+CREATE INDEX IF NOT EXISTS idx_findings_scan_id ON findings(scan_id);
+CREATE INDEX IF NOT EXISTS idx_findings_quarantine_path ON findings(quarantine_path);
+CREATE INDEX IF NOT EXISTS idx_scans_started_at ON scans(started_at);
 """
 
 
@@ -365,13 +372,15 @@ _CATEGORY_SQL = {
 }
 
 
-def search_findings(category=None, search=None, limit=50, offset=0):
+def search_findings(category=None, search=None, limit=50, offset=0, sort="date", order="desc"):
     """Unified findings browser query (cxs's own tabbed All/Exploits/
     Virus/Old Versions/... view, which this mirrors) - every finding
     ever recorded, not just quarantined ones, with its scan's date and
     path for derive_user()/derive_source(). category: one of
     _CATEGORY_SQL's keys, or None for everything. search: substring
-    match against the file path, case-insensitive."""
+    match against the file path, case-insensitive. sort/order: same
+    FINDING_SORT_COLUMNS as quarantined_files() - plain id order isn't
+    date order for a bulk historical import."""
     conn = _connect()
     where = []
     params = []
@@ -381,10 +390,12 @@ def search_findings(category=None, search=None, limit=50, offset=0):
         where.append("f.file_path LIKE ?")
         params.append(f"%{search}%")
     where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+    sort_col = FINDING_SORT_COLUMNS.get(sort, FINDING_SORT_COLUMNS["date"])
+    sort_dir = "ASC" if order == "asc" else "DESC"
     query = (
         "SELECT f.id, f.file_path, f.rule_name, f.quarantine_path, f.size, s.started_at, s.path "
         "FROM findings f JOIN scans s ON s.id = f.scan_id "
-        f"{where_sql} ORDER BY f.id DESC LIMIT ? OFFSET ?"
+        f"{where_sql} ORDER BY {sort_col} {sort_dir}, f.id {sort_dir} LIMIT ? OFFSET ?"
     )
     rows = conn.execute(query, (*params, limit, offset)).fetchall()
     count = conn.execute(
@@ -434,7 +445,7 @@ def import_quarantined_finding(file_path, quarantine_src_path, rule_name, quaran
     return q_path
 
 
-QUARANTINE_SORT_COLUMNS = {
+FINDING_SORT_COLUMNS = {
     "date": "s.started_at",
     "path": "f.file_path",
     "size": "f.size",
@@ -463,7 +474,7 @@ def quarantined_files(limit=50, offset=0, sort="date", order="desc"):
     quarantine actions, but not for a historical bulk import like the
     one above - insertion order there isn't chronological order."""
     conn = _connect()
-    sort_col = QUARANTINE_SORT_COLUMNS.get(sort, QUARANTINE_SORT_COLUMNS["date"])
+    sort_col = FINDING_SORT_COLUMNS.get(sort, FINDING_SORT_COLUMNS["date"])
     sort_dir = "ASC" if order == "asc" else "DESC"
     query = ("SELECT f.id, f.file_path, f.rule_name, f.quarantine_path, s.started_at "
              "FROM findings f JOIN scans s ON s.id = f.scan_id "
