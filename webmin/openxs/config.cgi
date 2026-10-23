@@ -46,6 +46,19 @@ $cfg{'APT_SECURITY_ENABLED'} = (defined($in{'apt_security_enabled'}) && $in{'apt
 $cfg{'SCAN_MAILBOXES'} = (defined($in{'scan_mailboxes'}) && $in{'scan_mailboxes'} eq '1') ? '1' : '0';
 $cfg{'MAILBOX_RECENT_HOURS'} = &one_line($in{'mailbox_recent_hours'}) if (defined($in{'mailbox_recent_hours'}));
 $cfg{'MAILBOX_RECENT_HOURS'} =~ s/[^0-9]//g if ($cfg{'MAILBOX_RECENT_HOURS'} ne '');
+if ($cfg{'OPENXS_SRC'} ne '' && -d "$cfg{'OPENXS_SRC'}/.git") {
+	$cfg{'AUTO_UPDATE'} = (defined($in{'auto_update'}) && $in{'auto_update'} eq '1') ? '1' : '0';
+	my $cron_file = '/etc/cron.d/openxs-selfupdate';
+	if ($cfg{'AUTO_UPDATE'} eq '1') {
+		open(my $fh, '>', $cron_file);
+		print $fh "# Weekly OpenXS self-update, enabled from the Webmin Settings page.\n";
+		print $fh "17 3 * * 0 root cd $cfg{'OPENXS_SRC'} && git pull -q origin main && bash install.sh >> /var/log/openxs-selfupdate.log 2>&1\n";
+		close($fh);
+		}
+	else {
+		unlink($cron_file);
+		}
+	}
 &openxs_write_config(%cfg);
 
 if (defined($in{'schedule'}) && $in{'schedule'} ne "") {

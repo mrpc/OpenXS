@@ -71,7 +71,13 @@ if [ ! -d "$PMF_DIR/.git" ]; then
     mv "/tmp/pmf-src-$$/.git" "$PMF_DIR/.git"
     rm -rf "/tmp/pmf-src-$$"
 else
-    (cd "$PMF_DIR" && git pull -q)
+    # Pinned to a specific commit (not a branch - deliberately, see the
+    # comment on PMF_COMMIT above), so the clone is in detached-HEAD
+    # state: plain 'git pull' fails there ("You are not currently on a
+    # branch"). Re-fetch and check out whatever $PMF_COMMIT currently
+    # is instead - a no-op if already there, moves forward if a newer
+    # OpenXS release bumped the pin.
+    (cd "$PMF_DIR" && git fetch -q origin "$PMF_COMMIT" && git checkout -q FETCH_HEAD)
 fi
 # Upstream bug: IsWhitelisted doesn't reference its own Custom rule (idempotent fix)
 if ! grep -q "Misc or" "$PMF_DIR/whitelist.yar"; then
@@ -108,6 +114,13 @@ if [ ! -f /etc/openxs/openxs.conf ]; then
     fi
     printf 'EMAIL=root@localhost\nSCAN_PATH=/var/www\nQUARANTINE_ENABLED=0\nVERSION_SCAN_ENABLED=%s\nAPT_SECURITY_ENABLED=%s\nSCAN_MAILBOXES=%s\n' \
         "$VERSION_SCAN_ENABLED" "$APT_SECURITY_ENABLED" "$SCAN_MAILBOXES" > /etc/openxs/openxs.conf
+fi
+# Always refresh OPENXS_SRC (even on a re-run/upgrade, in case this clone
+# moved) - self-update (Webmin dashboard) needs to know where to git pull.
+if grep -q '^OPENXS_SRC=' /etc/openxs/openxs.conf 2>/dev/null; then
+    sed -i "s|^OPENXS_SRC=.*|OPENXS_SRC=$HERE|" /etc/openxs/openxs.conf
+else
+    echo "OPENXS_SRC=$HERE" >> /etc/openxs/openxs.conf
 fi
 
 echo "==> File integrity monitoring - initial baseline..."
