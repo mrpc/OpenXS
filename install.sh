@@ -153,6 +153,25 @@ if [ -d /usr/share/webmin ]; then
         sed -i 's/^root: /root: openxs /' /etc/webmin/webmin.acl
     fi
     systemctl restart webmin 2>/dev/null || service webmin restart 2>/dev/null || true
+
+    if [ -d /etc/webmin/status ]; then
+        echo "    Adding to Webmin's Servers Status dashboard widget..."
+        mkdir -p /etc/webmin/status/services
+        cat > /etc/webmin/status/services/openxs-watchd.serv <<'EOF'
+id=openxs-watchd
+type=init
+action=openxs-watchd
+desc=OpenXS Watch Daemon
+depends=openxs
+EOF
+        cat > /etc/webmin/status/services/openxs-scand.serv <<'EOF'
+id=openxs-scand
+type=init
+action=openxs-scand
+desc=OpenXS Scan Daemon
+depends=openxs
+EOF
+    fi
 else
     echo "==> Webmin not found - skipping UI module (CLI/cron still fully functional)."
     echo "    mod_security/CSF-hook install (if requested below) has no Webmin"
