@@ -96,18 +96,20 @@ else {
 import sys
 sys.path.insert(0, '$pmf_dir')
 import openxs_db, time
-for sid, ts, path, total, hits in openxs_db.recent_scans():
+for sid, ts, path, total, hits, duration, load_avg in openxs_db.recent_scans():
     t = time.strftime('%Y-%m-%d %H:%M', time.localtime(ts))
-    print(str(sid) + '\\t' + t + '\\t' + path + '\\t' + str(total) + '\\t' + str(hits))
+    d = ('%.1fs' % duration) if duration is not None else '-'
+    la = ('%.2f' % load_avg) if load_avg is not None else '-'
+    print(str(sid) + '\\t' + t + '\\t' + path + '\\t' + str(total) + '\\t' + str(hits) + '\\t' + d + '\\t' + la)
 "`;
 	my @rows = grep { $_ ne "" } split(/\n/, $out);
 	if (!@rows) {
 		print "<p>No scans recorded yet.</p>\n";
 		}
 	else {
-		print &ui_columns_start(["Scan", "When", "Path", "Files scanned", "Hits"]);
+		print &ui_columns_start(["Scan", "When", "Path", "Files scanned", "Hits", "Duration", "Load avg"]);
 		foreach my $row (@rows) {
-			my ($sid, $when, $path, $total, $hits) = split(/\t/, $row);
+			my ($sid, $when, $path, $total, $hits, $duration, $load_avg) = split(/\t/, $row);
 			my $hits_html = $hits > 0 ? "<b style='color:#b30000'>$hits</b>" : "0";
 			print &ui_columns_row([
 				"<a href='reports.cgi?scan_id=$sid'>#$sid</a>",
@@ -115,6 +117,8 @@ for sid, ts, path, total, hits in openxs_db.recent_scans():
 				&html_escape($path),
 				$total,
 				$hits_html,
+				&html_escape($duration),
+				&html_escape($load_avg),
 				]);
 			}
 		print &ui_columns_end();

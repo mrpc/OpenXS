@@ -33,15 +33,23 @@ def _connect():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.executescript(SCHEMA)
+    # Added after the initial release - ALTER TABLE, not a CREATE TABLE
+    # clause, since that only applies to a table that doesn't exist yet
+    # and an existing openxs.db already has the old `scans` schema.
+    for column in ("duration REAL", "load_avg REAL"):
+        try:
+            conn.execute(f"ALTER TABLE scans ADD COLUMN {column}")
+        except sqlite3.OperationalError:
+            pass  # already added in a previous run
     return conn
 
 
-def record_scan(path, files_scanned, findings):
+def record_scan(path, files_scanned, findings, duration=None, load_avg=None):
     """findings: list of (file_path, rule_name) tuples"""
     conn = _connect()
     cur = conn.execute(
-        "INSERT INTO scans (started_at, path, files_scanned, hits) VALUES (?, ?, ?, ?)",
-        (time.time(), path, files_scanned, len(findings)),
+        "INSERT INTO scans (started_at, path, files_scanned, hits, duration, load_avg) VALUES (?, ?, ?, ?, ?, ?)",
+        (time.time(), path, files_scanned, len(findings), duration, load_avg),
     )
     scan_id = cur.lastrowid
     conn.executemany(
@@ -127,7 +135,7 @@ def delete_quarantined(finding_id):
 def recent_scans(limit=50):
     conn = _connect()
     rows = conn.execute(
-        "SELECT id, started_at, path, files_scanned, hits FROM scans ORDER BY id DESC LIMIT ?",
+        "SELECT id, started_at, path, files_scanned, hits, duration, load_avg FROM scans ORDER BY id DESC LIMIT ?",
         (limit,),
     ).fetchall()
     conn.close()
