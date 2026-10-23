@@ -93,6 +93,16 @@ print &ui_table_row("Detection engine (php-malware-finder)",
 			&ui_submit("Update now", "update"))
 		        : "<i>installed as part of the base image</i>"));
 
+my %cfg_for_src = &openxs_read_config();
+my $openxs_src = $cfg_for_src{'OPENXS_SRC'};
+if ($openxs_src ne '' && -d "$openxs_src/.git") {
+	my $cur_commit = `cd $openxs_src && git rev-parse --short HEAD 2>/dev/null`;
+	chomp($cur_commit);
+	print &ui_table_row("OpenXS itself (daemon, Webmin module, tools)",
+		&row_value("Installed (" . &html_escape($cur_commit) . ")",
+			&mini_form("self_update.cgi", &ui_submit("Check for updates", "check"))));
+	}
+
 print &ui_table_row("ClamAV (virus scanning, 2nd detector)",
 	&row_value($clamav_ok ? &status_cell($clamav_running, "Installed, running", "Installed, not running")
 	                      : "<i style='color:#888'>Not installed - ran without it (optional, degrades gracefully)</i>",
