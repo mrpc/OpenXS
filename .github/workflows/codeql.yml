@@ -1,0 +1,27 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, independent of any push - new CodeQL query packs land
+    # over time and can flag something in code that hasn't changed.
+    - cron: "17 3 * * 1"
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          # Python only - that's where the real logic lives (daemons,
+          # the scan/quarantine DB, the CLI tools). The Perl Webmin
+          # module and the one inline <script> block aren't CodeQL-
+          # supported/worth a dedicated pass.
+          languages: python
+      - uses: github/codeql-action/analyze@v3
