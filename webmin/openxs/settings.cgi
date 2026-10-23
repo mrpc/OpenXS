@@ -27,6 +27,10 @@ my ($mail_active, $mail_reason) = split(/\t/, `python3 $pmf_dir/mailbox_scan.py 
 my $mail_note = $mail_active eq '1'
 	? "<br><i style='color:#888'>Note: $mail_reason - mail already appears scanned at delivery time, this may be redundant here.</i>"
 	: "";
+print &ui_table_row("WordPress core / composer package version check (nightly, sversionscan-equivalent)",
+	&ui_checkbox("version_scan_enabled", "1", "Enabled", $cfg{'VERSION_SCAN_ENABLED'} eq '1'));
+print &ui_table_row("Pending apt security updates check (nightly)",
+	&ui_checkbox("apt_security_enabled", "1", "Enabled", $cfg{'APT_SECURITY_ENABLED'} eq '1'));
 print &ui_table_row("Scan mailboxes for viruses (cxs's 'virusscan' - ClamAV only, not YARA)",
 	&ui_checkbox("scan_mailboxes", "1", "Scan every account's Maildir under 'Accounts directory' above",
 		$cfg{'SCAN_MAILBOXES'} eq '1') .

@@ -17,6 +17,8 @@ QUIET="0"
 QUARANTINE_CATEGORIES="virus,yara,maldet"
 SCAN_MAILBOXES="0"
 MAILBOX_RECENT_HOURS=""
+VERSION_SCAN_ENABLED="1"
+APT_SECURITY_ENABLED="1"
 # Parsed as plain data, not `source`-d: the config file is writable via the
 # Webmin settings form, and `source` would execute $()/`` in any value as
 # real shell code (e.g. a crafted EMAIL value running arbitrary commands
@@ -37,6 +39,8 @@ if [ -f "$CONFIG" ]; then
             QUARANTINE_CATEGORIES) QUARANTINE_CATEGORIES="$value" ;;
             SCAN_MAILBOXES) SCAN_MAILBOXES="$value" ;;
             MAILBOX_RECENT_HOURS) MAILBOX_RECENT_HOURS="$value" ;;
+            VERSION_SCAN_ENABLED) VERSION_SCAN_ENABLED="$value" ;;
+            APT_SECURITY_ENABLED) APT_SECURITY_ENABLED="$value" ;;
         esac
     done < "$CONFIG"
 fi
@@ -100,15 +104,23 @@ fim_count=$(echo "$fim_output" | grep -c '^CHANGED\|^REMOVED\|^ADDED' || true)
 
 # WordPress core / composer package version check (initial
 # sversionscan-equivalent - see version_scan.py's own docstring).
-version_output=$(python3 version_scan.py "$FS_SCAN_ROOT" 2>&1) || true
-echo "$version_output" > version_results.txt
-version_count=$(echo "$version_output" | grep -c '^OUTDATED' || true)
+version_output=""
+version_count=0
+if [ "$VERSION_SCAN_ENABLED" = "1" ]; then
+    version_output=$(python3 version_scan.py "$FS_SCAN_ROOT" 2>&1) || true
+    echo "$version_output" > version_results.txt
+    version_count=$(echo "$version_output" | grep -c '^OUTDATED' || true)
+fi
 
 # Pending apt security updates - OS-level, not application-layer like
 # the checks above (and not tied to SCAN_PATH/ACCOUNTS_DIR at all).
-apt_output=$(python3 apt_security_check.py 2>&1) || true
-echo "$apt_output" > apt_security_results.txt
-apt_count=$(echo "$apt_output" | grep -c '^SECURITY' || true)
+apt_output=""
+apt_count=0
+if [ "$APT_SECURITY_ENABLED" = "1" ]; then
+    apt_output=$(python3 apt_security_check.py 2>&1) || true
+    echo "$apt_output" > apt_security_results.txt
+    apt_count=$(echo "$apt_output" | grep -c '^SECURITY' || true)
+fi
 
 # Mailbox virus scanning - opt-in, cxs's separate "virusscan" feature
 # (ClamAV only, not the YARA ruleset - email attachments aren't PHP

@@ -89,7 +89,25 @@ bash "$PMF_DIR/install_clamav.sh"
 echo "==> Settings + scan-history database..."
 mkdir -p /etc/openxs /var/lib/openxs
 if [ ! -f /etc/openxs/openxs.conf ]; then
-    printf 'EMAIL=root@localhost\nSCAN_PATH=/var/www\nQUARANTINE_ENABLED=0\n' > /etc/openxs/openxs.conf
+    VERSION_SCAN_ENABLED=1
+    APT_SECURITY_ENABLED=1
+    SCAN_MAILBOXES=0
+    if [ -t 0 ]; then
+        read -r -p "Enable nightly WordPress/composer version + apt security update checks? [Y/n] " answer
+        if [ "$answer" = "n" ] || [ "$answer" = "N" ]; then
+            VERSION_SCAN_ENABLED=0
+            APT_SECURITY_ENABLED=0
+        fi
+        read -r -p "Enable nightly mailbox virus scanning (ClamAV, cxs's separate 'virusscan')? [y/N] " answer
+        if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
+            SCAN_MAILBOXES=1
+        fi
+    else
+        echo "    Not running interactively - defaulting to version/apt checks on, mailbox scan off."
+        echo "    Change any of these later in the Webmin Settings page."
+    fi
+    printf 'EMAIL=root@localhost\nSCAN_PATH=/var/www\nQUARANTINE_ENABLED=0\nVERSION_SCAN_ENABLED=%s\nAPT_SECURITY_ENABLED=%s\nSCAN_MAILBOXES=%s\n' \
+        "$VERSION_SCAN_ENABLED" "$APT_SECURITY_ENABLED" "$SCAN_MAILBOXES" > /etc/openxs/openxs.conf
 fi
 
 echo "==> File integrity monitoring - initial baseline..."
