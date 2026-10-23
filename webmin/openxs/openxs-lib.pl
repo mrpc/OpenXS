@@ -135,6 +135,40 @@ chomp($out);
 return $out eq 'active' ? 1 : 0;
 }
 
+# Shared by reports.cgi and findings.cgi - every per-finding quarantine
+# action (Quarantine now/Restore/Delete) goes through the same themed
+# POST form (never a plain <a href> - that navigates out of Webmin's
+# theme frame entirely instead of staying inside it).
+sub openxs_quarantine_action_form
+{
+my ($action, $fid, $label, $scan_id, $tags) = @_;
+# display:inline-block - these sit next to each other (e.g. Restore +
+# Delete), not one per line making every row of a 50-row page
+# needlessly tall.
+return &ui_form_start("quarantine.cgi", "post", undef, "style='display:inline-block;margin-right:4px'") .
+	&ui_hidden("action", $action) . &ui_hidden("id", $fid) .
+	&ui_hidden("scan_id", $scan_id) .
+	&ui_submit($label, "go", 0, $tags) .
+	&ui_form_end();
+}
+
+sub openxs_quarantine_action_links
+{
+my ($fid, $qpath, $scan_id) = @_;
+if ($qpath eq "__deleted__") {
+	return "<i>Deleted</i>";
+	}
+elsif ($qpath ne "") {
+	return "<b style='color:#b30000'>Quarantined</b><br>".
+	       &openxs_quarantine_action_form("restore", $fid, "Restore", $scan_id) .
+	       &openxs_quarantine_action_form("delete", $fid, "Delete", $scan_id,
+	       	"onclick=\"return confirm('Permanently delete this file?')\"");
+	}
+else {
+	return &openxs_quarantine_action_form("quarantine", $fid, "Quarantine now", $scan_id);
+	}
+}
+
 sub openxs_full_status
 {
 # Single source of truth shared with the CLI and the MCP server
@@ -202,9 +236,10 @@ return 1;
 # just reloaded looking unchanged, with nothing telling the user whether
 # anything actually happened. These two carry a one-line result message
 # through the redirect instead.
-our $openxs_nav = "<p><a href='index.cgi'>Dashboard</a> | <a href='reports.cgi'>Scan history</a> | ".
-	"<a href='reports.cgi?view=quarantine'>Quarantine</a> | <a href='stats.cgi'>Statistics</a> | ".
-	"<a href='logs.cgi'>Logs</a> | <a href='settings.cgi'>Settings</a> | <a href='documentation.cgi'>Documentation</a></p>\n";
+our $openxs_nav = "<p><a href='index.cgi'>Dashboard</a> | <a href='findings.cgi'>Findings</a> | ".
+	"<a href='reports.cgi'>Scan history</a> | <a href='reports.cgi?view=quarantine'>Quarantine</a> | ".
+	"<a href='stats.cgi'>Statistics</a> | <a href='logs.cgi'>Logs</a> | <a href='settings.cgi'>Settings</a> | ".
+	"<a href='documentation.cgi'>Documentation</a></p>\n";
 
 # Prints the result of an action directly, in the same request, instead of
 # an HTTP redirect to another page. Webmin's modern themes navigate between
