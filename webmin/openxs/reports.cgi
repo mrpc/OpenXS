@@ -19,7 +19,10 @@ sub quarantine_action_form
 # Webmin's themed frame entirely instead of staying inside it, the same
 # way every other action on this module already works via mini_form().
 my ($action, $fid, $label, $tags) = @_;
-return &ui_form_start("quarantine.cgi", "post") .
+# display:inline-block - these sit next to each other in the Status
+# column (e.g. Restore + Delete), not one per line making every row of
+# a 50-row page needlessly tall.
+return &ui_form_start("quarantine.cgi", "post", undef, "style='display:inline-block;margin-right:4px'") .
 	&ui_hidden("action", $action) . &ui_hidden("id", $fid) .
 	&ui_hidden("scan_id", $scan_id) .
 	&ui_submit($label, "go", 0, $tags) .
@@ -45,24 +48,43 @@ else {
 
 if ($view_quarantine) {
 	print &ui_subheading("Quarantined files");
+	my $page = $in{'qpage'};
+	$page =~ s/[^0-9]//g;
+	$page = 0 if ($page eq '');
+	my $page_size = 50;
+	my $offset = $page * $page_size;
 	my $out = `python3 -c "
 import sys
 sys.path.insert(0, '$pmf_dir')
 import openxs_db
-for fid, f, r, q in openxs_db.quarantined_files():
-    print(str(fid) + '\\t' + f + '\\t' + r + '\\t' + q)
+total = openxs_db.quarantined_files_count()
+print('TOTAL\\t' + str(total))
+for fid, f, r, q, ts in openxs_db.quarantined_files(limit=$page_size, offset=$offset):
+    print(str(fid) + '\\t' + f + '\\t' + r + '\\t' + q + '\\t' + str(ts))
 "`;
-	my @rows = grep { $_ ne "" } split(/\n/, $out);
+	my @all_lines = grep { $_ ne "" } split(/\n/, $out);
+	my $total = 0;
+	if (@all_lines && $all_lines[0] =~ /^TOTAL\t(\d+)$/) {
+		$total = $1;
+		shift(@all_lines);
+		}
+	my @rows = @all_lines;
 	if (!@rows) {
 		print "<p>Nothing in quarantine.</p>\n";
 		}
 	else {
-		print &ui_columns_start(["Original path", "Rule", "Status"]);
+		print "<p>$total file(s) in quarantine - showing " . ($offset + 1) . "-" . ($offset + scalar(@rows)) . "</p>\n";
+		print &ui_columns_start(["Quarantined", "Original path", "Rule", "Status"]);
 		foreach my $row (@rows) {
-			my ($fid, $f, $r, $q) = split(/\t/, $row);
-			print &ui_columns_row([&html_escape($f), &html_escape($r), &quarantine_action_links($fid, $q)]);
+			my ($fid, $f, $r, $q, $ts) = split(/\t/, $row);
+			my $date = $ts ne '' && $ts ne 'None' ? &make_date($ts, 1) : "<i>unknown</i>";
+			print &ui_columns_row([$date, &html_escape($f), &html_escape($r), &quarantine_action_links($fid, $q)]);
 			}
 		print &ui_columns_end();
+		print "<p>";
+		print "<a href='reports.cgi?view=quarantine&qpage=" . ($page - 1) . "'>&laquo; Previous</a> " if ($page > 0);
+		print "<a href='reports.cgi?view=quarantine&qpage=" . ($page + 1) . "'>Next &raquo;</a>" if ($offset + $page_size < $total);
+		print "</p>\n";
 		}
 	print "<p><a href='reports.cgi'>&laquo; Scan history</a></p>\n";
 	}
