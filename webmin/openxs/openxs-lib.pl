@@ -98,6 +98,16 @@ sub openxs_csf_present
 return -e '/etc/csf/csf.conf' ? 1 : 0;
 }
 
+# True if this is the old, pre-GPLv3 (< v15.00) licensed line - the
+# upstream download/license infrastructure for it is already offline
+# (see TIMELINE.md), so staying on it isn't "stable", it's unmaintained.
+sub openxs_csf_old
+{
+my $v = `csf -v 2>/dev/null`;
+return 0 if ($v !~ /v(\d+)\.(\d+)/);
+return $1 < 15 ? 1 : 0;
+}
+
 sub openxs_csf_hook_installed
 {
 return 0 if (!&openxs_csf_present());
