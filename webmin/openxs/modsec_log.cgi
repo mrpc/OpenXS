@@ -14,12 +14,25 @@ print "<p>A repeated block on the SAME host+path is worth a closer look - either
 	"positive (exclude it in <a href='settings.cgi'>Settings</a>), or an underlying issue " .
 	"ModSecurity is correctly catching (this is how a real information-leak bug on a live site " .
 	"was found and fixed this way). Scattered one-off hits across many different paths are " .
-	"usually just attack-scanner noise being correctly blocked.</p>\n";
+	"usually just attack-scanner noise being correctly blocked. Click a rule number to see what " .
+	"it actually checks for.</p>\n";
 
-my $out = `python3 $pmf_dir/openxs_modsec_log.py 2>&1`;
-print "<pre style='background:#1e1e1e;color:#e8e8e8;padding:8px;max-height:500px;overflow:auto'>";
-print $out ne "" ? &html_escape($out) : "(no ModSecurity blocks found in any log on this server)";
-print "</pre>";
+my @rows = &openxs_modsec_rows();
+
+if (!@rows) {
+	print "<p>(no ModSecurity blocks found in any log on this server)</p>\n";
+	}
+else {
+	print &ui_columns_start(["Count", "Host", "Path", "Rule", "First seen", "Last seen"]);
+	foreach my $r (@rows) {
+		print &ui_columns_row([
+			$r->{'count'}, &html_escape($r->{'host'}), &html_escape($r->{'uri'}),
+			&openxs_modsec_rule_link($r->{'rule_id'}),
+			&html_escape($r->{'first'}), &html_escape($r->{'last'}),
+			]);
+		}
+	print &ui_columns_end();
+	}
 
 print "<p><a href='index.cgi'>&laquo; Back to dashboard</a></p>\n";
 &ui_print_footer("/", "Webmin index page");

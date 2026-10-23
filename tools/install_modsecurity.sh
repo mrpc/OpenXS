@@ -30,3 +30,14 @@ echo "Wrote $MODSEC_RULE"
 apachectl configtest
 systemctl restart apache2 2>/dev/null || service apache2 restart
 echo "Apache restarted."
+
+# Persists daily block counts into openxs.db - without this, the Stats
+# page's mod_security chart/column would only ever show whatever's
+# still in the current (unrotated) Apache error logs, silently losing
+# older days once logrotate does its thing. Scheduled before 02:17's
+# scan and well before a typical distro's default logrotate run.
+cat > /etc/cron.d/openxs-modsec-record <<'EOF'
+10 2 * * * root python3 /opt/php-malware-finder/openxs_modsec_record.py >> /opt/php-malware-finder/cron.log 2>&1
+EOF
+chmod 644 /etc/cron.d/openxs-modsec-record
+python3 /opt/php-malware-finder/openxs_modsec_record.py 2>&1 || true

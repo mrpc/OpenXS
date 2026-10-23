@@ -17,7 +17,7 @@ QUARANTINE_DIR = os.environ.get("OPENXS_QUARANTINE", "/var/lib/openxs/quarantine
 # a fresh process can skip all migration DDL with one cheap read instead
 # of re-running CREATE TABLE IF NOT EXISTS + several ALTER TABLE/except
 # attempts on every single process start.
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS scans (
@@ -53,6 +53,15 @@ CREATE TABLE IF NOT EXISTS daily_stats (
 CREATE INDEX IF NOT EXISTS idx_findings_scan_id ON findings(scan_id);
 CREATE INDEX IF NOT EXISTS idx_findings_quarantine_path ON findings(quarantine_path);
 CREATE INDEX IF NOT EXISTS idx_scans_started_at ON scans(started_at);
+-- mod_security block counts, recorded daily by cron (openxs_modsec_record.py)
+-- rather than read live from Apache's error logs on every Stats page view -
+-- those logs get rotated/compressed/deleted (logrotate), so anything older
+-- than the rotation window would otherwise silently disappear from a
+-- 30/90/365-day chart. Same one-row-per-day shape as daily_stats.
+CREATE TABLE IF NOT EXISTS modsec_daily_stats (
+    date TEXT PRIMARY KEY,
+    blocks INTEGER NOT NULL DEFAULT 0
+);
 """
 
 
@@ -305,6 +314,41 @@ def daily_stats_filled(days=30):
     for offset in range(int(days) - 1, -1, -1):
         day = (today - datetime.timedelta(days=offset)).isoformat()
         result.append(by_date.get(day, (day, 0, 0, 0, 0, None)))
+    return result
+
+
+def record_modsec_count(date, count):
+    """Upserts (overwrites, not increments) one day's mod_security block
+    count - called once daily by cron with that day's total, not
+    incrementally per-block like record_scan_result(), since the source
+    (grepping the current log) is re-counted from scratch each time
+    rather than tailed incrementally."""
+    conn = _connect()
+    conn.execute(
+        "INSERT INTO modsec_daily_stats (date, blocks) VALUES (?, ?) "
+        "ON CONFLICT(date) DO UPDATE SET blocks = excluded.blocks",
+        (date, count),
+    )
+    conn.commit()
+    conn.close()
+
+
+def modsec_daily_stats_filled(days=30):
+    """Same gap-filling shape as daily_stats_filled() - one (date, blocks)
+    row per calendar day in the window, 0 for any day with no recorded
+    count (nothing happened, or cron hadn't run yet that far back)."""
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT date, blocks FROM modsec_daily_stats WHERE date >= date('now', ?) ORDER BY date",
+        (f"-{int(days)} days",),
+    ).fetchall()
+    conn.close()
+    by_date = {row[0]: row[1] for row in rows}
+    today = datetime.date.today()
+    result = []
+    for offset in range(int(days) - 1, -1, -1):
+        day = (today - datetime.timedelta(days=offset)).isoformat()
+        result.append((day, by_date.get(day, 0)))
     return result
 
 

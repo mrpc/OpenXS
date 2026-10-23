@@ -13,7 +13,7 @@ from one-off attack-scanner noise (many different URIs, few hits each)."""
 import glob
 import re
 import subprocess
-from collections import defaultdict
+from datetime import datetime
 
 BLOCK_RE = re.compile(
     r"^\[(?P<ts>[^\]]+)\].*ModSecurity: Access denied.*"
@@ -22,6 +22,9 @@ BLOCK_RE = re.compile(
 HOST_RE = re.compile(r'\[hostname "([^"]*)"\]')
 URI_RE = re.compile(r'\[uri "([^"]*)"\]')
 
+# Apache error log's own timestamp format, e.g. "Sat Oct 24 01:43:36.376503 2026"
+TS_FORMAT = "%a %b %d %H:%M:%S.%f %Y"
+
 
 def log_files():
     files = set(glob.glob("/var/log/apache2/error.log"))
@@ -29,8 +32,10 @@ def log_files():
     return sorted(files)
 
 
-def summarize(max_rows=50):
-    groups = {}
+def _matching_lines():
+    """Yields (line, host, uri, rule_id, ts) for every ModSecurity block
+    line found - the shared parse step both summarize() and
+    daily_counts() build on."""
     cmd = ["grep", "-h", "-r", "ModSecurity: Access denied"] + log_files()
     out = subprocess.run(cmd, capture_output=True, text=True).stdout
     for line in out.splitlines():
@@ -39,10 +44,16 @@ def summarize(max_rows=50):
             continue
         hm = HOST_RE.search(line)
         um = URI_RE.search(line)
-        key = (hm.group(1) if hm else "(unknown)", um.group(1) if um else "", m.group("id"))
-        g = groups.setdefault(key, {"count": 0, "first": m.group("ts"), "last": m.group("ts")})
+        yield (hm.group(1) if hm else "(unknown)", um.group(1) if um else "", m.group("id"), m.group("ts"))
+
+
+def summarize(max_rows=50):
+    groups = {}
+    for host, uri, rule_id, ts in _matching_lines():
+        key = (host, uri, rule_id)
+        g = groups.setdefault(key, {"count": 0, "first": ts, "last": ts})
         g["count"] += 1
-        g["last"] = m.group("ts")
+        g["last"] = ts
     rows = [
         {"host": h, "uri": u, "rule_id": r, **g}
         for (h, u, r), g in groups.items()
@@ -51,6 +62,24 @@ def summarize(max_rows=50):
     return rows[:max_rows]
 
 
+def daily_counts():
+    """{date (YYYY-MM-DD): block count} - for the Stats page's existing
+    per-day chart/table, same date format as openxs_db.daily_stats_filled().
+    A line whose timestamp doesn't parse (unexpected log format) is
+    skipped rather than crashing the whole page over one bad line."""
+    counts = {}
+    for _host, _uri, _rule_id, ts in _matching_lines():
+        try:
+            date = datetime.strptime(ts, TS_FORMAT).date().isoformat()
+        except ValueError:
+            continue
+        counts[date] = counts.get(date, 0) + 1
+    return counts
+
+
 if __name__ == "__main__":
+    # Tab-separated, one row per line - meant to be parsed (by the Webmin
+    # CGI, so it can render a real table with a per-rule lookup link),
+    # not read directly as formatted CLI output.
     for row in summarize():
-        print(f"{row['count']:>5}  {row['host']:<30} {row['uri']:<40} rule {row['rule_id']}")
+        print(f"{row['count']}\t{row['host']}\t{row['uri']}\t{row['rule_id']}\t{row['first']}\t{row['last']}")
