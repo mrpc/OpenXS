@@ -12,6 +12,13 @@ import time
 DB_PATH = os.environ.get("OPENXS_DB", "/var/lib/openxs/openxs.db")
 QUARANTINE_DIR = os.environ.get("OPENXS_QUARANTINE", "/var/lib/openxs/quarantine")
 
+# Bump this whenever a migration (new ALTER TABLE, new CREATE TABLE) is
+# added below - stored in the db file itself via PRAGMA user_version, so
+# a fresh process can skip all migration DDL with one cheap read instead
+# of re-running CREATE TABLE IF NOT EXISTS + several ALTER TABLE/except
+# attempts on every single process start.
+SCHEMA_VERSION = 3
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS scans (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27,6 +34,9 @@ CREATE TABLE IF NOT EXISTS findings (
     rule_name TEXT NOT NULL,
     quarantine_path TEXT
 );
+-- size: added after the initial release, via ALTER TABLE below (same
+-- reason as scans.duration/load_avg - a table that already exists
+-- doesn't pick up a new CREATE TABLE column).
 CREATE TABLE IF NOT EXISTS daily_stats (
     date TEXT PRIMARY KEY,
     scan_count INTEGER NOT NULL DEFAULT 0,
@@ -82,25 +92,48 @@ def _connect():
         real_conn.execute("PRAGMA synchronous=NORMAL")
         _connections[DB_PATH] = real_conn
     conn = _connections[DB_PATH]
-    # Only the first call for this DB_PATH actually runs the schema/
-    # migration DDL - cheap already, but no reason to repeat it either.
+    # _schema_initialized_for skips this entirely for the rest of a
+    # long-running process's lifetime (watchd) - zero DB round-trips.
+    # But a cron-triggered scan or a Webmin python3 -c call is a brand
+    # new, short-lived process every time, so re-running CREATE TABLE
+    # IF NOT EXISTS + several ALTER TABLE-and-catch-the-exception
+    # attempts was still happening once per process start, every start,
+    # forever - cheap individually, but needless: PRAGMA user_version
+    # stores a single integer IN the database file itself specifically
+    # for this (asked about directly - this is the standard SQLite
+    # pattern, not something to keep reinventing with try/except
+    # probing). One cheap read tells us immediately whether any
+    # migration work is needed at all.
     if _schema_initialized_for != DB_PATH:
-        conn.executescript(SCHEMA)
-        # Added after the initial release - ALTER TABLE, not a CREATE
-        # TABLE clause, since that only applies to a table that doesn't
-        # exist yet and an existing openxs.db already has the old
-        # `scans` schema.
-        for column in ("duration REAL", "load_avg REAL"):
+        current_version = conn.execute("PRAGMA user_version").fetchone()[0]
+        if current_version < SCHEMA_VERSION:
+            conn.executescript(SCHEMA)
+            # Added after the initial release - ALTER TABLE, not a
+            # CREATE TABLE clause, since that only applies to a table
+            # that doesn't exist yet and an existing openxs.db already
+            # has the old `scans` schema. Still guarded by its own
+            # try/except too (not just the version check above) in case
+            # someone's DB_PATH was hand-edited or migrated oddly.
+            for column in ("duration REAL", "load_avg REAL"):
+                try:
+                    conn.execute(f"ALTER TABLE scans ADD COLUMN {column}")
+                except sqlite3.OperationalError:
+                    pass  # already added in a previous run
             try:
-                conn.execute(f"ALTER TABLE scans ADD COLUMN {column}")
+                conn.execute("ALTER TABLE findings ADD COLUMN size INTEGER")
             except sqlite3.OperationalError:
                 pass  # already added in a previous run
+            conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         _schema_initialized_for = DB_PATH
     return _KeepOpenConnection(conn)
 
 
 def record_scan(path, files_scanned, findings, duration=None, load_avg=None):
-    """findings: list of (file_path, rule_name) tuples"""
+    """findings: list of (file_path, rule_name) tuples. Each finding's
+    file size is captured now (the file still sits where it was found -
+    quarantine, if any, is always a later, separate step) rather than
+    left for a viewer to re-stat later, by which point the file may
+    already be quarantined/gone."""
     conn = _connect()
     started_at = time.time()
     cur = conn.execute(
@@ -108,10 +141,15 @@ def record_scan(path, files_scanned, findings, duration=None, load_avg=None):
         (started_at, path, files_scanned, len(findings), duration, load_avg),
     )
     scan_id = cur.lastrowid
-    conn.executemany(
-        "INSERT INTO findings (scan_id, file_path, rule_name) VALUES (?, ?, ?)",
-        [(scan_id, f, r) for f, r in findings],
-    )
+    for f, r in findings:
+        try:
+            size = os.path.getsize(f)
+        except OSError:
+            size = None
+        conn.execute(
+            "INSERT INTO findings (scan_id, file_path, rule_name, size) VALUES (?, ?, ?, ?)",
+            (scan_id, f, r, size),
+        )
     day = time.strftime("%Y-%m-%d", time.gmtime(started_at))
     _bump_daily_stat(conn, day, scan_count=1, files_scanned=files_scanned, hits=len(findings),
                       total_duration=duration or 0, duration_count=1 if duration is not None else 0)
@@ -283,6 +321,32 @@ def findings_for_scan(scan_id):
     return rows
 
 
+def derive_user(file_path, accounts_dir=None):
+    """Best-effort account/user name for a finding - cxs's own UI shows
+    this as a column (derived from its own accounts-mode path layout,
+    not a separately stored field), so we do the same rather than add
+    another column: file_path="/home/someuser/public_html/x.php" with
+    accounts_dir="/home" -> "someuser". None if file_path doesn't start
+    under accounts_dir."""
+    accounts_dir = (accounts_dir or os.environ.get("OPENXS_ACCOUNTS_DIR", "/home")).rstrip("/")
+    if not file_path.startswith(accounts_dir + "/"):
+        return None
+    rest = file_path[len(accounts_dir) + 1:]
+    user = rest.split("/", 1)[0]
+    return user or None
+
+
+def derive_source(scan_path):
+    """Which mechanism found this - cxs's own UI shows "CLI"/"cxsWatch"/
+    "Other" per finding; same idea, our own mechanism names. scan_path
+    is the scans.path value record_scan() was called with."""
+    if scan_path == "migrated from cxs" or scan_path == "migrated from cxs (historical logs)":
+        return "Migrated"
+    if scan_path.startswith("watch:"):
+        return "Watch"
+    return "Scan"
+
+
 def import_quarantined_finding(file_path, quarantine_src_path, rule_name, quarantined_at=None):
     """For migrate_from_cxs.py: registers a file that's ALREADY sitting in
     some other tool's quarantine (not a live scan hit) so it shows up in
@@ -297,9 +361,13 @@ def import_quarantined_finding(file_path, quarantine_src_path, rule_name, quaran
         "INSERT INTO scans (started_at, path, files_scanned, hits) VALUES (?, ?, 1, 1)",
         (started_at, "migrated from cxs"),
     ).lastrowid
+    try:
+        size = os.path.getsize(quarantine_src_path)
+    except OSError:
+        size = None
     finding_id = conn.execute(
-        "INSERT INTO findings (scan_id, file_path, rule_name) VALUES (?, ?, ?)",
-        (scan_id, file_path, rule_name),
+        "INSERT INTO findings (scan_id, file_path, rule_name, size) VALUES (?, ?, ?, ?)",
+        (scan_id, file_path, rule_name, size),
     ).lastrowid
 
     os.makedirs(QUARANTINE_DIR, exist_ok=True)

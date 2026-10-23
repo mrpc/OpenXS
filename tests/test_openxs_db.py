@@ -53,3 +53,30 @@ def test_migration_is_idempotent(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
     db._connect()
     db._connect()  # running the migration twice must not raise
+
+
+def test_fresh_db_gets_user_version_set(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
+    conn = db._connect()
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    assert version == db.SCHEMA_VERSION
+
+
+def test_fresh_process_skips_migration_ddl_when_already_at_current_version(tmp_path, monkeypatch):
+    """Simulates a second, brand-new process opening a db another
+    process already fully migrated - PRAGMA user_version should let it
+    skip straight past the CREATE TABLE/ALTER TABLE work entirely."""
+    db_path = str(tmp_path / "openxs.db")
+    monkeypatch.setattr(db, "DB_PATH", db_path)
+    db._connect()  # first "process": creates and fully migrates it
+
+    # Simulate a fresh process: clear this process's own in-memory
+    # connection cache and schema-check flag (what a real new process
+    # would naturally start with), but keep the actual db file as-is.
+    db._connections.clear()
+    db.__dict__["_schema_initialized_for"] = None
+
+    # If the migration DDL ran again, this invalid SQL would raise -
+    # the version check should skip straight past it instead.
+    monkeypatch.setattr(db, "SCHEMA", "THIS IS NOT VALID SQL;")
+    db._connect()  # must not raise
