@@ -193,10 +193,10 @@ return " - ${mb}MB RAM, ${cpu}% CPU";
 # close to its own limit" is visible before it actually trips.
 sub openxs_resource_widget
 {
-my ($label, $pid, $limit_mb) = @_;
+my ($key, $label, $pid, $limit_mb) = @_;
 my $box_style = "flex:1;min-width:200px;border-radius:6px;padding:16px;text-align:center";
 if (!$pid) {
-	return "<div style='$box_style;background:#f5f5f5;border:2px solid #ddd'>".
+	return "<div id='widget-$key' style='$box_style;background:#f5f5f5;border:2px solid #ddd'>".
 		"<div style='font-size:13px;color:#888;margin-bottom:6px'>$label</div>".
 		"<div style='font-size:22px;color:#888'>Not running</div></div>";
 	}
@@ -204,7 +204,7 @@ my $out = `ps -o rss=,%cpu= -p $pid 2>/dev/null`;
 $out =~ s/^\s+//;
 my ($rss_kb, $cpu) = split(/\s+/, $out);
 if ($rss_kb eq '' || $rss_kb !~ /^\d+$/) {
-	return "<div style='$box_style;background:#f5f5f5;border:2px solid #ddd'>".
+	return "<div id='widget-$key' style='$box_style;background:#f5f5f5;border:2px solid #ddd'>".
 		"<div style='font-size:13px;color:#888;margin-bottom:6px'>$label</div>".
 		"<div style='font-size:22px;color:#888'>Unknown</div></div>";
 	}
@@ -212,11 +212,16 @@ my $mb = $rss_kb / 1024;
 my $pct = $limit_mb ? ($mb / $limit_mb * 100) : 0;
 my $color = $pct >= 90 ? '#b30000' : ($pct >= 50 ? '#b38f00' : '#2e7d32');
 my $mb_fmt = sprintf("%.0f", $mb);
-return "<div style='$box_style;background:#fff;border:2px solid $color'>".
-	"<div style='font-size:13px;color:#555;margin-bottom:6px'>$label (pid $pid)</div>".
-	"<div style='font-size:34px;font-weight:bold;color:$color;line-height:1.1'>${mb_fmt}<span style='font-size:16px'>MB</span></div>".
+# id's on the pieces that auto-refresh.cgi JS (see index.cgi) updates in
+# place every few seconds, instead of a full page reload - Webmin's
+# authentic theme already has a known, pre-existing "refresh resets to
+# dashboard" quirk, so this avoids triggering that for something that's
+# meant to just tick in the background.
+return "<div id='widget-$key' style='$box_style;background:#fff;border:2px solid $color' data-limit-mb='" . ($limit_mb || 0) . "'>".
+	"<div style='font-size:13px;color:#555;margin-bottom:6px'>$label (pid <span id='pid-$key'>$pid</span>)</div>".
+	"<div id='rss-$key' style='font-size:34px;font-weight:bold;color:$color;line-height:1.1'>${mb_fmt}<span style='font-size:16px'>MB</span></div>".
 	"<div style='font-size:12px;color:#888'>RAM" . ($limit_mb ? " of ${limit_mb}MB limit" : "") . "</div>".
-	"<div style='font-size:22px;font-weight:bold;margin-top:10px;color:#333'>${cpu}<span style='font-size:14px'>%</span></div>".
+	"<div id='cpu-$key' style='font-size:22px;font-weight:bold;margin-top:10px;color:#333'>${cpu}<span style='font-size:14px'>%</span></div>".
 	"<div style='font-size:12px;color:#888'>CPU</div></div>";
 }
 

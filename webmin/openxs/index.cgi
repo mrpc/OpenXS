@@ -40,9 +40,48 @@ return $status_html . ($action_html ne "" ? "<div style='margin-top:4px'>$action
 print $openxs_nav;
 
 print "<div style='display:flex;gap:16px;margin:16px 0;flex-wrap:wrap'>" .
-	&openxs_resource_widget("Scan daemon", $pid, 1024) .
-	&openxs_resource_widget("Watch daemon", $watchd_pid, $cfg_early{'WATCHD_MAX_RSS_MB'}) .
+	&openxs_resource_widget("scand", "Scan daemon", $pid, 1024) .
+	&openxs_resource_widget("watchd", "Watch daemon", $watchd_pid, $cfg_early{'WATCHD_MAX_RSS_MB'}) .
 	"</div>";
+
+# Auto-refresh the widget numbers every few seconds without a full page
+# reload (Webmin's authentic theme has a known, separate quirk where any
+# real page refresh drops back to the dashboard - this polls quietly in
+# the background instead, same origin, no auth prompt).
+print <<'JSEOF';
+<script>
+(function() {
+	function paint(key, d) {
+		var w = document.getElementById('widget-' + key);
+		if (!w) return;
+		if (!d || !d.pid) {
+			w.style.background = '#f5f5f5'; w.style.borderColor = '#ddd';
+			var rss = document.getElementById('rss-' + key);
+			if (rss) rss.outerHTML = "<div style='font-size:22px;color:#888'>Not running</div>";
+			return;
+			}
+		var limit = parseFloat(w.getAttribute('data-limit-mb')) || 0;
+		var pct = limit ? (d.rss_mb / limit * 100) : 0;
+		var color = pct >= 90 ? '#b30000' : (pct >= 50 ? '#b38f00' : '#2e7d32');
+		w.style.background = '#fff'; w.style.borderColor = color;
+		var pidEl = document.getElementById('pid-' + key);
+		if (pidEl) pidEl.textContent = d.pid;
+		var rssEl = document.getElementById('rss-' + key);
+		if (rssEl) rssEl.innerHTML = d.rss_mb + "<span style='font-size:16px'>MB</span>";
+		if (rssEl) rssEl.style.color = color;
+		var cpuEl = document.getElementById('cpu-' + key);
+		if (cpuEl) cpuEl.innerHTML = d.cpu + "<span style='font-size:14px'>%</span>";
+		}
+	function tick() {
+		fetch('daemon_stats.cgi', {credentials: 'same-origin'})
+			.then(function(r) { return r.json(); })
+			.then(function(d) { paint('scand', d.scand); paint('watchd', d.watchd); })
+			.catch(function() {});
+		}
+	setInterval(tick, 4000);
+	})();
+</script>
+JSEOF
 
 print &ui_subheading("Components");
 print &ui_table_start(undef, undef, 1);
