@@ -27,6 +27,14 @@ foreach my $title (sort keys %logs) {
 		&html_escape(&openxs_tail($file, $n))."</pre>\n";
 	}
 
+if (-d '/etc/modsecurity') {
+	print &ui_subheading("mod_security blocks <small>(across every Apache error log on this server)</small>");
+	my $out = `python3 $pmf_dir/openxs_modsec_log.py 2>&1`;
+	print "<pre style='background:#1e1e1e;color:#e8e8e8;padding:8px;max-height:300px;overflow:auto'>".
+		($out ne "" ? &html_escape($out) : "(no blocks found)")."</pre>\n";
+	print "<p><a href='modsec_log.cgi'>Full view with grouping notes &raquo;</a></p>\n";
+	}
+
 print "<p><a href='logs.cgi?lines=" . ($n * 5) . "'>Show more lines (last $n shown)</a></p>\n";
 print "<p><a href='index.cgi'>&laquo; Back to dashboard</a></p>\n";
 &ui_print_footer("/", "Webmin index page");
