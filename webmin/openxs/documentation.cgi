@@ -68,6 +68,7 @@ print "<p>One entry per line, applied to every detector (YARA, ClamAV, filesyste
 "/some/path/or/substring     # skip anything whose path contains this
 md5:&lt;hash&gt;                   # skip one exact file by content (survives renames)
 sha256:&lt;hash&gt;
+regex:^/tmp/clamav-.*        # skip anything matching this pattern (Python re, re.search)
 # lines starting with # are comments
 </pre>";
 

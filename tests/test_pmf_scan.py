@@ -21,14 +21,32 @@ def write(path, content=b"hello"):
 def test_load_ignore_patterns_plain_and_hashes(tmp_path):
     ignore_file = tmp_path / "ignore"
     ignore_file.write_text("/some/path\n# a comment\nmd5:ABCDEF\nsha256:deadbeef\n\n")
-    plain, md5s, sha256s = pmf_scan.load_ignore_patterns(str(ignore_file))
+    plain, md5s, sha256s, regexes = pmf_scan.load_ignore_patterns(str(ignore_file))
     assert plain == ["/some/path"]
     assert md5s == {"abcdef"}  # lowercased
     assert sha256s == {"deadbeef"}
+    assert regexes == []
 
 
 def test_load_ignore_patterns_missing_file_returns_empty():
-    assert pmf_scan.load_ignore_patterns("/no/such/file") == ([], set(), set())
+    assert pmf_scan.load_ignore_patterns("/no/such/file") == ([], set(), set(), [])
+
+
+def test_load_ignore_patterns_compiles_regex_entries(tmp_path):
+    ignore_file = tmp_path / "ignore"
+    ignore_file.write_text(r"regex:^/tmp/clamav-.*" + "\n")
+    plain, md5s, sha256s, regexes = pmf_scan.load_ignore_patterns(str(ignore_file))
+    assert len(regexes) == 1
+    assert regexes[0].search("/tmp/clamav-abc123")
+    assert not regexes[0].search("/home/tmp/clamav-abc123")  # anchored, shouldn't match mid-path
+
+
+def test_load_ignore_patterns_skips_invalid_regex(tmp_path):
+    ignore_file = tmp_path / "ignore"
+    ignore_file.write_text("regex:(unclosed\n/some/path\n")
+    plain, md5s, sha256s, regexes = pmf_scan.load_ignore_patterns(str(ignore_file))
+    assert regexes == []
+    assert plain == ["/some/path"]  # the rest of the file still loads fine
 
 
 def test_is_ignored_by_substring():
@@ -42,6 +60,13 @@ def test_is_ignored_by_hash(tmp_path):
     md5 = hashlib.md5(b"exact content").hexdigest()
     assert pmf_scan.is_ignored(str(f), [], {md5}, set())
     assert not pmf_scan.is_ignored(str(f), [], {"0" * 32}, set())
+
+
+def test_is_ignored_by_regex():
+    import re
+    pattern = re.compile(r"^/tmp/clamav-.*")
+    assert pmf_scan.is_ignored("/tmp/clamav-abc", [], set(), set(), [pattern])
+    assert not pmf_scan.is_ignored("/home/tmp/clamav-abc", [], set(), set(), [pattern])
 
 
 # --- per-path overrides -----------------------------------------------------
@@ -212,7 +237,7 @@ def test_iter_files_respects_ignore_and_size(tmp_path):
     filelist = tmp_path / "filelist.txt"
     filelist.write_text(f"{keep}\n{skip}\n{empty}\n")
 
-    ignore = ([str(skip)], set(), set())
+    ignore = ([str(skip)], set(), set(), [])
     result = list(pmf_scan.iter_files(str(filelist), ignore))
     assert result == [str(keep)]
 
@@ -226,6 +251,6 @@ def test_iter_files_fast_php_only_filters_non_php(tmp_path):
     filelist = tmp_path / "filelist.txt"
     filelist.write_text(f"{php_file}\n{jpg_file}\n")
 
-    ignore = ([], set(), set())
+    ignore = ([], set(), set(), [])
     result = list(pmf_scan.iter_files(str(filelist), ignore, global_fast_php_only="1"))
     assert result == [str(php_file)]
