@@ -36,3 +36,18 @@ def test_quarantine_count_counts_only_files(tmp_path, monkeypatch):
 def test_quarantine_count_missing_dir_returns_zero(tmp_path, monkeypatch):
     monkeypatch.setattr(st, "QUARANTINE_DIR", str(tmp_path / "nope"))
     assert st.quarantine_count() == 0
+
+
+def test_fim_info_no_baseline(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENXS_FIM_DB", str(tmp_path / "nope.db"))
+    assert st.fim_info() == {"baselined": False}
+
+
+def test_fim_info_reads_last_results(tmp_path, monkeypatch):
+    (tmp_path / "fim.db").write_text("x")
+    monkeypatch.setenv("OPENXS_FIM_DB", str(tmp_path / "fim.db"))
+    monkeypatch.setattr(st, "PMF_DIR", str(tmp_path))
+    (tmp_path / "fim_results.txt").write_text("# Checked against baseline: 1 changed, 0 removed, 0 added\nCHANGED\t/etc/passwd\n")
+    info = st.fim_info()
+    assert info["baselined"] is True
+    assert info["summary"] == "Checked against baseline: 1 changed, 0 removed, 0 added"

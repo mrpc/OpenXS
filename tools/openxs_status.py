@@ -71,12 +71,33 @@ def quarantine_count():
         return 0
 
 
+def fim_info():
+    """File integrity status - whether a baseline exists at all (fim.db),
+    and the last scheduled check's own result file, same pattern as
+    last_scan_info() above."""
+    db_path = os.environ.get("OPENXS_FIM_DB", "/var/lib/openxs/fim.db")
+    results_path = os.path.join(PMF_DIR, "fim_results.txt")
+    if not os.path.exists(db_path):
+        return {"baselined": False}
+    info = {"baselined": True}
+    if os.path.exists(results_path):
+        try:
+            with open(results_path, errors="replace") as f:
+                text = f.read()
+            info["checked_at"] = os.path.getmtime(results_path)
+            info["summary"] = text.splitlines()[0].lstrip("# ") if text.strip() else None
+        except OSError:
+            pass
+    return info
+
+
 def full_status():
     return {
         "daemons": daemon_status(),
         "detectors": detector_status(),
         "last_scan": last_scan_info(),
         "quarantine_count": quarantine_count(),
+        "fim": fim_info(),
     }
 
 
@@ -95,6 +116,8 @@ def main():
     ls = status["last_scan"]
     print(f"Last scan: {ls.get('summary', 'never ran')}")
     print(f"Quarantined files: {status['quarantine_count']}")
+    fi = status["fim"]
+    print(f"File integrity: {fi.get('summary', 'no baseline yet') if fi['baselined'] else 'no baseline yet'}")
 
 
 if __name__ == "__main__":

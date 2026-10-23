@@ -23,7 +23,9 @@ print "<p>OpenXS detects malicious PHP (webshells, obfuscated code) and other co
       "maldet (Linux Malware Detect - its own independently-maintained MD5/HEX/YARA signature set; ".
       "report-only here, its own auto-quarantine is disabled for scans OpenXS triggers), ".
       "filesystem-level checks (SUID files, world-writable directories, symlinks, core dumps, stray ".
-      "binaries), and whatever you add to the custom rule file.</p>";
+      "binaries), and whatever you add to the custom rule file. A separate, fourth check - ".
+      "<b>file integrity monitoring</b> - runs alongside these: not malware detection, but drift detection ".
+      "for files you've explicitly said matter (see below).</p>";
 
 print &ui_subheading("Architecture: the two daemons");
 print "<p><b>openxs-scand</b> compiles the full ruleset (php.yar + whitelist.yar + ".
@@ -82,6 +84,22 @@ print "<p>Different settings for a specific directory, overriding the global one
 "/home/bigsite/uploads fast_php_only=1
 /home/bigsite/backups quarantine_enabled=0
 </pre>";
+
+print &ui_subheading("File integrity monitoring - /etc/openxs/fim_paths");
+print "<p>A different, broader check than the whitelist drift check above: hashes (SHA-256) a configured list of ".
+      "files/directories you consider important - configs, framework core, OpenXS's own code - and flags any ".
+      "that no longer match their last recorded baseline. Report-only: accepting a legitimate change is a ".
+      "deliberate 'Baseline now' (Dashboard), same philosophy as whitelist re-validation. One file/directory ".
+      "per line:</p>".
+"<pre style='background:#1e1e1e;color:#e8e8e8;padding:8px'>" .
+"/etc/passwd
+/etc/crontab
+/etc/apache2/apache2.conf
+/opt/php-malware-finder
+</pre>".
+"<p>Runs automatically with the daily scheduled scan once a baseline exists (empty = nothing to do, no error). ".
+"<code>tools/openxs_fim.py baseline</code> / <code>tools/openxs_fim.py check</code> from the CLI, or ".
+"'Baseline now' / 'Check now' on the Dashboard.</p>";
 
 print &ui_subheading("Quarantine");
 print "<p>Opt-in (<code>QUARANTINE_ENABLED</code>), applies to manual/scheduled/watch-daemon scans only ".
