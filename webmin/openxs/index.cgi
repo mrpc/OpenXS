@@ -93,6 +93,16 @@ if ($csf_ok) {
 			"<a href='edit_file.cgi?f=csf_blocklists'>Edit csf.blocklists &raquo;</a>"));
 	}
 
+my $full_status = &openxs_full_status();
+if ($full_status) {
+	my $ls = $full_status->{'last_scan'};
+	my $ls_text = $ls && $ls->{'ran'} ? &html_escape($ls->{'summary'}) . " <i>(" . &make_date($ls->{'at'}, 1) . ")</i>"
+	                                  : "<i style='color:#888'>Never ran yet</i>";
+	print &ui_table_row("Last scheduled/manual scan", &row_value($ls_text, ""));
+	print &ui_table_row("Quarantined files",
+		&row_value($full_status->{'quarantine_count'}, "<a href='quarantine.cgi'>View quarantine &raquo;</a>"));
+	}
+
 print &ui_table_end();
 
 print &ui_subheading("Scan daemon log (last 30 lines)");

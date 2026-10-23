@@ -102,6 +102,21 @@ FS_RULES = {"SUID file", "world-writable directory", "symlink", "socket",
             "core dump file", "Linux binary or executable file",
             "Windows binary or executable file", "hidden directory owned by nobody"}
 
+QUARANTINE_LOG = "/var/log/openxs-quarantine.log"
+
+
+def log_quarantine(original_path, quarantine_path, category, rule_name):
+    """One line per quarantine action - which file, why, where it went -
+    for audit/forensics. The scan's own stderr only ever had a count."""
+    line = (f"{time.strftime('%Y-%m-%d %H:%M:%S')} "
+            f"{original_path} -> {quarantine_path} ({category}: {rule_name})")
+    try:
+        with open(QUARANTINE_LOG, "a") as f:
+            f.write(line + "\n")
+    except OSError:
+        pass
+
+
 def categorize(rule_name):
     """cxs quarantines only a conservative default (Viruses + Known
     Exploits) 'to avoid otherwise breaking web sites' - filesystem
@@ -485,9 +500,14 @@ def main():
                     q_enabled = effective_setting(fpath, path_overrides, "quarantine_enabled", global_enabled)
                     if q_enabled != "1":
                         continue
+                    category = categorize(rule_name)
                     allowed = set(effective_setting(fpath, path_overrides, "quarantine_categories", global_cats).split(","))
-                    if categorize(rule_name) in allowed and openxs_db.quarantine_file(fid):
+                    if category not in allowed:
+                        continue
+                    q_path = openxs_db.quarantine_file(fid)
+                    if q_path:
                         quarantined += 1
+                        log_quarantine(fpath, q_path, category, rule_name)
                 if quarantined:
                     print(f"# Quarantined {quarantined} file(s)", file=sys.stderr)
         except Exception as e:
