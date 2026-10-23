@@ -102,18 +102,20 @@ print "<p>Two independent, read-only checks run with the daily scheduled scan (n
       "portable across Debian and Ubuntu, unlike Ubuntu-only tools like update-notifier's apt-check.</li></ul>";
 
 print &ui_subheading("File integrity monitoring - /etc/openxs/fim_paths");
-print "<p>A different, broader check than the whitelist drift check above: hashes (SHA-256) a configured list of ".
-      "files/directories you consider important - configs, framework core, OpenXS's own code - and flags any ".
-      "that no longer match their last recorded baseline. Report-only: accepting a legitimate change is a ".
-      "deliberate 'Baseline now' (Dashboard), same philosophy as whitelist re-validation. One file/directory ".
-      "per line:</p>".
+print "<p>A different, broader check than the whitelist drift check above: hashes (SHA-256 - never content, so ".
+      "even a file like /etc/shadow is safe to include) a configured list of files/directories you consider ".
+      "important, and flags any that no longer match their last recorded baseline. Report-only: accepting a ".
+      "legitimate change is a deliberate 'Baseline now' (Dashboard), same philosophy as whitelist re-validation. ".
+      "One file/directory per line - pre-seeded on install (<code>tools/fim_paths.default</code>) with a ".
+      "reasoned default list, editable freely (a path that doesn't exist on this server is silently skipped):</p>".
 "<pre style='background:#1e1e1e;color:#e8e8e8;padding:8px'>" .
-"/etc/passwd
-/etc/crontab
-/etc/apache2/apache2.conf
-/opt/php-malware-finder
+"/etc/passwd, /etc/shadow, /etc/group, /etc/sudoers   # core identity - should only
+/etc/ssh/sshd_config, /etc/crontab, /etc/cron.d       # change via a deliberate admin action
+/etc/csf/csf.conf, /etc/csf/csf.allow                 # compromised root often self-whitelists here first
+/etc/openxs/*, /opt/php-malware-finder/whitelist.yar  # OpenXS's own config/rules - tampering could
+/etc/systemd/system/openxs-*.service                  # blind or disable the scanner itself
 </pre>".
-"<p>Runs automatically with the daily scheduled scan once a baseline exists (empty = nothing to do, no error). ".
+"<p>Baselined automatically once on install. Runs with the daily scheduled scan from then on. ".
 "<code>tools/openxs_fim.py baseline</code> / <code>tools/openxs_fim.py check</code> from the CLI, or ".
 "'Baseline now' / 'Check now' on the Dashboard.</p>";
 
