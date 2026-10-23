@@ -124,6 +124,17 @@ sub openxs_maldet_installed
 return -x "/usr/local/sbin/maldet" ? 1 : 0;
 }
 
+sub openxs_maldet_monitor_active
+{
+# maldet's own --monitor daemon runs its own separate inotify watch -
+# redundant with openxs-watchd if both end up watching the same
+# directories (confirmed on balrog: a real, independent inotify tree,
+# not just a stale leftover service).
+my $out = `systemctl is-active maldet 2>/dev/null`;
+chomp($out);
+return $out eq 'active' ? 1 : 0;
+}
+
 sub openxs_full_status
 {
 # Single source of truth shared with the CLI and the MCP server

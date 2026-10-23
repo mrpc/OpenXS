@@ -60,6 +60,22 @@ if (defined($in{'start'}) || defined($in{'restart'})) {
 			&openxs_result_page(
 				"$label did not start.", 1, undef, undef, &openxs_tail($log));
 			}
+		if ($which eq 'watchd' && &openxs_maldet_monitor_active()) {
+			&ui_print_header(undef, 'OpenXS Exploit Scanner', "");
+			print $openxs_nav;
+			print "<div style='background:#eaf6ec;color:#2e7d32;border:1px solid #2e7d32;border-radius:4px;".
+				"padding:12px;font-weight:bold;margin:12px 0'>Watch daemon started.</div>\n";
+			print "<div style='background:#fff8e1;color:#8a6500;border:1px solid #e6c200;border-radius:4px;".
+				"padding:12px;margin:12px 0'>maldet's own <code>--monitor</code> daemon is also running on ".
+				"this server - both now watch the same directories independently (double inotify watches, ".
+				"double work per file change). OpenXS's watchd already gets 100% of maldet's detection value ".
+				"via its own integration, so maldet's separate monitor is redundant here.<br>" .
+				&ui_form_start("disable_maldet_monitor.cgi", "post") . &ui_submit("Disable maldet's monitor", "go") . &ui_form_end() .
+				"</div>\n";
+			print "<p><a href='index.cgi'>&laquo; Back to dashboard</a></p>\n";
+			&ui_print_footer("/", "Webmin index page");
+			exit;
+			}
 		}
 	}
 
