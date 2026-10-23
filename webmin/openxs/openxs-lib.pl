@@ -250,7 +250,7 @@ my %cfg = ( 'EMAIL' => 'root@localhost', 'SCAN_PATH' => '/var/www', 'QUARANTINE_
             # unconditionally), so an existing config file with neither
             # key set must keep working exactly as before.
             'VERSION_SCAN_ENABLED' => '1', 'APT_SECURITY_ENABLED' => '1',
-            'WATCHD_MAX_RSS_MB' => '1024' );
+            'WATCHD_MAX_RSS_MB' => '1024', 'OPENXS_SRC' => '', 'AUTO_UPDATE' => '0' );
 if (open(my $fh, '<', $config_file)) {
 	while (<$fh>) {
 		chomp;

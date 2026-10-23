@@ -78,6 +78,12 @@ print &ui_table_row("Watch daemon rate limit",
 	"s if it's scanned more than " . &ui_textbox("watch_rate_count", $cfg{'WATCH_RATE_COUNT'}, 5) .
 	" times within " . &ui_textbox("watch_rate_window", $cfg{'WATCH_RATE_WINDOW'}, 5) .
 	"s <i>(cxs's --Wrateignore - stops a constantly-rewritten file, e.g. a log, from being rescanned on every single write)</i>");
+if ($cfg{'OPENXS_SRC'} ne '' && -d "$cfg{'OPENXS_SRC'}/.git") {
+	print &ui_table_row("Self-update (OpenXS's own code - daemon, Webmin module, tools)",
+		&ui_checkbox("auto_update", "1",
+			"Automatically pull and apply updates weekly, instead of checking manually from the dashboard",
+			$cfg{'AUTO_UPDATE'} eq '1'));
+	}
 print &ui_table_row("Watch daemon memory limit",
 	&ui_textbox("watchd_max_rss_mb", $cfg{'WATCHD_MAX_RSS_MB'}, 8) .
 	"MB <i>safety backstop - if watchd's own memory ever exceeds this (a runaway custom rule, a future bug, " .
