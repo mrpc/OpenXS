@@ -415,6 +415,7 @@ def main():
         hits = 0
         findings = []
         scanned_files = []
+        t_start = time.perf_counter()
         for fname in iter_files(filelist_path, ignore_patterns, changed_hours,
                                  path_overrides=path_overrides, global_fast_php_only=global_fast_php_only):
             if vmrss_max_kb and vmrss_kb() > vmrss_max_kb:
@@ -440,7 +441,9 @@ def main():
                     print(f"{fname}\t{rule_name}")
                     findings.append((fname, rule_name))
                 hits += 1
+        t_yara_done = time.perf_counter()
         clam_findings = clamav_scan(scanned_files)
+        t_clamav_done = time.perf_counter()
         already_flagged = {f for f, _ in findings}
         for fname, sig in clam_findings:
             print(f"{fname}\t{sig} (ClamAV)")
@@ -450,6 +453,7 @@ def main():
                 already_flagged.add(fname)
 
         maldet_findings = maldet_scan(scanned_files)
+        t_maldet_done = time.perf_counter()
         for fname, sig in maldet_findings:
             print(f"{fname}\t{sig} (maldet)")
             findings.append((fname, f"{sig} (maldet)"))
@@ -472,6 +476,20 @@ def main():
             if fname not in already_flagged:
                 hits += 1
                 already_flagged.add(fname)
+        t_done = time.perf_counter()
+
+        # Per-phase breakdown, not just a total - "is it optimized" needs
+        # to know WHICH detector is actually the bottleneck, not just how
+        # long the whole scan took. load average is cheap context for the
+        # same question (slow scan because of this host, or genuinely a
+        # lot of files/a slow detector).
+        duration = t_done - t_start
+        yara_s, clamav_s, maldet_s, fs_s = (t_yara_done - t_start, t_clamav_done - t_yara_done,
+                                             t_maldet_done - t_clamav_done, t_done - t_maldet_done)
+        try:
+            load_avg = os.getloadavg()[0]
+        except OSError:
+            load_avg = None
 
         if not quiet:
             if total == 0 and not clam_findings and not fs_findings:
@@ -480,11 +498,14 @@ def main():
                 clam_note = f", {len(clam_findings)} ClamAV hit(s)" if shutil.which("clamdscan") else ""
                 abort_note = " (ABORTED early, see VmRSS message above)" if aborted else ""
                 print(f"# Scanned {total} file(s), {hits} flagged (YARA after whitelist suppression + ClamAV + maldet + filesystem checks){clam_note}{abort_note}", file=sys.stderr)
+            load_note = f", load avg {load_avg:.2f}" if load_avg is not None else ""
+            print(f"# Timing: {duration:.1f}s total (YARA {yara_s:.1f}s, ClamAV {clamav_s:.1f}s, "
+                  f"maldet {maldet_s:.1f}s, fs {fs_s:.1f}s){load_note}", file=sys.stderr)
 
         try:
             import openxs_db
             label = os.environ.get("OPENXS_SCAN_LABEL", filelist_path)
-            scan_id = openxs_db.record_scan(label, total, findings)
+            scan_id = openxs_db.record_scan(label, total, findings, duration=duration, load_avg=load_avg)
 
             if findings:
                 # cxs's own default: only quarantine Viruses and Known
