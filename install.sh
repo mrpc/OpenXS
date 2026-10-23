@@ -112,8 +112,17 @@ if [ ! -f /etc/openxs/openxs.conf ]; then
         echo "    Not running interactively - defaulting to version/apt checks on, mailbox scan off."
         echo "    Change any of these later in the Webmin Settings page."
     fi
-    printf 'EMAIL=root@localhost\nSCAN_PATH=/var/www\nQUARANTINE_ENABLED=0\nVERSION_SCAN_ENABLED=%s\nAPT_SECURITY_ENABLED=%s\nSCAN_MAILBOXES=%s\n' \
-        "$VERSION_SCAN_ENABLED" "$APT_SECURITY_ENABLED" "$SCAN_MAILBOXES" > /etc/openxs/openxs.conf
+    if [ -d /etc/webmin/virtual-server ]; then
+        # Virtualmin detected - real sites live under /home/<user>/public_html,
+        # not /var/www (Debian's default, empty/stock on a Virtualmin box).
+        # Scanning /var/www by default here would scan nothing real at all.
+        echo "    Virtualmin detected - defaulting the scheduled scan to every account (/home/*/public_html)."
+        printf 'EMAIL=root@localhost\nSCAN_PATH=/var/www\nQUARANTINE_ENABLED=0\nVERSION_SCAN_ENABLED=%s\nAPT_SECURITY_ENABLED=%s\nSCAN_MAILBOXES=%s\nSCAN_MODE=accounts\nACCOUNTS_DIR=/home\nACCOUNTS_SUBPATH=public_html\n' \
+            "$VERSION_SCAN_ENABLED" "$APT_SECURITY_ENABLED" "$SCAN_MAILBOXES" > /etc/openxs/openxs.conf
+    else
+        printf 'EMAIL=root@localhost\nSCAN_PATH=/var/www\nQUARANTINE_ENABLED=0\nVERSION_SCAN_ENABLED=%s\nAPT_SECURITY_ENABLED=%s\nSCAN_MAILBOXES=%s\n' \
+            "$VERSION_SCAN_ENABLED" "$APT_SECURITY_ENABLED" "$SCAN_MAILBOXES" > /etc/openxs/openxs.conf
+    fi
 fi
 # Always refresh OPENXS_SRC (even on a re-run/upgrade, in case this clone
 # moved) - self-update (Webmin dashboard) needs to know where to git pull.
