@@ -126,3 +126,22 @@ def test_daily_stats_filled_oldest_first_and_includes_today_last(tmp_path, monke
     # disagree for a few hours around local midnight in any timezone
     # ahead of UTC.
     assert dates[-1] == datetime.date.today().isoformat()
+
+
+def test_record_modsec_count_is_upsert_not_increment(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
+    today = datetime.date.today().isoformat()
+    db.record_modsec_count(today, 5)
+    db.record_modsec_count(today, 8)  # cron re-ran, recounted from scratch
+    rows = db.modsec_daily_stats_filled(1)
+    assert rows == [(today, 8)]
+
+
+def test_modsec_daily_stats_filled_zero_fills_gaps(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
+    today = datetime.date.today().isoformat()
+    db.record_modsec_count(today, 3)
+    rows = db.modsec_daily_stats_filled(7)
+    assert len(rows) == 7
+    for date, blocks in rows:
+        assert blocks == (3 if date == today else 0)

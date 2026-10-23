@@ -29,9 +29,19 @@ foreach my $title (sort keys %logs) {
 
 if (-d '/etc/modsecurity') {
 	print &ui_subheading("mod_security blocks <small>(across every Apache error log on this server)</small>");
-	my $out = `python3 $pmf_dir/openxs_modsec_log.py 2>&1`;
-	print "<pre style='background:#1e1e1e;color:#e8e8e8;padding:8px;max-height:300px;overflow:auto'>".
-		($out ne "" ? &html_escape($out) : "(no blocks found)")."</pre>\n";
+	my @rows = &openxs_modsec_rows();
+	if (!@rows) {
+		print "<p>(no blocks found)</p>\n";
+		}
+	else {
+		my $last = $#rows > $n - 1 ? $n - 1 : $#rows;
+		print &ui_columns_start(["Count", "Host", "Path", "Rule"]);
+		foreach my $r (@rows[0 .. $last]) {
+			print &ui_columns_row([$r->{'count'}, &html_escape($r->{'host'}), &html_escape($r->{'uri'}),
+				&openxs_modsec_rule_link($r->{'rule_id'})]);
+			}
+		print &ui_columns_end();
+		}
 	print "<p><a href='modsec_log.cgi'>Full view with grouping notes &raquo;</a></p>\n";
 	}
 

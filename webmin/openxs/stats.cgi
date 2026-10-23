@@ -27,16 +27,20 @@ for row in openxs_db.daily_stats_filled($days):
 "`;
 my @rows = grep { $_ ne "" } split(/\n/, $out);
 
-if (-d '/etc/modsecurity') {
-	my $total = `python3 -c "
+my $modsec_available = -d '/etc/modsecurity';
+my %modsec_by_date;
+if ($modsec_available) {
+	my $mout = `python3 -c "
 import sys
 sys.path.insert(0, '$pmf_dir')
-import openxs_modsec_log
-print(sum(r['count'] for r in openxs_modsec_log.summarize(max_rows=10000)))
+import openxs_db
+for date, blocks in openxs_db.modsec_daily_stats_filled($days):
+    print(date + '\\t' + str(blocks))
 "`;
-	chomp($total);
-	print &ui_subheading("mod_security");
-	print "<p>$total block(s) found in current logs. <a href='modsec_log.cgi'>View grouped by host/path/rule &raquo;</a></p>\n";
+	foreach my $line (split(/\n/, $mout)) {
+		my ($date, $blocks) = split(/\t/, $line);
+		$modsec_by_date{$date} = $blocks if (defined($date));
+		}
 	}
 
 print &ui_subheading("Daily statistics (last $days days)");
@@ -50,59 +54,32 @@ print &ui_form_start("stats.cgi", "get") .
 	# with zeroes) - asking for 30 days should always show 30 days, not
 	# just however many happened to have a scan recorded.
 	my @parsed = map { [ split(/\t/, $_) ] } @rows;
-	my $max_hits = 1;
-	foreach my $r (@parsed) { $max_hits = $r->[3] if ($r->[3] > $max_hits); }
+	my @dates = map { $_->[0] } @parsed;
+	my @hits = map { $_->[3] } @parsed;
 
 	print &ui_subheading("Hits per day");
-	my $n = scalar(@parsed);
-	my $bar_w = $n > 60 ? 10 : ($n > 30 ? 16 : 32);
-	my $gap = $bar_w > 16 ? 8 : 3;
-	my $plot_h = 160;          # bar area only, above the baseline
-	my $top_pad = 24;          # room for each bar's value label
-	my $label_h = 28;          # room for the date label below the baseline
-	my $chart_w = $n * ($bar_w + $gap) + $gap;
-	my $chart_h = $top_pad + $plot_h + $label_h;
-	my $baseline_y = $top_pad + $plot_h;
+	print &openxs_bar_chart(\@dates, \@hits, '#b30000');
 
-	print "<svg width='$chart_w' height='$chart_h' style='background:#fff;border:1px solid #ddd;border-radius:4px' font-family='sans-serif'>\n";
-	# Light horizontal gridlines (25/50/75/100%) so a bar's height means something at a glance
-	foreach my $frac (0.25, 0.5, 0.75, 1.0) {
-		my $gy = $baseline_y - $plot_h * $frac;
-		print "<line x1='0' y1='$gy' x2='$chart_w' y2='$gy' stroke='#eee' stroke-width='1'/>\n";
+	if ($modsec_available) {
+		my @modsec_values = map { $modsec_by_date{$_} || 0 } @dates;
+		print &ui_subheading("mod_security blocks per day");
+		print &openxs_bar_chart(\@dates, \@modsec_values, '#8a5a1f');
+		print "<p><a href='modsec_log.cgi'>View grouped by host/path/rule &raquo;</a></p>\n";
 		}
-	print "<line x1='0' y1='$baseline_y' x2='$chart_w' y2='$baseline_y' stroke='#ccc' stroke-width='1'/>\n";
-
-	my $x = $gap;
-	my $label_every = $n > 14 ? int($n / 14) + 1 : 1;  # thin out date labels so they don't overlap on a wide range
-	my $i = 0;
-	foreach my $r (@parsed) {
-		my ($date, $scan_count, $files_scanned, $hits, $quarantined, $avg_duration) = @$r;
-		my $bar_h = $hits > 0 ? ($hits / $max_hits) * ($plot_h - 4) : 0;
-		my $y = $baseline_y - $bar_h;
-		my $color = $hits > 0 ? '#b30000' : '#ddd';
-		my $cx = $x + $bar_w / 2;
-		print "<rect x='$x' y='$y' width='$bar_w' height='" . ($bar_h || 2) . "' rx='2' fill='$color'>".
-			"<title>$date: $hits hit(s), $scan_count scan(s), $files_scanned file(s) scanned</title></rect>\n";
-		if ($hits > 0) {
-			print "<text x='$cx' y='" . ($y - 6) . "' font-size='11' fill='#333' text-anchor='middle'>$hits</text>\n";
-			}
-		if ($i % $label_every == 0) {
-			my $short_date = $date;
-			$short_date =~ s/^\d{4}-//;  # "10-23" instead of "2026-10-23" - the year rarely matters day to day
-			print "<text x='$cx' y='" . ($baseline_y + 16) . "' font-size='10' fill='#666' text-anchor='middle' ".
-				"transform='rotate(45 $cx " . ($baseline_y + 16) . ")'>$short_date</text>\n";
-			}
-		$x += $bar_w + $gap;
-		$i++;
-		}
-	print "</svg>\n";
 
 	print &ui_subheading("Table");
-	print &ui_columns_start(["Date", "Scans", "Files scanned", "Hits", "Quarantined", "Avg duration (s)"]);
+	my @headers = ("Date", "Scans", "Files scanned", "Hits", "Quarantined", "Avg duration (s)");
+	push(@headers, "mod_security blocks") if ($modsec_available);
+	print &ui_columns_start(\@headers);
 	foreach my $r (reverse @parsed) {
 		my ($date, $scan_count, $files_scanned, $hits, $quarantined, $avg_duration) = @$r;
 		my $hits_html = $hits > 0 ? "<b style='color:#b30000'>$hits</b>" : "0";
-		print &ui_columns_row([&html_escape($date), $scan_count, $files_scanned, $hits_html, $quarantined, $avg_duration]);
+		my @cells = (&html_escape($date), $scan_count, $files_scanned, $hits_html, $quarantined, $avg_duration);
+		if ($modsec_available) {
+			my $mb = $modsec_by_date{$date} || 0;
+			push(@cells, $mb > 0 ? "<b style='color:#8a5a1f'>$mb</b>" : "0");
+			}
+		print &ui_columns_row(\@cells);
 		}
 	print &ui_columns_end();
 	}

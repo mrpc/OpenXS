@@ -352,6 +352,87 @@ $n ||= 40;
 return -e $file ? `tail -n $n '$file' 2>&1` : "(no such file: $file)";
 }
 
+# Parses openxs_modsec_log.py's tab-separated CLI output into row hashes -
+# shared by modsec_log.cgi (full table) and logs.cgi (compact preview) so
+# both render from the same real data instead of one reformatting raw text.
+sub openxs_modsec_rows
+{
+my $out = `python3 $pmf_dir/openxs_modsec_log.py 2>&1`;
+my @rows;
+foreach my $line (split(/\n/, $out)) {
+	my ($count, $host, $uri, $rule_id, $first, $last) = split(/\t/, $line);
+	next if (!defined($rule_id) || $rule_id !~ /^\d+$/);
+	push(@rows, { count => $count, host => $host, uri => $uri, rule_id => $rule_id, first => $first, last => $last });
+	}
+return @rows;
+}
+
+# Inline SVG bar chart, no external JS/CDN (some of our servers have no
+# outbound internet access at all, and a chart library is unwarranted
+# for one bar chart) - factored out of stats.cgi so a second chart
+# (mod_security blocks/day) doesn't have to duplicate this ~30 lines.
+# \@dates and \@values must be the same length, oldest first.
+sub openxs_bar_chart
+{
+my ($dates, $values, $color) = @_;
+my $n = scalar(@$dates);
+return "" if ($n == 0);
+my $max_v = 1;
+foreach my $v (@$values) { $max_v = $v if ($v > $max_v); }
+
+my $bar_w = $n > 60 ? 10 : ($n > 30 ? 16 : 32);
+my $gap = $bar_w > 16 ? 8 : 3;
+my $plot_h = 160;
+my $top_pad = 24;
+my $label_h = 28;
+my $chart_w = $n * ($bar_w + $gap) + $gap;
+my $chart_h = $top_pad + $plot_h + $label_h;
+my $baseline_y = $top_pad + $plot_h;
+
+my $svg = "<svg width='$chart_w' height='$chart_h' style='background:#fff;border:1px solid #ddd;border-radius:4px' font-family='sans-serif'>\n";
+foreach my $frac (0.25, 0.5, 0.75, 1.0) {
+	my $gy = $baseline_y - $plot_h * $frac;
+	$svg .= "<line x1='0' y1='$gy' x2='$chart_w' y2='$gy' stroke='#eee' stroke-width='1'/>\n";
+	}
+$svg .= "<line x1='0' y1='$baseline_y' x2='$chart_w' y2='$baseline_y' stroke='#ccc' stroke-width='1'/>\n";
+
+my $x = $gap;
+my $label_every = $n > 14 ? int($n / 14) + 1 : 1;
+for (my $i = 0; $i < $n; $i++) {
+	my $date = $dates->[$i];
+	my $v = $values->[$i];
+	my $bar_h = $v > 0 ? ($v / $max_v) * ($plot_h - 4) : 0;
+	my $y = $baseline_y - $bar_h;
+	my $bar_color = $v > 0 ? $color : '#ddd';
+	my $cx = $x + $bar_w / 2;
+	$svg .= "<rect x='$x' y='$y' width='$bar_w' height='" . ($bar_h || 2) . "' rx='2' fill='$bar_color'>".
+		"<title>$date: $v</title></rect>\n";
+	if ($v > 0) {
+		$svg .= "<text x='$cx' y='" . ($y - 6) . "' font-size='11' fill='#333' text-anchor='middle'>$v</text>\n";
+		}
+	if ($i % $label_every == 0) {
+		my $short_date = $date;
+		$short_date =~ s/^\d{4}-//;
+		$svg .= "<text x='$cx' y='" . ($baseline_y + 16) . "' font-size='10' fill='#666' text-anchor='middle' ".
+			"transform='rotate(45 $cx " . ($baseline_y + 16) . ")'>$short_date</text>\n";
+		}
+	$x += $bar_w + $gap;
+	}
+$svg .= "</svg>\n";
+return $svg;
+}
+
+# A rule ID on its own means nothing to a human - links to the exact rule
+# definition (message, what it's for) in the OWASP Core Rule Set source,
+# rather than trying to keep our own copy of every rule's explanation in
+# sync with whatever CRS version is actually installed.
+sub openxs_modsec_rule_link
+{
+my ($rule_id) = @_;
+return "<a href='https://github.com/coreruleset/coreruleset/search?q=" . &html_escape($rule_id) .
+	"' target='_blank' rel='noopener'>rule $rule_id</a>";
+}
+
 # Kill-switch, checked once here (every .cgi requires this file first) so
 # no individual page needs its own check: once disabled, nothing short of
 # removing the file via shell brings the UI back - if a compromised app

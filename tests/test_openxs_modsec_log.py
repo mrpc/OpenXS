@@ -47,3 +47,25 @@ def test_summarize_groups_and_counts(tmp_path, monkeypatch):
     assert rows[0]["host"] == "www.example.com"
     assert rows[0]["uri"] == "/index.php"
     assert rows[0]["rule_id"] == "959100"
+
+
+def test_daily_counts_buckets_by_date(tmp_path, monkeypatch):
+    other_day_line = SAMPLE_LINE.replace(
+        "Sat Oct 24 01:43:36.376503 2026", "Sun Oct 25 00:00:00.000000 2026"
+    )
+    log = tmp_path / "error.log"
+    log.write_text((SAMPLE_LINE + "\n") * 2 + other_day_line + "\n")
+    monkeypatch.setattr(m, "log_files", lambda: [str(log)])
+
+    counts = m.daily_counts()
+
+    assert counts == {"2026-10-24": 2, "2026-10-25": 1}
+
+
+def test_daily_counts_skips_unparseable_timestamp(tmp_path, monkeypatch):
+    bad_line = SAMPLE_LINE.replace("Sat Oct 24 01:43:36.376503 2026", "not-a-timestamp")
+    log = tmp_path / "error.log"
+    log.write_text(bad_line + "\n")
+    monkeypatch.setattr(m, "log_files", lambda: [str(log)])
+
+    assert m.daily_counts() == {}
