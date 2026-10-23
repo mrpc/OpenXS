@@ -213,10 +213,11 @@ print &ui_subheading("Run a manual scan");
 my %cfg = &openxs_read_config();
 print &ui_form_start("scan.cgi", "post");
 print &ui_table_start(undef, undef, 2);
-print &ui_table_row("Directory to scan", &ui_textbox("path", "/var/www", 50));
+print &ui_table_row("Directory to scan", &ui_textbox("path", $cfg{'SCAN_PATH'} || '/var/www', 50));
 print &ui_table_row("...or every account", &ui_checkbox("accounts", "1",
 	"Scan all accounts under '" . &html_escape($cfg{'ACCOUNTS_DIR'}) . "/*/" . &html_escape($cfg{'ACCOUNTS_SUBPATH'}) .
-	"' instead (ignores 'Directory to scan' above) - see <a href='settings.cgi'>Settings</a> to change the accounts directory.", 0));
+	"' instead (ignores 'Directory to scan' above) - see <a href='settings.cgi'>Settings</a> to change the accounts directory.",
+	$cfg{'SCAN_MODE'} eq 'accounts'));
 print &ui_table_end();
 print &ui_submit("Scan now", "scan");
 print &ui_form_end();
