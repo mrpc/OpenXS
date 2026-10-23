@@ -100,3 +100,24 @@ def test_check_rss_guard_does_nothing_under_limit(monkeypatch):
 def test_check_rss_guard_disabled_when_limit_is_zero(monkeypatch):
     monkeypatch.setattr(openxs_watchd.pmf_scan, "vmrss_kb", lambda: 99_999_999)
     openxs_watchd.check_rss_guard(max_rss_kb=0)  # must not raise
+
+
+def test_mem_logs_only_on_growth_over_1mb(monkeypatch, capsys):
+    monkeypatch.setattr(openxs_watchd, "_MEM_DEBUG", True)
+    openxs_watchd._last_rss_kb[0] = 10_000
+    rss_values = iter([10_500, 12_000])  # +500KB (no log), then +1.5MB (logs)
+    monkeypatch.setattr(openxs_watchd.pmf_scan, "vmrss_kb", lambda: next(rss_values))
+    openxs_watchd._mem("phase-a", "/x.php")
+    out = capsys.readouterr().out
+    assert "phase-a" not in out
+    openxs_watchd._mem("phase-b", "/x.php")
+    out = capsys.readouterr().out
+    assert "phase-b" in out
+    assert "/x.php" in out
+
+
+def test_mem_does_nothing_when_debug_disabled(monkeypatch, capsys):
+    monkeypatch.setattr(openxs_watchd, "_MEM_DEBUG", False)
+    monkeypatch.setattr(openxs_watchd.pmf_scan, "vmrss_kb", lambda: 99_999_999)
+    openxs_watchd._mem("phase-c")
+    assert capsys.readouterr().out == ""
