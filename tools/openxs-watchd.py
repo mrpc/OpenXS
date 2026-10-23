@@ -39,12 +39,35 @@ LOG = "/var/log/openxs-watchd.log"
 # can just check/update them inline - no locking needed.
 _recent = {}
 _ignored_until = {}
+_last_sweep_ts = 0.0
+
+
+def _sweep_stale(now, window):
+    """Without this, _recent gains one permanent entry per distinct
+    filename ever seen, even a one-off temp/cache file touched a
+    couple of times and never again - under heavy per-request file
+    churn (a busy PHP process creating lots of uniquely-named files)
+    that's an unbounded leak: found for real on prodserver, where it
+    pushed the daemon's RSS past 8GB within 20 minutes. Runs at most
+    once per `window` seconds (not on every single event), dropping
+    any entry whose last event has already aged out of the window."""
+    global _last_sweep_ts
+    if now - _last_sweep_ts < window:
+        return
+    _last_sweep_ts = now
+    for fname, times in list(_recent.items()):
+        if not times or now - times[-1] >= window:
+            del _recent[fname]
+    for fname, until in list(_ignored_until.items()):
+        if now >= until:
+            del _ignored_until[fname]
 
 
 def rate_limited(fname, count, window, cooldown):
     """True if fname has been scanned too often recently and should be
     skipped. Clears its own state once the cooldown expires."""
     now = time.time()
+    _sweep_stale(now, window)
     until = _ignored_until.get(fname)
     if until is not None:
         if now < until:

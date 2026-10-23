@@ -16,6 +16,7 @@ spec.loader.exec_module(openxs_watchd)
 def reset():
     openxs_watchd._recent.clear()
     openxs_watchd._ignored_until.clear()
+    openxs_watchd._last_sweep_ts = 0.0
 
 
 def test_allows_events_under_the_count_threshold():
@@ -61,3 +62,22 @@ def test_old_events_outside_window_dont_count(monkeypatch):
 
     monkeypatch.setattr(time, "time", lambda: base + 20)  # well past the 10s window
     assert not openxs_watchd.rate_limited("/a.log", count=5, window=10, cooldown=60)
+
+
+def test_stale_entries_are_swept_so_one_off_files_dont_leak_forever(monkeypatch):
+    # The real bug found on prodserver: thousands of distinct one-off files
+    # (touched once, never again) each left their own permanent entry in
+    # _recent - this never got cleaned up on its own, since only a file
+    # that actually gets rate-limited is ever popped.
+    reset()
+    base = 1000.0
+    monkeypatch.setattr(time, "time", lambda: base)
+    for i in range(50):
+        openxs_watchd.rate_limited(f"/one-off-{i}.tmp", count=5, window=10, cooldown=60)
+    assert len(openxs_watchd._recent) == 50
+
+    # Window has long since passed for all of them, and a later event
+    # (for an unrelated file) triggers the periodic sweep.
+    monkeypatch.setattr(time, "time", lambda: base + 100)
+    openxs_watchd.rate_limited("/unrelated.log", count=5, window=10, cooldown=60)
+    assert len(openxs_watchd._recent) == 1  # only /unrelated.log remains
