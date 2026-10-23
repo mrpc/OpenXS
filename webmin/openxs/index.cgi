@@ -134,6 +134,14 @@ print &ui_table_row("mod_security (real-time upload blocking)",
 	&row_value(&status_cell($modsec_ok && $modsec_hook_ok, "Installed and hooked up", "Not installed"),
 		($modsec_ok && $modsec_hook_ok) ? "" : &mini_form("install_modsecurity.cgi", &ui_submit("Install", "install"))));
 
+if ($csf_ok && &openxs_csf_old()) {
+	my $v = `csf -v 2>/dev/null`;
+	chomp($v);
+	print &ui_table_row("CSF version",
+		&row_value("<b style='color:#b30000'>Old, pre-GPLv3 release (" . &html_escape($v) . ") - upstream license/download infra is offline</b>",
+			&mini_form("upgrade_csf.cgi", &ui_submit("Upgrade to open-source v15.00", "upgrade"))));
+	}
+
 print &ui_table_row("CSF firewall auto-block hook",
 	&row_value($csf_ok ? &status_cell($csf_hook_ok, "Hooked up", "CSF found, hook not installed")
 	                    : "<i style='color:#888'>CSF not found on this server</i>",
