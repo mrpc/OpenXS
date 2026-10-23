@@ -126,3 +126,23 @@ def test_check_composer_does_not_flag_dev_versions(tmp_path, monkeypatch):
     make_composer_lock(tmp_path, "site", [("acme/pkg", "dev-main")])
     results = vs.check_composer(str(tmp_path))
     assert results[0][4] is False
+
+
+def test_record_findings_writes_outdated_hits_tagged_oldversion(tmp_path, monkeypatch):
+    import openxs_db as db
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
+    wp_results = [(str(tmp_path / "wp"), "5.0", "6.4.2", True), (str(tmp_path / "wp2"), "6.4.2", "6.4.2", False)]
+    composer_results = [(str(tmp_path / "composer.lock"), "acme/pkg", "1.0.0", "2.0.0", True)]
+    vs.record_findings(str(tmp_path), wp_results, composer_results)
+    scans = db.recent_scans(limit=1)
+    findings = db.findings_for_scan(scans[0][0])
+    assert len(findings) == 2  # only the outdated ones, not the up-to-date wp2
+    assert all(f[2].endswith("(oldversion)") for f in findings)
+
+
+def test_record_findings_does_nothing_when_all_up_to_date(tmp_path, monkeypatch):
+    import openxs_db as db
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
+    wp_results = [(str(tmp_path / "wp"), "6.4.2", "6.4.2", False)]
+    vs.record_findings(str(tmp_path), wp_results, [])
+    assert not os.path.exists(str(tmp_path / "openxs.db"))  # never even connects

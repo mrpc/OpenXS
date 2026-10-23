@@ -138,6 +138,8 @@ def categorize(rule_name):
         return "virus"
     if rule_name.endswith("(maldet)"):
         return "maldet"
+    if rule_name.endswith("(oldversion)"):
+        return "oldversion"
     if rule_name in FS_RULES:
         return "fs"
     return "yara"
