@@ -7,6 +7,15 @@ Type=simple
 ExecStart=/usr/bin/python3 /opt/php-malware-finder/openxs-watchd.py
 Restart=on-failure
 RestartSec=2
+# Kernel-enforced hard backstop, independent of WATCHD_MAX_RSS_MB's own
+# in-process check (which only runs between events - found for real
+# that it never got a chance to run again once a single event's own
+# processing got stuck, growing memory the whole time with no in-
+# process code path left to catch it). The cgroup memory controller
+# kills this unit outright if it ever crosses this line, no matter what
+# the process itself is doing - Restart=on-failure brings it straight
+# back, same as the in-process checks already do for the common case.
+MemoryMax=1536M
 
 [Install]
 WantedBy=multi-user.target
