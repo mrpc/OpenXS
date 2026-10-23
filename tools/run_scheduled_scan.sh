@@ -94,9 +94,21 @@ fim_output=$(python3 openxs_fim.py 2>&1) || true
 echo "$fim_output" > fim_results.txt
 fim_count=$(echo "$fim_output" | grep -c '^CHANGED\|^REMOVED\|^ADDED' || true)
 
+# WordPress core / composer package version check (initial
+# sversionscan-equivalent - see version_scan.py's own docstring).
+version_output=$(python3 version_scan.py "$FS_SCAN_ROOT" 2>&1) || true
+echo "$version_output" > version_results.txt
+version_count=$(echo "$version_output" | grep -c '^OUTDATED' || true)
+
+# Pending apt security updates - OS-level, not application-layer like
+# the checks above (and not tied to SCAN_PATH/ACCOUNTS_DIR at all).
+apt_output=$(python3 apt_security_check.py 2>&1) || true
+echo "$apt_output" > apt_security_results.txt
+apt_count=$(echo "$apt_output" | grep -c '^SECURITY' || true)
+
 hits=$(grep -c . scan_results.txt || true)
 
-if [ "$hits" -gt 0 ] || [ "$drift_count" -gt 0 ] || [ "$fim_count" -gt 0 ]; then
+if [ "$hits" -gt 0 ] || [ "$drift_count" -gt 0 ] || [ "$fim_count" -gt 0 ] || [ "$version_count" -gt 0 ] || [ "$apt_count" -gt 0 ]; then
     {
         if [ "$hits" -gt 0 ]; then
             echo "OpenXS: $hits genuine hit(s) on $HOST ($SCAN_LABEL)"
@@ -112,6 +124,16 @@ if [ "$hits" -gt 0 ] || [ "$drift_count" -gt 0 ] || [ "$fim_count" -gt 0 ]; then
         if [ "$fim_count" -gt 0 ]; then
             echo "=== File integrity: $fim_count file(s) differ from their baseline ==="
             echo "$fim_output"
+            echo ""
         fi
-    } | mail -s "[$HOST] OpenXS: $hits hit(s), $drift_count drift, $fim_count integrity" "$EMAIL"
+        if [ "$version_count" -gt 0 ]; then
+            echo "=== Outdated WordPress core: $version_count install(s) ==="
+            echo "$version_output"
+            echo ""
+        fi
+        if [ "$apt_count" -gt 0 ]; then
+            echo "=== Pending apt security updates: $apt_count package(s) ==="
+            echo "$apt_output"
+        fi
+    } | mail -s "[$HOST] OpenXS: $hits hit(s), $drift_count drift, $fim_count integrity, $version_count outdated, $apt_count apt-security" "$EMAIL"
 fi

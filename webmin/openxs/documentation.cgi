@@ -85,6 +85,22 @@ print "<p>Different settings for a specific directory, overriding the global one
 /home/bigsite/backups quarantine_enabled=0
 </pre>";
 
+print &ui_subheading("Version checks (initial sversionscan-equivalent)");
+print "<p>Two independent, read-only checks run with the daily scheduled scan (not on the mod_security/watch-daemon ".
+      "real-time paths - both make live network calls):</p><ul>".
+      "<li><b>WordPress core</b> (<code>version_scan.py</code>): finds every <code>wp-includes/version.php</code> ".
+      "under the scan path, compares against WordPress.org's own latest-version API. The only CMS type actually ".
+      "found installed across our fleet so far - a generic vulnerable-plugin-version scanner is a much bigger, ".
+      "still-unsolved problem (needs a CVE/vulnerability database we don't have).</li>".
+      "<li><b>Composer packages</b> (same script): reads every <code>composer.lock</code> found and checks each ".
+      "installed package's version against <a href='https://packagist.org' target='_blank'>Packagist</a> - no ".
+      "built-in knowledge of any specific package needed (our own framework included - it just asks Packagist ".
+      "the same as any dependency). A small SQLite cache (<code>/var/lib/openxs/package_versions.db</code>, ".
+      "1-week TTL) means the same package appearing in many sites' composer.lock isn't re-queried every time.</li>".
+      "<li><b>Pending apt security updates</b> (<code>apt_security_check.py</code>): <code>apt-get -s dist-upgrade</code> ".
+      "(simulate only, never installs anything), filtered to packages whose origin includes a security repo - ".
+      "portable across Debian and Ubuntu, unlike Ubuntu-only tools like update-notifier's apt-check.</li></ul>";
+
 print &ui_subheading("File integrity monitoring - /etc/openxs/fim_paths");
 print "<p>A different, broader check than the whitelist drift check above: hashes (SHA-256) a configured list of ".
       "files/directories you consider important - configs, framework core, OpenXS's own code - and flags any ".
