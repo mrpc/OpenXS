@@ -151,6 +151,26 @@ def check_composer(root):
     return results
 
 
+def record_findings(root, wp_results, composer_results):
+    """Records OUTDATED hits into OpenXS's own scan-history db (rule_name
+    tagged "(oldversion)", same suffix-based convention pmf_scan.py's
+    categorize() already uses for "(ClamAV)"/"(maldet)") - so they show
+    up in the Webmin dashboard's unified findings browser as their own
+    category, same as cxs's own "Old Versions" tab, instead of only
+    ever living in a separate version_results.txt no UI reads from."""
+    findings = [(wp_root, f"Outdated WordPress core: {installed} (latest: {latest}) (oldversion)")
+                for wp_root, installed, latest, outdated in wp_results if outdated]
+    findings += [(lock_path, f"Outdated package {name}: {installed} (latest: {latest}) (oldversion)")
+                 for lock_path, name, installed, latest, outdated in composer_results if outdated]
+    if not findings:
+        return
+    try:
+        import openxs_db
+        openxs_db.record_scan(root, len(wp_results) + len(composer_results), findings)
+    except Exception as e:
+        print(f"# (version scan history not recorded: {e})", file=sys.stderr)
+
+
 def main():
     if len(sys.argv) != 2:
         print(f"Usage: {sys.argv[0]} <root-dir-to-scan>", file=sys.stderr)
@@ -177,6 +197,7 @@ def main():
         if outdated:
             print(f"OUTDATED\t{lock_path}\t{name}\t{installed}\t(latest: {latest})")
 
+    record_findings(root, wp_results, composer_results)
     sys.exit(1 if (wp_outdated or composer_outdated) else 0)
 
 
