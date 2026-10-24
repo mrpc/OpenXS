@@ -28,6 +28,17 @@ Release from that section's text.
   wordpress.org's official per-version checksums (bundled, weekly
   auto-refresh).
 - Revive Adserver: detect installs, flag outdated ones.
+- Any wordpress.org-hosted plugin (not a hand-picked few): suppress
+  false positives on its own unmodified, officially-released code via
+  `wp_plugin_checksums.py` - downloads.wordpress.org's own per-version
+  zip (the same URL WordPress's own "install this version" uses),
+  cached to disk per (slug, version) on first use rather than a
+  pre-built bundle (too many plugins/versions to commit, unlike
+  WordPress core itself). Covers most of the real false-positive
+  volume found live 2026-10-24 (Wordfence, Jetpack, Yoast SEO and
+  others were all wordpress.org-hosted, confirmed end-to-end against
+  real flagged files) - a commercial/non-wp.org plugin (e.g. RevSlider)
+  isn't covered and needs its own fix.
 - Roundcube Webmail and phpMyAdmin: suppress false positives on
   unmodified core files via self-built checksums bundles (same shape as
   Revive - neither project publishes an official per-file checksums

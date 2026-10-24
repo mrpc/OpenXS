@@ -316,6 +316,54 @@ def is_unmodified_core_file(fname):
     return checksums_module.is_unmodified_core_file(fname, root, checksums)
 
 
+def find_wp_plugin_root_for(fname):
+    """If fname sits under some detected WordPress install's
+    wp-content/plugins/<slug>/, returns (wp_root, slug, plugin_root).
+    None otherwise (not a WordPress install, or not under plugins/ at
+    all - e.g. wp-content/themes/, wp-includes/, which is_unmodified_
+    core_file already covers for WP core itself)."""
+    platform, wp_root = find_platform_root_for(fname)
+    if not platform or platform["name"] != "wordpress":
+        return None
+    plugins_dir = os.path.join(wp_root, "wp-content", "plugins")
+    rel = os.path.relpath(fname, plugins_dir)
+    if rel.startswith(".."):
+        return None
+    slug = rel.split(os.sep)[0]
+    return (wp_root, slug, os.path.join(plugins_dir, slug))
+
+
+def is_unmodified_wp_plugin_file(fname):
+    """True if fname sits under a wordpress.org-hosted plugin (any
+    plugin, not just a hand-picked few) and matches that exact installed
+    version's official checksum - generalizes is_unmodified_core_file()
+    (WordPress core only) to the plugin ecosystem, which is where most
+    of the real false-positive volume actually comes from (a popular
+    plugin's own minified/obfuscated-looking legitimate code). Silently
+    returns False for a plugin that isn't on wordpress.org (a commercial
+    plugin) or whose exact version can't be fetched."""
+    found = find_wp_plugin_root_for(fname)
+    if not found:
+        return False
+    wp_root, slug, plugin_root = found
+    try:
+        import version_scan
+        import wp_plugin_checksums
+    except ImportError:
+        return False
+    version = None
+    for s, v in version_scan.find_wp_plugins(wp_root):
+        if s == slug:
+            version = v
+            break
+    if not version:
+        return False
+    checksums = wp_plugin_checksums.fetch_checksums(slug, version)
+    if not checksums:
+        return False
+    return wp_plugin_checksums.is_unmodified_core_file(fname, plugin_root, checksums)
+
+
 def categorize(rule_name):
     """cxs quarantines only a conservative default (Viruses + Known
     Exploits) 'to avoid otherwise breaking web sites' - filesystem
@@ -763,13 +811,15 @@ def main():
                         continue
             real = [m for m in matches if m.rule != "IsWhitelisted" and m.rule != "IsPhp"
                     and paranoia_level_for(m.rule) <= paranoia_level]
-            if real and is_unmodified_core_file(fname):
+            if real and (is_unmodified_core_file(fname) or is_unmodified_wp_plugin_file(fname)):
                 # Byte-for-byte matches the official checksum for this
-                # exact version - whatever rule just matched is a false
-                # positive, not something a webshell could be hiding
-                # behind. See is_unmodified_wordpress_core_file()'s
-                # docstring for why php-malware-finder's own bundled
-                # whitelist doesn't already catch this.
+                # exact version (core platform, or - far more often in
+                # practice - a wordpress.org-hosted plugin) - whatever
+                # rule just matched is a false positive, not something a
+                # webshell could be hiding behind. See
+                # is_unmodified_wordpress_core_file()'s docstring for
+                # why php-malware-finder's own bundled whitelist doesn't
+                # already catch this.
                 real = []
             custom_hits = check_custom_rules(fname, custom_rules)
             # Scan inside zip/tar archives too (cxs's --options Z) - a
