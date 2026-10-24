@@ -286,6 +286,17 @@ sub openxs_csf_present
 return -e '/etc/csf/csf.conf' ? 1 : 0;
 }
 
+sub openxs_remoteip_active
+{
+# mods-enabled/remoteip.load existing means the module is loaded AND
+# our own config conf exists - doesn't prove it's actually resolving
+# real IPs correctly for every vhost (only a live request can prove
+# that, same lesson as mod_security's rule-exclusion saga tonight),
+# but does prove it's at least switched on and configured.
+return (-e '/etc/apache2/mods-enabled/remoteip.load'
+        && -e '/etc/apache2/conf-enabled/openxs-remoteip-cloudflare.conf') ? 1 : 0;
+}
+
 # True if this is the old, pre-GPLv3 (< v15.00) licensed line - the
 # upstream download/license infrastructure for it is already offline
 # (see TIMELINE.md), so staying on it isn't "stable", it's unmaintained.

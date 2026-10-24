@@ -10,7 +10,12 @@
 # blocking) - pass --with-modsecurity and/or --with-csf-hook to install them
 # now, or install them later from the Webmin dashboard. maldet (a third,
 # independent detector) is also optional - pass --with-maldet, or install
-# it later from the dashboard the same way.
+# it later from the dashboard the same way. mod_remoteip (resolves the
+# REAL visitor IP on a Cloudflare-fronted site instead of Cloudflare's own
+# edge IP, in access/error logs and anywhere else Apache's %h is used) is
+# also optional - pass --with-remoteip if any site on this server is
+# proxied through Cloudflare, since IP-based decisions (CSF bans,
+# OpenXS's own) are otherwise blind to who's actually making the request.
 #
 # Safe to re-run (idempotent).
 set -euo pipefail
@@ -25,11 +30,13 @@ PMF_COMMIT="${PMF_COMMIT:-ab4d7622714c6bdfc992339a5e6925207b5071b8}"
 WITH_MODSECURITY=0
 WITH_CSF_HOOK=0
 WITH_MALDET=0
+WITH_REMOTEIP=0
 for arg in "$@"; do
     case "$arg" in
         --with-modsecurity) WITH_MODSECURITY=1 ;;
         --with-csf-hook) WITH_CSF_HOOK=1 ;;
         --with-maldet) WITH_MALDET=1 ;;
+        --with-remoteip) WITH_REMOTEIP=1 ;;
         *) echo "Unknown option: $arg" >&2; exit 1 ;;
     esac
 done
@@ -245,6 +252,13 @@ if [ "$WITH_MALDET" = "1" ]; then
     bash "$PMF_DIR/install_maldet.sh"
 else
     echo "    Skipped (pass --with-maldet, or install/reconfigure later from the Webmin dashboard)."
+fi
+
+echo "==> mod_remoteip (real visitor IP behind Cloudflare)..."
+if [ "$WITH_REMOTEIP" = "1" ]; then
+    bash "$PMF_DIR/install_mod_remoteip.sh"
+else
+    echo "    Skipped (pass --with-remoteip, or install later from the Webmin dashboard)."
 fi
 
 if [ "$(systemctl is-active maldet 2>/dev/null)" = "active" ]; then
