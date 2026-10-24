@@ -23,6 +23,28 @@ import time
 import json
 import signal
 
+DEFAULT_IGNORE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "default_ignore")
+
+def _load_ignore_file(path, plain, md5s, sha256s, regexes):
+    if not path or not os.path.isfile(path):
+        return
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("md5:"):
+                md5s.add(line[4:].strip().lower())
+            elif line.startswith("sha256:"):
+                sha256s.add(line[7:].strip().lower())
+            elif line.startswith("regex:"):
+                try:
+                    regexes.append(re.compile(line[6:].strip()))
+                except re.error as e:
+                    print(f"# Ignoring invalid regex ignore entry '{line}': {e}", file=sys.stderr)
+            else:
+                plain.append(line)
+
 def load_ignore_patterns(path):
     """cxs's ignore file: one substring/path per line to skip scanning, or
     'md5:<hash>'/'sha256:<hash>' to ignore by exact file content instead
@@ -31,25 +53,16 @@ def load_ignore_patterns(path):
     (e.g. anchored at the start, or with alternation) - added for
     migrate_from_cxs.py's sake, which otherwise had no lossless way to
     carry over cxs's own regex-based ignore entries (pdir:/pfile:/psym:/
-    puser:/match:), compiled once here rather than per-file."""
+    puser:/match:), compiled once here rather than per-file.
+
+    Also always loads default_ignore (shipped alongside this script,
+    updated via git pull + install.sh) - false positives on common
+    third-party/first-party software that are likely to recur on other
+    installs too, not just whatever's in this one server's local,
+    user-editable `path`."""
     plain, md5s, sha256s, regexes = [], set(), set(), []
-    if path and os.path.isfile(path):
-        with open(path) as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                if line.startswith("md5:"):
-                    md5s.add(line[4:].strip().lower())
-                elif line.startswith("sha256:"):
-                    sha256s.add(line[7:].strip().lower())
-                elif line.startswith("regex:"):
-                    try:
-                        regexes.append(re.compile(line[6:].strip()))
-                    except re.error as e:
-                        print(f"# Ignoring invalid regex ignore entry '{line}': {e}", file=sys.stderr)
-                else:
-                    plain.append(line)
+    _load_ignore_file(DEFAULT_IGNORE_FILE, plain, md5s, sha256s, regexes)
+    _load_ignore_file(path, plain, md5s, sha256s, regexes)
     return plain, md5s, sha256s, regexes
 
 def file_hashes(fname, max_size=5 * 1024 * 1024):
