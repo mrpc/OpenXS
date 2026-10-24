@@ -53,9 +53,12 @@ def _matching_lines():
         yield (hm.group(1) if hm else "(unknown)", um.group(1) if um else "", m.group("id"), m.group("ts"))
 
 
-def summarize(max_rows=50):
+def summarize(lines=None, max_rows=50):
+    """lines: a pre-fetched list from _matching_lines(), so a caller that
+    also wants daily_counts() in the same run doesn't grep every Apache
+    error log on the box twice - defaults to fetching it fresh."""
     groups = {}
-    for host, uri, rule_id, ts in _matching_lines():
+    for host, uri, rule_id, ts in (lines if lines is not None else _matching_lines()):
         key = (host, uri, rule_id)
         g = groups.setdefault(key, {"count": 0, "first": ts, "last": ts})
         g["count"] += 1
@@ -68,13 +71,13 @@ def summarize(max_rows=50):
     return rows[:max_rows]
 
 
-def daily_counts():
+def daily_counts(lines=None):
     """{date (YYYY-MM-DD): block count} - for the Stats page's existing
     per-day chart/table, same date format as openxs_db.daily_stats_filled().
     A line whose timestamp doesn't parse (unexpected log format) is
     skipped rather than crashing the whole page over one bad line."""
     counts = {}
-    for _host, _uri, _rule_id, ts in _matching_lines():
+    for _host, _uri, _rule_id, ts in (lines if lines is not None else _matching_lines()):
         try:
             date = datetime.strptime(ts, TS_FORMAT).date().isoformat()
         except ValueError:
@@ -83,15 +86,14 @@ def daily_counts():
     return counts
 
 
-def write_cache(path=CACHE_PATH):
-    """Run by cron (install_modsecurity.sh, every 5 min) so the Webmin
+def write_cache(path=CACHE_PATH, lines=None):
+    """Run by cron (openxs_modsec_record.py, every 5 min) so the Webmin
     page reads a file instead of re-grepping every Apache error log on
     the box on every single page view - the same "expensive scan once,
-    cheap read many times" split openxs_modsec_record.py already does
-    for the daily-counts history, just on a tighter interval since this
-    view is meant to show *recent* blocks."""
+    cheap read many times" split already used for the daily-counts
+    history, just sharing that same cron run instead of a second one."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    data = {"generated_at": time.time(), "rows": summarize()}
+    data = {"generated_at": time.time(), "rows": summarize(lines=lines)}
     tmp_path = f"{path}.tmp"
     with open(tmp_path, "w") as f:
         json.dump(data, f)
