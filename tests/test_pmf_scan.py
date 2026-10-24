@@ -374,6 +374,30 @@ def test_find_platform_root_for_detects_drupal(tmp_path):
     assert root == str(drupal_root)
 
 
+def test_find_platform_root_for_detects_revive(tmp_path):
+    pmf_scan._PLATFORM_ROOT_CACHE.clear()
+    revive_root = tmp_path / "adserver"
+    revive_root.mkdir(parents=True)
+    (revive_root / "constants.php").write_text("<?php define('VERSION', '6.0.8');")
+    (revive_root / "adview.php").write_text("<?php // delivery script")
+    target = revive_root / "www" / "delivery" / "cl.php"
+    target.parent.mkdir(parents=True)
+    target.write_text("x")
+    platform, root = pmf_scan.find_platform_root_for(str(target))
+    assert platform["name"] == "revive"
+    assert root == str(revive_root)
+
+
+def test_find_platform_root_for_requires_revive_adview_php_too(tmp_path):
+    # constants.php alone is too generic a filename to key off safely
+    pmf_scan._PLATFORM_ROOT_CACHE.clear()
+    root = tmp_path / "adserver"
+    root.mkdir(parents=True)
+    (root / "constants.php").write_text("<?php define('VERSION', '6.0.8');")
+    target = root / "constants.php"
+    assert pmf_scan.find_platform_root_for(str(target)) == (None, None)
+
+
 def test_find_platform_root_for_requires_drupal_modules_and_sites_dirs(tmp_path):
     # bootstrap.inc alone is too generic a filename to key off safely
     pmf_scan._PLATFORM_ROOT_CACHE.clear()
@@ -434,6 +458,23 @@ def test_is_unmodified_core_file_true_for_matching_drupal_checksum(tmp_path, mon
     import drupal_core_checksums
     monkeypatch.setattr(drupal_core_checksums, "fetch_checksums",
                          lambda version: {"includes/bootstrap.inc": hashlib.sha256(f.read_bytes()).hexdigest()})
+
+    assert pmf_scan.is_unmodified_core_file(str(f))
+
+
+def test_is_unmodified_core_file_true_for_matching_revive_checksum(tmp_path, monkeypatch):
+    pmf_scan._PLATFORM_ROOT_CACHE.clear()
+    revive_root = tmp_path / "adserver"
+    revive_root.mkdir(parents=True)
+    (revive_root / "constants.php").write_text("<?php define('VERSION', '6.0.8');")
+    (revive_root / "adview.php").write_text("<?php")
+    f = revive_root / "www" / "delivery" / "cl.php"
+    f.parent.mkdir(parents=True)
+    f.write_bytes(b"stock content")
+
+    import revive_core_checksums
+    monkeypatch.setattr(revive_core_checksums, "fetch_checksums",
+                         lambda version: {"www/delivery/cl.php": hashlib.sha256(b"stock content").hexdigest()})
 
     assert pmf_scan.is_unmodified_core_file(str(f))
 

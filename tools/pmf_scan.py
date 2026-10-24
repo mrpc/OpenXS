@@ -173,6 +173,17 @@ _PLATFORMS = [
         "version_re_attr": "DRUPAL_VERSION_RE",
         "checksums_module": "drupal_core_checksums",
     },
+    {
+        "name": "revive",
+        # constants.php alone is too generic a filename to key off
+        # safely - also requires adview.php, same marker as
+        # version_scan.py's find_revive_installs().
+        "marker": lambda d: (os.path.isfile(os.path.join(d, "constants.php"))
+                              and os.path.isfile(os.path.join(d, "adview.php"))),
+        "version_relpath": "constants.php",
+        "version_re_attr": "REVIVE_VERSION_RE",
+        "checksums_module": "revive_core_checksums",
+    },
 ]
 
 _PLATFORM_ROOT_CACHE = {}
