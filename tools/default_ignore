@@ -1,0 +1,20 @@
+# Shipped with OpenXS (not user-editable config) - known false-positive
+# sources on legitimate, common third-party/first-party software, found
+# across real installs. Ships to every install via git pull + install.sh,
+# unlike /etc/openxs/ignore (local, per-server, user-editable). Add a new
+# entry here when a false positive is on software likely present on
+# OTHER installs too, not just this fleet's own accounts.
+#
+# PramnosFramework (our own framework, vendored into several sites)
+/PramnosFramework.php
+/vendor/mrpc/pramnosframework/
+# Adminer (DB admin tool) - legitimately can run arbitrary SQL/code
+/vendor/vrana/adminer/
+# PHPUnit's own eval-stdin test utility (dev dependency, not site code)
+/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php
+# Loco Translate (WordPress plugin)
+/wp-content/plugins/loco-translate/src/mvc/PostParams.php
+# Simple Lightbox (WordPress plugin)
+/wp-content/plugins/simple-lightbox/load.php
+# GOTMLS (WordPress malware-scanner plugin - ironically flags itself)
+/wp-content/plugins/gotmls/index.php

@@ -112,6 +112,14 @@ Release from that section's text.
 - Format-hint text and a per-file validator for every Settings text-file
   editor (`edit_file.cgi`) - a malformed line that the real parser would
   otherwise silently skip is now rejected at save time instead.
+- `default_ignore`: a shipped (not locally-editable) false-positive list
+  for common third-party/first-party software (Adminer, PHPUnit's
+  eval-stdin test utility, Loco Translate, Simple Lightbox, GOTMLS,
+  our own PramnosFramework) - unlike `/etc/openxs/ignore` (local,
+  per-server), this updates on every install via `git pull`, so a false
+  positive found on one install's copy of a common package is
+  suppressed on every other install too, not just the one it was found
+  on.
 
 ### Changed
 - `pmf_scan.py`'s per-file platform-checksum checks (WordPress,

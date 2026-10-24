@@ -23,14 +23,19 @@ def test_load_ignore_patterns_plain_and_hashes(tmp_path):
     ignore_file = tmp_path / "ignore"
     ignore_file.write_text("/some/path\n# a comment\nmd5:ABCDEF\nsha256:deadbeef\n\n")
     plain, md5s, sha256s, regexes = pmf_scan.load_ignore_patterns(str(ignore_file))
-    assert plain == ["/some/path"]
+    assert "/some/path" in plain
     assert md5s == {"abcdef"}  # lowercased
     assert sha256s == {"deadbeef"}
     assert regexes == []
 
 
-def test_load_ignore_patterns_missing_file_returns_empty():
-    assert pmf_scan.load_ignore_patterns("/no/such/file") == ([], set(), set(), [])
+def test_load_ignore_patterns_missing_file_still_loads_shipped_defaults():
+    # default_ignore ships with the code (false positives on common
+    # third-party software likely to recur on other installs) and is
+    # always loaded, regardless of whether the local, user-editable
+    # ignore file at `path` exists.
+    plain, md5s, sha256s, regexes = pmf_scan.load_ignore_patterns("/no/such/file")
+    assert "/PramnosFramework.php" in plain
 
 
 def test_load_ignore_patterns_compiles_regex_entries(tmp_path):
@@ -47,7 +52,7 @@ def test_load_ignore_patterns_skips_invalid_regex(tmp_path):
     ignore_file.write_text("regex:(unclosed\n/some/path\n")
     plain, md5s, sha256s, regexes = pmf_scan.load_ignore_patterns(str(ignore_file))
     assert regexes == []
-    assert plain == ["/some/path"]  # the rest of the file still loads fine
+    assert "/some/path" in plain  # the rest of the file still loads fine
 
 
 def test_is_ignored_by_substring():
