@@ -87,7 +87,8 @@ for fid, f, r, q, size, ts, scan_path in rows:
     check_path = q if (q and q not in ('', '__deleted__')) else f
     gone = int(not os.path.exists(check_path))
     category = pmf_scan.categorize(r)
-    print(str(fid) + '\\t' + f + '\\t' + r + '\\t' + (q or '') + '\\t' + str(size or '') + '\\t' + str(ts) + '\\t' + user + '\\t' + source + '\\t' + str(gone) + '\\t' + category)
+    perm_fix = openxs_db.permission_fix_for(fid) if r == 'world-writable directory' else None
+    print(str(fid) + '\\t' + f + '\\t' + r + '\\t' + (q or '') + '\\t' + str(size or '') + '\\t' + str(ts) + '\\t' + user + '\\t' + source + '\\t' + str(gone) + '\\t' + category + '\\t' + (str(perm_fix[1]) if perm_fix else ''))
 "`;
 my @all_lines = grep { $_ ne "" } split(/\n/, $out);
 my $total = 0;
@@ -110,7 +111,7 @@ else {
 		&findings_sort_header($sort, $order, $base_qs, "size", "Size"), "Status"]);
 	my $ignored_paths = { map { $_ => 1 } (-e '/etc/openxs/ignore' ? @{ &read_file_lines('/etc/openxs/ignore', 1) } : ()) };
 	foreach my $row (@all_lines) {
-			my ($fid, $f, $r, $q, $size, $ts, $user, $source, $gone, $category) = split(/\t/, $row);
+			my ($fid, $f, $r, $q, $size, $ts, $user, $source, $gone, $category, $perm_fix_new_mode) = split(/\t/, $row);
 			my $date = $ts ne '' && $ts ne 'None' ? &make_date($ts, 1) : "<i>unknown</i>";
 			my $size_h = $size ne '' ? "${size}B" : "-";
 			my $btn_style = "display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;font-size:11px;".
@@ -134,9 +135,11 @@ else {
 			my $links = "<div style='margin-top:3px'>" .
 				($gone eq '1' ? "<span style='$btn_style;background:#f0f0f0;color:#888;border:1px solid #ddd'>file gone</span> " : "$view_btn ") .
 				$logs_btn . " " . $fp_btn . "</div>";
-			my $status = ($gone eq '1' && $q eq '')
-				? "<i style='color:#888'>File gone</i>"
-				: &openxs_quarantine_action_links($fid, $q, undef);
+			my $status = ($r eq 'world-writable directory')
+				? &openxs_permission_action_links($fid, $perm_fix_new_mode)
+				: ($gone eq '1' && $q eq '')
+					? "<i style='color:#888'>File gone</i>"
+					: &openxs_quarantine_action_links($fid, $q, undef);
 			print &ui_columns_row([
 				&ui_checkbox("id", $fid, "", 0),
 				$date, &html_escape($user), &html_escape($source),
