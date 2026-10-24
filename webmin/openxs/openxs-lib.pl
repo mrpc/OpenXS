@@ -27,6 +27,8 @@ our %editable_files = (
 	'fim_paths' => '/etc/openxs/fim_paths',
 	'csf_blocklists' => '/etc/csf/csf.blocklists',
 	'modsec_exclusions' => '/etc/openxs/modsec_exclusions',
+	'modsec_mode' => '/etc/openxs/modsec_mode',
+	'modsec_rule_exclusions' => '/etc/openxs/modsec_rule_exclusions',
 );
 
 sub openxs_ui_disabled
