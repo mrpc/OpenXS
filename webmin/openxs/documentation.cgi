@@ -99,6 +99,9 @@ print "<p>Two independent, read-only checks run with the daily scheduled scan (n
       "<code>VERSION</code>, alongside <code>adview.php</code>), compares against the highest released tag on ".
       "<a href='https://github.com/revive-adserver/revive-adserver' target='_blank'>GitHub</a>. The actively-".
       "maintained fork of the old OpenX Adserver - don't confuse the two.</li>".
+      "<li><b>Drupal core</b> (same script): finds every Drupal 7 install (<code>includes/bootstrap.inc</code> ".
+      "defining <code>VERSION</code>, alongside <code>modules/</code> and <code>sites/</code>) and always flags it - ".
+      "Drupal 7 itself reached end of life and has no more official security coverage, regardless of patch level.</li>".
       "<li><b>Composer packages</b> (same script): reads every <code>composer.lock</code> found and checks each ".
       "installed package's version against <a href='https://packagist.org' target='_blank'>Packagist</a> - no ".
       "built-in knowledge of any specific package needed (our own framework included - it just asks Packagist ".

@@ -29,6 +29,8 @@ WP_VERSION_RE = re.compile(r"""\$wp_version\s*=\s*['"]([^'"]+)['"]""")
 LATEST_VERSION_URL = "https://api.wordpress.org/core/version-check/1.7/"
 REVIVE_VERSION_RE = re.compile(r"""define\s*\(\s*['"]VERSION['"]\s*,\s*['"]([^'"]+)['"]\s*\)""")
 REVIVE_TAGS_URL = "https://api.github.com/repos/revive-adserver/revive-adserver/tags?per_page=30"
+DRUPAL_VERSION_RE = re.compile(r"""define\s*\(\s*['"]VERSION['"]\s*,\s*['"](7\.[^'"]+)['"]\s*\)""")
+DRUPAL_RELEASE_HISTORY_URL = "https://updates.drupal.org/release-history/drupal/7.x"
 PACKAGIST_URL = "https://repo.packagist.org/p2/{name}.json"
 PACKAGE_CACHE_DB = os.environ.get("OPENXS_PACKAGE_CACHE_DB", "/var/lib/openxs/package_versions.db")
 PACKAGE_CACHE_TTL = 7 * 24 * 3600  # re-check a package at most once a week
@@ -99,6 +101,53 @@ def check_revive(root):
     for install_root, installed in find_revive_installs(root):
         outdated = latest is not None and _version_tuple(installed) < _version_tuple(latest)
         results.append((install_root, installed, latest, outdated))
+    return results
+
+
+def find_drupal_installs(root):
+    """Yields (install_root, installed_version) for every Drupal 7
+    install found under root. bootstrap.inc alone is too generic a
+    filename to key off safely - also requires modules/ and sites/
+    alongside it, Drupal's own top-level directory layout."""
+    for dirpath, dirnames, filenames in os.walk(root):
+        if (os.path.basename(dirpath) == "includes" and "bootstrap.inc" in filenames
+                and os.path.isdir(os.path.join(os.path.dirname(dirpath), "modules"))
+                and os.path.isdir(os.path.join(os.path.dirname(dirpath), "sites"))):
+            try:
+                with open(os.path.join(dirpath, "bootstrap.inc"), errors="replace") as f:
+                    m = DRUPAL_VERSION_RE.search(f.read())
+            except OSError:
+                continue
+            if m:
+                yield os.path.dirname(dirpath), m.group(1)
+            dirnames[:] = []  # don't descend into includes/ itself
+
+
+def latest_drupal_7_version(timeout=5):
+    """None if unreachable. Drupal 7 as a whole branch is unsupported
+    (no more security advisories) independent of patch level - this is
+    only about whether a newer 7.x bug-fix release exists, a much
+    smaller concern than that fact itself."""
+    try:
+        with urllib.request.urlopen(DRUPAL_RELEASE_HISTORY_URL, timeout=timeout) as resp:
+            xml = resp.read().decode("utf-8", errors="replace")
+        versions = re.findall(r"<version>(7\.\d+)</version>", xml)
+        return max(versions, key=_version_tuple) if versions else None
+    except Exception:
+        return None
+
+
+def check_drupal(root):
+    """Returns a list of (install_root, installed, latest, outdated,
+    branch_unsupported) tuples. branch_unsupported is always True here
+    - Drupal 7 itself reached end of life (no more official security
+    coverage) regardless of how current a 7.x install is, which matters
+    more than whether it's merely behind the latest 7.x point release."""
+    latest = latest_drupal_7_version()
+    results = []
+    for install_root, installed in find_drupal_installs(root):
+        outdated = latest is not None and _version_tuple(installed) < _version_tuple(latest)
+        results.append((install_root, installed, latest, outdated, True))
     return results
 
 
@@ -194,7 +243,7 @@ def check_composer(root):
     return results
 
 
-def record_findings(root, wp_results, revive_results, composer_results):
+def record_findings(root, wp_results, revive_results, drupal_results, composer_results):
     """Records OUTDATED hits into OpenXS's own scan-history db (rule_name
     tagged "(oldversion)", same suffix-based convention pmf_scan.py's
     categorize() already uses for "(ClamAV)"/"(maldet)") - so they show
@@ -205,13 +254,17 @@ def record_findings(root, wp_results, revive_results, composer_results):
                 for wp_root, installed, latest, outdated in wp_results if outdated]
     findings += [(install_root, f"Outdated Revive Adserver: {installed} (latest: {latest}) (oldversion)")
                  for install_root, installed, latest, outdated in revive_results if outdated]
+    findings += [(install_root, f"Drupal core: {installed} - Drupal 7 is end of life, "
+                  f"no more official security coverage regardless of patch level"
+                  + (f" (also behind latest 7.x: {latest})" if outdated else "") + " (oldversion)")
+                 for install_root, installed, latest, outdated, branch_unsupported in drupal_results]
     findings += [(lock_path, f"Outdated package {name}: {installed} (latest: {latest}) (oldversion)")
                  for lock_path, name, installed, latest, outdated in composer_results if outdated]
     if not findings:
         return
     try:
         import openxs_db
-        openxs_db.record_scan(root, len(wp_results) + len(revive_results) + len(composer_results), findings)
+        openxs_db.record_scan(root, len(wp_results) + len(revive_results) + len(drupal_results) + len(composer_results), findings)
     except Exception as e:
         print(f"# (version scan history not recorded: {e})", file=sys.stderr)
 
@@ -224,10 +277,12 @@ def main():
 
     wp_results = check_wordpress(root)
     revive_results = check_revive(root)
+    drupal_results = check_drupal(root)
     composer_results = check_composer(root)
 
     wp_outdated = sum(1 for _, _, _, outdated in wp_results if outdated)
     revive_outdated = sum(1 for _, _, _, outdated in revive_results if outdated)
+    drupal_unsupported = len(drupal_results)  # always a finding, branch itself is EOL
     composer_outdated = sum(1 for _, _, _, _, outdated in composer_results if outdated)
 
     print(f"# WordPress: {len(wp_results)} install(s), {wp_outdated} outdated")
@@ -248,13 +303,18 @@ def main():
         else:
             print(f"OK\t{install_root}\t{installed}")
 
+    print(f"# Drupal: {len(drupal_results)} install(s), all unsupported (Drupal 7 end of life)")
+    for install_root, installed, latest, outdated, _ in drupal_results:
+        note = f"(latest 7.x: {latest})" if outdated and latest else ""
+        print(f"UNSUPPORTED\t{install_root}\t{installed}\t{note}")
+
     print(f"# Composer packages: {len(composer_results)} checked, {composer_outdated} outdated")
     for lock_path, name, installed, latest, outdated in composer_results:
         if outdated:
             print(f"OUTDATED\t{lock_path}\t{name}\t{installed}\t(latest: {latest})")
 
-    record_findings(root, wp_results, revive_results, composer_results)
-    sys.exit(1 if (wp_outdated or revive_outdated or composer_outdated) else 0)
+    record_findings(root, wp_results, revive_results, drupal_results, composer_results)
+    sys.exit(1 if (wp_outdated or revive_outdated or drupal_unsupported or composer_outdated) else 0)
 
 
 if __name__ == "__main__":

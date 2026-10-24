@@ -208,6 +208,64 @@ def is_unmodified_wordpress_core_file(fname):
     return wp_core_checksums.is_unmodified_core_file(fname, wp_root, checksums)
 
 
+_DRUPAL_ROOT_CACHE = {}
+
+
+def find_drupal_root_for(fname):
+    """Nearest ancestor directory of fname that looks like a Drupal 7
+    root (has includes/bootstrap.inc alongside a modules/ and sites/
+    directory - bootstrap.inc alone is too generic a name), or None.
+    Memoized per directory, same reasoning as find_wp_root_for."""
+    d = os.path.dirname(fname)
+    checked = []
+    while d and d not in ("/", ""):
+        if d in _DRUPAL_ROOT_CACHE:
+            result = _DRUPAL_ROOT_CACHE[d]
+            for c in checked:
+                _DRUPAL_ROOT_CACHE[c] = result
+            return result
+        checked.append(d)
+        if (os.path.isfile(os.path.join(d, "includes", "bootstrap.inc"))
+                and os.path.isdir(os.path.join(d, "modules"))
+                and os.path.isdir(os.path.join(d, "sites"))):
+            for c in checked:
+                _DRUPAL_ROOT_CACHE[c] = d
+            return d
+        parent = os.path.dirname(d)
+        if parent == d:
+            break
+        d = parent
+    for c in checked:
+        _DRUPAL_ROOT_CACHE[c] = None
+    return None
+
+
+def is_unmodified_drupal_core_file(fname):
+    """Same idea as is_unmodified_wordpress_core_file(), for Drupal 7 -
+    see that function's docstring for the general rationale. Checksums
+    are computed by us (tools/build_drupal_checksums_bundle.py), not
+    fetched from an official API - drupal.org doesn't publish one."""
+    drupal_root = find_drupal_root_for(fname)
+    if not drupal_root:
+        return False
+    try:
+        import version_scan
+        import drupal_core_checksums
+    except ImportError:
+        return False
+    try:
+        with open(os.path.join(drupal_root, "includes", "bootstrap.inc"), errors="replace") as f:
+            m = version_scan.DRUPAL_VERSION_RE.search(f.read())
+    except OSError:
+        return False
+    if not m:
+        return False
+    checksums = drupal_core_checksums.fetch_checksums(m.group(1))
+    if not checksums:
+        return False
+    return drupal_core_checksums.is_unmodified_core_file(fname, drupal_root, checksums)
+
+
 def categorize(rule_name):
     """cxs quarantines only a conservative default (Viruses + Known
     Exploits) 'to avoid otherwise breaking web sites' - filesystem
@@ -581,11 +639,11 @@ def main():
                 print(f"# Skipped (unencodable path): {fname!r}", file=sys.stderr)
                 continue
             real = [m for m in matches if m.rule != "IsWhitelisted" and m.rule != "IsPhp"]
-            if real and is_unmodified_wordpress_core_file(fname):
-                # Byte-for-byte matches wordpress.org's official checksum
-                # for this exact version - whatever rule just matched is
-                # a false positive, not something a webshell could be
-                # hiding behind. See is_unmodified_wordpress_core_file()'s
+            if real and (is_unmodified_wordpress_core_file(fname) or is_unmodified_drupal_core_file(fname)):
+                # Byte-for-byte matches the official checksum for this
+                # exact version - whatever rule just matched is a false
+                # positive, not something a webshell could be hiding
+                # behind. See is_unmodified_wordpress_core_file()'s
                 # docstring for why php-malware-finder's own bundled
                 # whitelist doesn't already catch this.
                 real = []
