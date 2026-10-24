@@ -154,6 +154,7 @@ else {
 		&ui_submit("Delete selected", "bulk_delete", 0, "onclick=\"return confirm('Permanently delete all selected files?')\"") .
 		"</p>";
 	print &ui_form_end();
+	print &openxs_flush_mini_forms();
 	print "<p>";
 	my $qs = "cat=$cat&search=$search";
 	print "<a href='findings.cgi?$qs&fpage=" . ($page - 1) . "'>&laquo; Previous</a> " if ($page > 0);

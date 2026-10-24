@@ -187,6 +187,22 @@ Release from that section's text.
   the box on every page view.
 
 ### UX
+- Every per-row action button on the Findings page and Scan history
+  (Quarantine/Restore/Delete, Fix/Restore permissions) silently
+  submitted to the wrong backend ("Invalid request." from
+  bulk_action.cgi, not whichever script the button actually meant to
+  hit) - findings.cgi/reports.cgi wrap the whole table in one outer
+  `<form>` for the "Quarantine selected/Restore/Delete" bulk checkboxes,
+  and every per-row button was ALSO its own nested `<form>` - invalid
+  HTML, so the browser's own parser recovery collapsed every nested one
+  into that single outer form. Root-caused by reproducing the exact
+  failure in a real headless browser against a synced local copy of
+  the module (not guesswork from code reading alone) - the user's own
+  click only ever reached bulk_action.cgi, never the per-row script at
+  all. Fixed with HTML5's `form="<id>"` button attribute (an
+  out-of-line, non-nested `<form>` per row, referenced by id) instead
+  of nesting - Authentic theme's own `ui_submit()` override already
+  has built-in support for exactly this attribute.
 - Dashboard: live scan-completion percentage, stage indicator (all 4
   scan stages - YARA, ClamAV, maldet, filesystem checks), a per-stage
   progress bar plus a second, history-based overall-progress bar (the
