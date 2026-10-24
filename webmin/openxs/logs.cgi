@@ -29,6 +29,14 @@ if ($only ne '' && $logs{$only}) {
 	print &ui_subheading("$title <small>(<code>$file</code>)</small> ".
 		"<button id='live-pause' type='button' class='btn btn-default' style='font-size:12px;padding:1px 8px;margin-left:8px'>Pause</button> ".
 		"<span id='live-indicator' style='font-size:12px;color:#888'>(live)</span>");
+	if ($only eq 'scanlog') {
+		# This is pmf_scan.py's own stderr - the one log where a
+		# completion percentage actually means something.
+		print "<div id='scan-progress-bar-wrap' style='display:none;margin-bottom:8px'>".
+			"<div style='background:#ddd;border-radius:4px;height:18px;overflow:hidden'>".
+			"<div id='scan-progress-bar' style='background:#2e7d32;height:100%;width:0%;transition:width 1s'></div></div>".
+			"<div id='scan-progress-label' style='font-size:12px;color:#666;margin-top:2px'></div></div>\n";
+		}
 	print "<pre id='live-tail' style='background:#1e1e1e;color:#e8e8e8;padding:8px;max-height:600px;overflow:auto'>".
 		&html_escape(&openxs_tail($file, $n))."</pre>\n";
 	print "<p><a href='logs.cgi?only=$only&lines=" . ($n * 5) . "'>Show more lines (last $n shown)</a></p>\n";
@@ -39,8 +47,24 @@ if ($only ne '' && $logs{$only}) {
 	var pre = document.getElementById('live-tail');
 	var indicator = document.getElementById('live-indicator');
 	var pauseBtn = document.getElementById('live-pause');
+	var progressWrap = document.getElementById('scan-progress-bar-wrap');
+	var progressBar = document.getElementById('scan-progress-bar');
+	var progressLabel = document.getElementById('scan-progress-label');
 	var timer = null;
 	var paused = false;
+	function tickProgress() {
+		if (!progressWrap) return;
+		fetch('daemon_stats.cgi', {credentials: 'same-origin'})
+			.then(function(r) { return r.json(); })
+			.then(function(d) {
+				if (!d.scan || !d.scan.pid || !d.scan_progress) { progressWrap.style.display = 'none'; return; }
+				progressWrap.style.display = '';
+				progressBar.style.width = d.scan_progress.pct + '%';
+				progressLabel.textContent = '~' + d.scan_progress.pct + '% done (' +
+					d.scan_progress.done + ' of ' + d.scan_progress.total + ' files)';
+				})
+			.catch(function() {});
+		}
 	function tick() {
 		fetch('tail_text.cgi?file=$only&lines=$n', {credentials: 'same-origin'})
 			.then(function(r) { return r.text(); })
@@ -50,6 +74,7 @@ if ($only ne '' && $logs{$only}) {
 				indicator.textContent = '(live - updated ' + new Date().toLocaleTimeString() + ')';
 				})
 			.catch(function() { indicator.textContent = '(live - last update failed)'; });
+		tickProgress();
 		}
 	function start() { timer = setInterval(tick, 4000); }
 	function stop() { clearInterval(timer); timer = null; }
@@ -58,6 +83,7 @@ if ($only ne '' && $logs{$only}) {
 		if (paused) { stop(); pauseBtn.textContent = 'Resume'; indicator.textContent = '(paused)'; }
 		else { start(); pauseBtn.textContent = 'Pause'; tick(); }
 		});
+	tick();
 	start();
 	})();
 </script>
