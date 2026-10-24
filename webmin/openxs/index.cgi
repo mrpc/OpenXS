@@ -80,7 +80,10 @@ print <<'JSEOF';
 		if (!scan || !scan.pid) { extra.textContent = ''; return; }
 		var mins = Math.floor(scan.etimes / 60), secs = scan.etimes % 60;
 		var msg = 'running ' + mins + 'm ' + secs + 's';
-		if (progress) msg += ' - ~' + progress.pct + '% (' + progress.done + '/' + progress.total + ')';
+		if (progress) {
+			msg += ' - stage ' + progress.stage_num + '/' + progress.stage_count + ' (' + progress.stage + ')';
+			if (progress.pct !== undefined) msg += ': ~' + progress.pct + '% (' + progress.done + '/' + progress.total + ')';
+			}
 		extra.textContent = msg;
 		}
 	function tick() {

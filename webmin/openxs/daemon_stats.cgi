@@ -19,18 +19,28 @@ return { pid => $pid + 0, rss_mb => sprintf("%.0f", $rss_kb / 1024) + 0, cpu => 
 	etimes => $etimes + 0 };
 }
 
+my @SCAN_STAGES = ('scan', 'clamav');
+
 sub scan_progress_json
 {
 return undef if (!open(my $pf, '<', '/var/lib/openxs/scan_progress'));
-my $done = <$pf>;
+my $line = <$pf>;
 close($pf);
-$done =~ s/\D//g;
-return undef if ($done eq '' || !-f "$pmf_dir/filelist.txt");
-my $total_files = `wc -l < '$pmf_dir/filelist.txt' 2>/dev/null`;
-$total_files =~ s/\D//g;
-return undef if ($total_files eq '' || $total_files == 0);
-return { done => $done + 0, total => $total_files + 0,
-	pct => sprintf("%.1f", $done / $total_files * 100) + 0 };
+my ($stage, $done) = split(/\t/, $line || '');
+return undef if (!$stage);
+$done =~ s/\D//g if (defined($done));
+my ($stage_num) = grep { $SCAN_STAGES[$_] eq $stage } 0..$#SCAN_STAGES;
+my $result = { stage => $stage, stage_num => ($stage_num // 0) + 1, stage_count => scalar(@SCAN_STAGES) };
+if ($stage eq 'scan' && $done ne '' && -f "$pmf_dir/filelist.txt") {
+	my $total_files = `wc -l < '$pmf_dir/filelist.txt' 2>/dev/null`;
+	$total_files =~ s/\D//g;
+	if ($total_files ne '' && $total_files != 0) {
+		$result->{'done'} = $done + 0;
+		$result->{'total'} = $total_files + 0;
+		$result->{'pct'} = sprintf("%.1f", $done / $total_files * 100) + 0;
+		}
+	}
+return $result;
 }
 
 my %cfg = &openxs_read_config();

@@ -618,7 +618,7 @@ def main():
                 # a scan of millions of tiny files.
                 try:
                     with open(PROGRESS_FILE, "w") as pf:
-                        pf.write(str(total))
+                        pf.write(f"scan\t{total}")
                 except OSError:
                     pass
                 last_progress_write = now
@@ -667,11 +667,18 @@ def main():
                 hits += 1
         t_yara_done = time.perf_counter()
         try:
+            with open(PROGRESS_FILE, "w") as pf:
+                pf.write("clamav\t0")
+        except OSError:
+            pass
+        print(f"# Running ClamAV on {len(scanned_files)} flagged files...", file=sys.stderr)
+        clam_findings = clamav_scan(scanned_files)
+        print(f"# ClamAV done, {len(clam_findings)} additional hit(s)", file=sys.stderr)
+        t_clamav_done = time.perf_counter()
+        try:
             os.remove(PROGRESS_FILE)
         except OSError:
             pass
-        clam_findings = clamav_scan(scanned_files)
-        t_clamav_done = time.perf_counter()
         already_flagged = {f for f, _ in findings}
         for fname, sig in clam_findings:
             print(f"{fname}\t{sig} (ClamAV)")
