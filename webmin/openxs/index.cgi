@@ -43,19 +43,8 @@ print $openxs_nav;
 print "<div style='display:flex;gap:16px;margin:16px 0;flex-wrap:wrap'>" .
 	&openxs_resource_widget("scand", "Scan daemon", $pid, 1024) .
 	&openxs_resource_widget("watchd", "Watch daemon", $watchd_pid, $cfg_early{'WATCHD_MAX_RSS_MB'}) .
-	&openxs_resource_widget("scan", "Manual/scheduled scan", $scan_pid, $cfg_early{'VMRSS_MAX_MB'}) .
+	&openxs_resource_widget("scan", "Manual/scheduled scan", $scan_pid, $cfg_early{'VMRSS_MAX_MB'}, "scanlog") .
 	"</div>";
-
-if ($scan_pid) {
-	print "<p id='scan-progress-line'><b>Scan in progress</b> - <span id='scan-progress-text'>(loading...)</span>. ".
-		"<a href='logs.cgi?only=scanlog'>View live log &raquo;</a></p>\n";
-	}
-else {
-	# Hidden placeholder, shown by the JS below if a scan starts while
-	# this page is already open (no reload needed to notice).
-	print "<p id='scan-progress-line' style='display:none'><b>Scan in progress</b> - ".
-		"<span id='scan-progress-text'></span>. <a href='logs.cgi?only=scanlog'>View live log &raquo;</a></p>\n";
-	}
 
 # Auto-refresh the widget numbers every few seconds without a full page
 # reload (Webmin's authentic theme has a known, separate quirk where any
@@ -86,15 +75,13 @@ print <<'JSEOF';
 		if (cpuEl) cpuEl.innerHTML = d.cpu + "<span style='font-size:14px'>%</span>";
 		}
 	function paintScanProgress(scan, progress) {
-		var line = document.getElementById('scan-progress-line');
-		var text = document.getElementById('scan-progress-text');
-		if (!line || !text) return;
-		if (!scan || !scan.pid) { line.style.display = 'none'; return; }
-		line.style.display = '';
+		var extra = document.getElementById('extra-scan');
+		if (!extra) return;
+		if (!scan || !scan.pid) { extra.textContent = ''; return; }
 		var mins = Math.floor(scan.etimes / 60), secs = scan.etimes % 60;
-		var msg = 'running for ' + mins + 'm ' + secs + 's';
-		if (progress) msg += ' - ~' + progress.pct + '% done (' + progress.done + ' of ' + progress.total + ' files)';
-		text.textContent = msg;
+		var msg = 'running ' + mins + 'm ' + secs + 's';
+		if (progress) msg += ' - ~' + progress.pct + '% (' + progress.done + '/' + progress.total + ')';
+		extra.textContent = msg;
 		}
 	function tick() {
 		fetch('daemon_stats.cgi', {credentials: 'same-origin'})
