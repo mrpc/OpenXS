@@ -26,11 +26,30 @@ if ($only ne '' && $logs{$only}) {
 	$n = 200 if ($n eq '' || $n < 1);
 
 	my ($title, $file) = @{$logs{$only}};
-	print &ui_subheading("$title <small>(<code>$file</code>)</small>");
-	print "<pre style='background:#1e1e1e;color:#e8e8e8;padding:8px;max-height:600px;overflow:auto'>".
+	print &ui_subheading("$title <small>(<code>$file</code>)</small> <span id='live-indicator' style='font-size:12px;color:#888'>(live)</span>");
+	print "<pre id='live-tail' style='background:#1e1e1e;color:#e8e8e8;padding:8px;max-height:600px;overflow:auto'>".
 		&html_escape(&openxs_tail($file, $n))."</pre>\n";
 	print "<p><a href='logs.cgi?only=$only&lines=" . ($n * 5) . "'>Show more lines (last $n shown)</a></p>\n";
 	print "<p><a href='logs.cgi'>&laquo; Back to all logs</a></p>\n";
+	print <<JSEOF;
+<script>
+(function() {
+	var pre = document.getElementById('live-tail');
+	var indicator = document.getElementById('live-indicator');
+	function tick() {
+		fetch('tail_text.cgi?file=$only&lines=$n', {credentials: 'same-origin'})
+			.then(function(r) { return r.text(); })
+			.then(function(t) {
+				pre.textContent = t;
+				pre.scrollTop = pre.scrollHeight;
+				indicator.textContent = '(live - updated ' + new Date().toLocaleTimeString() + ')';
+				})
+			.catch(function() { indicator.textContent = '(live - last update failed)'; });
+		}
+	setInterval(tick, 4000);
+	})();
+</script>
+JSEOF
 	}
 else {
 	my $preview_lines = 10;
