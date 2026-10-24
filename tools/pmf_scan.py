@@ -349,6 +349,7 @@ def check_custom_rules(fname, rules):
     return hits
 
 ARCHIVE_EXTS = (".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2")
+PROGRESS_FILE = os.environ.get("OPENXS_SCAN_PROGRESS_FILE", "/var/lib/openxs/scan_progress")
 MAX_ARCHIVE_MEMBERS = 2000  # cheap zip-bomb-by-member-count guard
 
 def iter_archive_members(fname):
@@ -598,12 +599,29 @@ def main():
         findings = []
         scanned_files = []
         t_start = time.perf_counter()
+        last_progress_write = 0.0
+        try:
+            os.makedirs(os.path.dirname(PROGRESS_FILE), exist_ok=True)
+        except OSError:
+            pass
         for fname in iter_files(filelist_path, ignore_patterns, changed_hours,
                                  path_overrides=path_overrides, global_fast_php_only=global_fast_php_only):
             if vmrss_max_kb and vmrss_kb() > vmrss_max_kb:
                 print(f"# Aborted: VmRSS exceeded {vmrss_max_kb}kB (OPENXS_VMRSS_MAX_KB) after {total} file(s)", file=sys.stderr)
                 aborted = True
                 break
+            now = time.perf_counter()
+            if now - last_progress_write > 2:
+                # Lets the dashboard show a completion percentage (against
+                # filelist.txt's own line count) and "scanning N of M" -
+                # at most every 2s, so this never meaningfully slows down
+                # a scan of millions of tiny files.
+                try:
+                    with open(PROGRESS_FILE, "w") as pf:
+                        pf.write(str(total))
+                except OSError:
+                    pass
+                last_progress_write = now
             total += 1
             scanned_files.append(fname)
             try:
@@ -648,6 +666,10 @@ def main():
                     findings.append((fname, rule_name))
                 hits += 1
         t_yara_done = time.perf_counter()
+        try:
+            os.remove(PROGRESS_FILE)
+        except OSError:
+            pass
         clam_findings = clamav_scan(scanned_files)
         t_clamav_done = time.perf_counter()
         already_flagged = {f for f, _ in findings}
