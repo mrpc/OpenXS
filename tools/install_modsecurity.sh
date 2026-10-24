@@ -27,6 +27,21 @@ SecRule FILES_TMPNAMES "@inspectFile /opt/php-malware-finder/inspectfile.sh" \
 EOF
 echo "Wrote $MODSEC_RULE"
 
+# PHP2Shell (CVE-2026-109618/109619) request/response-pattern blocking -
+# vendored from https://github.com/ikow/php2shell-poc (MIT), see that
+# file's own header. /etc/modsecurity/*.conf is already auto-included
+# by Apache's security2.conf, so just dropping it there is enough.
+# Only installed if at least one PHP version here is actually exposed -
+# minimizes false-positive surface on a server that's already fully
+# patched, where the vulnerability itself can't be triggered at all.
+rm -f /etc/modsecurity/openxs-php2shell.conf
+if python3 "$(dirname "$0")/php2shell_check.py"; then
+    echo "All installed PHP versions already protected against PHP2Shell - skipping its ModSecurity rules."
+else
+    cp "$(dirname "$0")/modsec-rules/php2shell.conf" /etc/modsecurity/openxs-php2shell.conf
+    echo "Wrote /etc/modsecurity/openxs-php2shell.conf (at least one unprotected PHP version found)"
+fi
+
 apachectl configtest
 systemctl restart apache2 2>/dev/null || service apache2 restart
 echo "Apache restarted."
