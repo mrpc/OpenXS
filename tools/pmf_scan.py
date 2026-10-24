@@ -719,10 +719,6 @@ def main():
         clam_findings = clamav_scan(scanned_files)
         print(f"# ClamAV done, {len(clam_findings)} additional hit(s)", file=sys.stderr)
         t_clamav_done = time.perf_counter()
-        try:
-            os.remove(PROGRESS_FILE)
-        except OSError:
-            pass
         already_flagged = {f for f, _ in findings}
         for fname, sig in clam_findings:
             print(f"{fname}\t{sig} (ClamAV)")
@@ -731,6 +727,18 @@ def main():
                 hits += 1
                 already_flagged.add(fname)
 
+        # No per-file progress for maldet/fs below (maldet is one opaque
+        # subprocess call over the whole file list; fs_scan walks its own
+        # tree independently of this loop's own file list) - at least the
+        # STAGE itself is visible now, instead of the dashboard/live log
+        # showing nothing at all once ClamAV finishes while the scan is
+        # still very much running (maldet and fs_scan can both be slower
+        # than YARA+ClamAV combined on a large server).
+        try:
+            with open(PROGRESS_FILE, "w") as pf:
+                pf.write("maldet\t0")
+        except OSError:
+            pass
         maldet_findings = maldet_scan(scanned_files)
         t_maldet_done = time.perf_counter()
         for fname, sig in maldet_findings:
@@ -743,6 +751,11 @@ def main():
         # Filesystem-level compromise indicators (SUID files, world-writable
         # dirs, symlinks, sockets, core dumps, stray binaries) - content-
         # agnostic checks that don't go through YARA/ClamAV at all.
+        try:
+            with open(PROGRESS_FILE, "w") as pf:
+                pf.write("fs\t0")
+        except OSError:
+            pass
         scan_root = os.environ.get("OPENXS_SCAN_LABEL")
         fs_findings = []
         if scan_root and os.path.isdir(scan_root):
@@ -755,6 +768,10 @@ def main():
             if fname not in already_flagged:
                 hits += 1
                 already_flagged.add(fname)
+        try:
+            os.remove(PROGRESS_FILE)
+        except OSError:
+            pass
         t_done = time.perf_counter()
 
         # Per-phase breakdown, not just a total - "is it optimized" needs
