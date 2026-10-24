@@ -175,6 +175,14 @@ cat > /etc/cron.d/openxs-scan <<'EOF'
 EOF
 chmod 644 /etc/cron.d/openxs-scan
 
+echo "==> Periodic stats/cache upkeep (cron)..."
+# One entry for every lightweight periodic job (see openxs_collector.py)
+# instead of a separate cron file per feature.
+cat > /etc/cron.d/openxs-collector <<'EOF'
+*/5 * * * * root python3 /opt/php-malware-finder/openxs_collector.py >> /opt/php-malware-finder/cron.log 2>&1
+EOF
+chmod 644 /etc/cron.d/openxs-collector
+
 echo "==> Log rotation..."
 cp "$HERE/tools/openxs-logrotate.conf" /etc/logrotate.d/openxs
 
