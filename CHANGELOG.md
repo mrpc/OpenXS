@@ -90,6 +90,15 @@ Release from that section's text.
   exploit).
 
 ### Added
+- "Fix permissions" button on a "world-writable directory" finding
+  (strips just the world-write bit) - found live 2026-10-24 that one
+  account alone had its entire upload tree at 0777 with no technical
+  reason under php-fpm's own per-account pools (the pool already owns
+  the files; the world-write bit adds nothing a legitimate process
+  needs). A directory can't be quarantined the way a file can
+  (quarantining would take the whole site down), so this is its
+  equivalent one-click remediation, reversible the same way
+  quarantine's own Restore button is.
 - `VMRSS_MAX_MB` as a real Settings-page option instead of a silent
   hardcoded scan memory ceiling.
 - Weekly GitHub Action keeping the WordPress checksums bundle current

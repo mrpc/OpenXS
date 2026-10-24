@@ -7,6 +7,7 @@ covered that we didn't have yet.
 import datetime
 import os
 import sqlite3
+import stat
 import time
 
 DB_PATH = os.environ.get("OPENXS_DB", "/var/lib/openxs/openxs.db")
@@ -17,7 +18,7 @@ QUARANTINE_DIR = os.environ.get("OPENXS_QUARANTINE", "/var/lib/openxs/quarantine
 # a fresh process can skip all migration DDL with one cheap read instead
 # of re-running CREATE TABLE IF NOT EXISTS + several ALTER TABLE/except
 # attempts on every single process start.
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS scans (
@@ -91,6 +92,22 @@ CREATE TABLE IF NOT EXISTS csf_auto_bans (
     success INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_csf_auto_bans_banned_at ON csf_auto_bans(banned_at);
+-- "world-writable directory"/"SUID file" findings don't have a file to
+-- quarantine (quarantining a directory makes no sense) - this is their
+-- equivalent one-click remediation: strip just the offending mode bit,
+-- recorded here (old_mode kept) so it can be undone with "Restore" the
+-- same way a quarantined file can, in case the relaxed permission
+-- turns out to have been intentional for some reason.
+CREATE TABLE IF NOT EXISTS permission_fixes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    finding_id INTEGER NOT NULL REFERENCES findings(id),
+    path TEXT NOT NULL,
+    old_mode INTEGER NOT NULL,
+    new_mode INTEGER NOT NULL,
+    fixed_at REAL NOT NULL,
+    restored_at REAL
+);
+CREATE INDEX IF NOT EXISTS idx_permission_fixes_finding_id ON permission_fixes(finding_id);
 """
 
 
@@ -370,6 +387,85 @@ def restore_file(finding_id):
     conn.commit()
     conn.close()
     return True
+
+
+def fix_world_writable_permission(finding_id):
+    """Strips just the world-write bit from a 'world-writable directory'
+    finding's path - directories can't be quarantined the way a file
+    can (moving the directory would take the whole site down with it),
+    so this is their one-click remediation instead. Returns the new
+    mode (an int) on success, None if the path is gone or no longer a
+    directory (may already have been fixed outside this UI)."""
+    conn = _connect()
+    row = conn.execute("SELECT file_path FROM findings WHERE id = ?", (finding_id,)).fetchone()
+    if not row:
+        conn.close()
+        return None
+    path = row[0]
+    try:
+        old_mode = stat.S_IMODE(os.stat(path).st_mode)
+    except OSError:
+        conn.close()
+        return None
+    if not os.path.isdir(path):
+        conn.close()
+        return None
+    new_mode = old_mode & ~stat.S_IWOTH
+    try:
+        os.chmod(path, new_mode)
+    except OSError:
+        conn.close()
+        return None
+    conn.execute(
+        "INSERT INTO permission_fixes (finding_id, path, old_mode, new_mode, fixed_at) VALUES (?, ?, ?, ?, ?)",
+        (finding_id, path, old_mode, new_mode, time.time()),
+    )
+    conn.commit()
+    conn.close()
+    return new_mode
+
+
+def restore_permission(finding_id):
+    """Undoes the most recent (not already-restored) permission fix for
+    this finding - puts the exact original mode back, in case the
+    relaxed permission turns out to have been intentional."""
+    conn = _connect()
+    row = conn.execute(
+        "SELECT id, path, old_mode FROM permission_fixes "
+        "WHERE finding_id = ? AND restored_at IS NULL ORDER BY id DESC LIMIT 1",
+        (finding_id,),
+    ).fetchone()
+    if not row:
+        conn.close()
+        return False
+    fix_id, path, old_mode = row
+    if not os.path.isdir(path):
+        conn.close()
+        return False
+    try:
+        os.chmod(path, old_mode)
+    except OSError:
+        conn.close()
+        return False
+    conn.execute("UPDATE permission_fixes SET restored_at = ? WHERE id = ?", (time.time(), fix_id))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def permission_fix_for(finding_id):
+    """The active (not-yet-restored) permission fix for this finding, if
+    any - (old_mode, new_mode), or None. Used to render "Fixed" vs
+    "Fix permissions" in the Findings UI the same way quarantine_path
+    drives that choice for quarantine."""
+    conn = _connect()
+    row = conn.execute(
+        "SELECT old_mode, new_mode FROM permission_fixes "
+        "WHERE finding_id = ? AND restored_at IS NULL ORDER BY id DESC LIMIT 1",
+        (finding_id,),
+    ).fetchone()
+    conn.close()
+    return tuple(row) if row else None
 
 
 def delete_quarantined(finding_id):

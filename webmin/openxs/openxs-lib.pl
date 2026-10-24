@@ -392,6 +392,34 @@ else {
 	}
 }
 
+# "world-writable directory"/"SUID file" findings have no file to
+# quarantine (quarantining a directory would take the whole site down
+# with it) - a permission fix (just strip the offending mode bit) is
+# their equivalent one-click remediation instead, same restore-if-
+# wrong safety net as quarantine's own Restore button.
+sub openxs_permission_action_form
+{
+my ($action, $fid, $label, $tags) = @_;
+return &ui_form_start("permissions.cgi", "post", undef, "style='display:inline-block;margin-right:4px'") .
+	&ui_hidden("action", $action) . &ui_hidden("id", $fid) .
+	&ui_submit($label, "go", 0, $tags) .
+	&ui_form_end();
+}
+
+sub openxs_permission_action_links
+{
+my ($fid, $new_mode) = @_;
+if ($new_mode ne "") {
+	return "<b style='color:#2e7d32'>Fixed (now " . sprintf("%03o", $new_mode) . ")</b><br>" .
+	       &openxs_permission_action_form("restore", $fid, "Restore original permissions");
+	}
+else {
+	return &openxs_permission_action_form("fix", $fid, "Fix permissions",
+		"onclick=\"return confirm('Remove the world-write bit from this directory? ".
+		"(reversible - Restore puts the exact original permissions back)')\"");
+	}
+}
+
 # Found a real need for this the hard way: openxs-watchd's own RSS grew
 # from ~17MB to over 8.3GB in under 20 minutes (a leak in its rate-
 # limiter state, since fixed) with nothing on the dashboard showing it -
