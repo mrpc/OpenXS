@@ -60,7 +60,14 @@ if ($only ne '' && $logs{$only}) {
 				if (!d.scan || !d.scan.pid || !d.scan_progress) { progressWrap.style.display = 'none'; return; }
 				var p = d.scan_progress;
 				progressWrap.style.display = '';
-				progressBar.style.width = (p.pct !== undefined ? p.pct : 0) + '%';
+				// No per-file pct for clamav/maldet/fs - without this, the
+				// bar fell back to 0% on every one of them, looking
+				// identical (empty) whether in stage 1 or stage 4. Treat
+				// each stage as an equal slice of the whole bar instead,
+				// so it visibly fills up as stages pass even without
+				// intra-stage granularity.
+				var overallPct = ((p.stage_num - 1) + (p.pct !== undefined ? p.pct / 100 : 0.5)) / p.stage_count * 100;
+				progressBar.style.width = overallPct + '%';
 				progressLabel.textContent = 'Stage ' + p.stage_num + '/' + p.stage_count + ' (' + p.stage + ')' +
 					(p.pct !== undefined ? ': ~' + p.pct + '% done (' + p.done + ' of ' + p.total + ' files)' : '');
 				})
