@@ -37,6 +37,23 @@ print &ui_subheading("Findings");
 
 my @tabs = (["", "All"], ["yara_exploit", "Exploits"], ["yara_heuristic", "Suspicious patterns"],
             ["virus", "Virus"], ["maldet", "maldet"], ["oldversion", "Old Versions"], ["fs", "Filesystem"]);
+
+# Red/orange/gray by how much attention a category deserves: exploit/
+# virus/maldet are the ones that get auto-quarantined by default (real
+# signal); yara_heuristic is the generic-pattern bucket known to recur
+# on common legitimate software (see default_ignore, RULE_PARANOIA_LEVEL);
+# fs is filesystem hygiene, not a malware signal at all. Shown on every
+# row (not just as a tab) so "All" doesn't read as one undifferentiated
+# wall of findings - the whole point of a flat "N hit(s)" count being
+# misleading is that it hides exactly this distinction.
+my %category_badge = (
+	'yara_exploit'   => "<span style='background:#fdeef0;color:#9a3b4a;border:1px solid #edc3cc;padding:1px 6px;border-radius:3px;font-size:11px;white-space:nowrap'>Exploit</span>",
+	'virus'          => "<span style='background:#fdeef0;color:#9a3b4a;border:1px solid #edc3cc;padding:1px 6px;border-radius:3px;font-size:11px;white-space:nowrap'>Virus</span>",
+	'maldet'         => "<span style='background:#fdeef0;color:#9a3b4a;border:1px solid #edc3cc;padding:1px 6px;border-radius:3px;font-size:11px;white-space:nowrap'>maldet</span>",
+	'yara_heuristic' => "<span style='background:#fdf3e7;color:#8a5a1f;border:1px solid #edd6b3;padding:1px 6px;border-radius:3px;font-size:11px;white-space:nowrap'>Suspicious pattern</span>",
+	'oldversion'     => "<span style='background:#eef3fa;color:#2b5a8c;border:1px solid #c3d6ea;padding:1px 6px;border-radius:3px;font-size:11px;white-space:nowrap'>Old version</span>",
+	'fs'             => "<span style='background:#f0f0f0;color:#666;border:1px solid #ddd;padding:1px 6px;border-radius:3px;font-size:11px;white-space:nowrap'>Filesystem</span>",
+	);
 print "<p>";
 foreach my $t (@tabs) {
 	my ($val, $label) = @$t;
@@ -58,6 +75,7 @@ my $out = `python3 -c "
 import sys, os
 sys.path.insert(0, '$pmf_dir')
 import openxs_db
+import pmf_scan
 rows, total = openxs_db.search_findings(category=$cat_arg, search=$search_arg, limit=$page_size, offset=$offset, sort='$sort', order='$order')
 print('TOTAL\\t' + str(total))
 for fid, f, r, q, size, ts, scan_path in rows:
@@ -68,7 +86,8 @@ for fid, f, r, q, size, ts, scan_path in rows:
     # copy for those; only flag it \"gone\" if neither copy exists.
     check_path = q if (q and q not in ('', '__deleted__')) else f
     gone = int(not os.path.exists(check_path))
-    print(str(fid) + '\\t' + f + '\\t' + r + '\\t' + (q or '') + '\\t' + str(size or '') + '\\t' + str(ts) + '\\t' + user + '\\t' + source + '\\t' + str(gone))
+    category = pmf_scan.categorize(r)
+    print(str(fid) + '\\t' + f + '\\t' + r + '\\t' + (q or '') + '\\t' + str(size or '') + '\\t' + str(ts) + '\\t' + user + '\\t' + source + '\\t' + str(gone) + '\\t' + category)
 "`;
 my @all_lines = grep { $_ ne "" } split(/\n/, $out);
 my $total = 0;
@@ -91,7 +110,7 @@ else {
 		&findings_sort_header($sort, $order, $base_qs, "size", "Size"), "Status"]);
 	my $ignored_paths = { map { $_ => 1 } (-e '/etc/openxs/ignore' ? @{ &read_file_lines('/etc/openxs/ignore', 1) } : ()) };
 	foreach my $row (@all_lines) {
-			my ($fid, $f, $r, $q, $size, $ts, $user, $source, $gone) = split(/\t/, $row);
+			my ($fid, $f, $r, $q, $size, $ts, $user, $source, $gone, $category) = split(/\t/, $row);
 			my $date = $ts ne '' && $ts ne 'None' ? &make_date($ts, 1) : "<i>unknown</i>";
 			my $size_h = $size ne '' ? "${size}B" : "-";
 			my $btn_style = "display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;font-size:11px;".
@@ -121,7 +140,7 @@ else {
 			print &ui_columns_row([
 				&ui_checkbox("id", $fid, "", 0),
 				$date, &html_escape($user), &html_escape($source),
-				&html_escape($f) . " " . $links, &html_escape($r), $size_h,
+				&html_escape($f) . " " . $links, ($category_badge{$category} || "") . " " . &html_escape($r), $size_h,
 				$status,
 				]);
 			}
