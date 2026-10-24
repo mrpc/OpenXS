@@ -9,6 +9,7 @@ require './openxs-lib.pl';
 
 my $pid = &openxs_daemon_pid();
 my $watchd_pid = &openxs_watchd_pid();
+my $scan_pid = &openxs_scan_pid();
 my %cfg_early = &openxs_read_config();
 my $has_socket = &openxs_socket_exists();
 my $pmf_ok = &openxs_pmf_installed();
@@ -42,7 +43,19 @@ print $openxs_nav;
 print "<div style='display:flex;gap:16px;margin:16px 0;flex-wrap:wrap'>" .
 	&openxs_resource_widget("scand", "Scan daemon", $pid, 1024) .
 	&openxs_resource_widget("watchd", "Watch daemon", $watchd_pid, $cfg_early{'WATCHD_MAX_RSS_MB'}) .
+	&openxs_resource_widget("scan", "Manual/scheduled scan", $scan_pid, $cfg_early{'VMRSS_MAX_MB'}) .
 	"</div>";
+
+if ($scan_pid) {
+	my $etimes = `ps -o etimes= -p $scan_pid 2>/dev/null`;
+	$etimes =~ s/\s+//g;
+	if ($etimes =~ /^\d+$/) {
+		my $mins = int($etimes / 60);
+		my $secs = $etimes % 60;
+		print "<p><b>Scan in progress</b> - running for ${mins}m ${secs}s. ".
+			"<a href='logs.cgi?only=scanlog'>View live log &raquo;</a></p>\n";
+		}
+	}
 
 # Auto-refresh the widget numbers every few seconds without a full page
 # reload (Webmin's authentic theme has a known, separate quirk where any
@@ -75,7 +88,7 @@ print <<'JSEOF';
 	function tick() {
 		fetch('daemon_stats.cgi', {credentials: 'same-origin'})
 			.then(function(r) { return r.json(); })
-			.then(function(d) { paint('scand', d.scand); paint('watchd', d.watchd); })
+			.then(function(d) { paint('scand', d.scand); paint('watchd', d.watchd); paint('scan', d.scan); })
 			.catch(function() {});
 		}
 	setInterval(tick, 4000);
@@ -96,10 +109,16 @@ print &ui_table_row("Detection engine (php-malware-finder)",
 my %cfg_for_src = &openxs_read_config();
 my $openxs_src = $cfg_for_src{'OPENXS_SRC'};
 if ($openxs_src ne '' && -d "$openxs_src/.git") {
-	my $cur_commit = `cd $openxs_src && git rev-parse --short HEAD 2>/dev/null`;
-	chomp($cur_commit);
+	my $cur_version = `cd $openxs_src && git describe --tags 2>/dev/null`;
+	chomp($cur_version);
+	if ($cur_version eq '') {
+		# No tags reachable (e.g. a fetch that didn't bring any over) -
+		# fall back to just the hash rather than showing nothing.
+		$cur_version = `cd $openxs_src && git rev-parse --short HEAD 2>/dev/null`;
+		chomp($cur_version);
+		}
 	print &ui_table_row("OpenXS itself (daemon, Webmin module, tools)",
-		&row_value("Installed (" . &html_escape($cur_commit) . ")",
+		&row_value("Installed (" . &html_escape($cur_version) . ")",
 			&mini_form("self_update.cgi", &ui_submit("Check for updates", "check"))));
 	}
 
