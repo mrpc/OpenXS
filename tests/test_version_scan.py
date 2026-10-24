@@ -133,7 +133,7 @@ def test_record_findings_writes_outdated_hits_tagged_oldversion(tmp_path, monkey
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
     wp_results = [(str(tmp_path / "wp"), "5.0", "6.4.2", True), (str(tmp_path / "wp2"), "6.4.2", "6.4.2", False)]
     composer_results = [(str(tmp_path / "composer.lock"), "acme/pkg", "1.0.0", "2.0.0", True)]
-    vs.record_findings(str(tmp_path), wp_results, composer_results)
+    vs.record_findings(str(tmp_path), wp_results, [], composer_results)
     scans = db.recent_scans(limit=1)
     findings = db.findings_for_scan(scans[0][0])
     assert len(findings) == 2  # only the outdated ones, not the up-to-date wp2
@@ -144,5 +144,59 @@ def test_record_findings_does_nothing_when_all_up_to_date(tmp_path, monkeypatch)
     import openxs_db as db
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
     wp_results = [(str(tmp_path / "wp"), "6.4.2", "6.4.2", False)]
-    vs.record_findings(str(tmp_path), wp_results, [])
+    vs.record_findings(str(tmp_path), wp_results, [], [])
     assert not os.path.exists(str(tmp_path / "openxs.db"))  # never even connects
+
+
+# --- Revive Adserver ---------------------------------------------------
+
+def make_revive_install(tmp_path, name, version):
+    root = tmp_path / name
+    root.mkdir(parents=True)
+    (root / "adview.php").write_text("<?php // delivery script\n")
+    (root / "constants.php").write_text(f"<?php\ndefine('VERSION', '{version}');\n")
+    return root
+
+
+def test_find_revive_installs_parses_version(tmp_path):
+    make_revive_install(tmp_path, "adserver", "6.0.8")
+    found = list(vs.find_revive_installs(str(tmp_path)))
+    assert len(found) == 1
+    assert found[0][1] == "6.0.8"
+
+
+def test_find_revive_installs_requires_adview_php_too(tmp_path):
+    # constants.php alone is too generic a filename to key off safely
+    root = tmp_path / "notrevive"
+    root.mkdir()
+    (root / "constants.php").write_text("<?php\ndefine('VERSION', '1.0');\n")
+    assert list(vs.find_revive_installs(str(tmp_path))) == []
+
+
+def test_check_revive_flags_outdated(tmp_path, monkeypatch):
+    make_revive_install(tmp_path, "old-adserver", "5.5.0")
+    monkeypatch.setattr(vs, "latest_revive_version", lambda timeout=5: "6.0.8")
+    results = vs.check_revive(str(tmp_path))
+    assert results == [(str(tmp_path / "old-adserver"), "5.5.0", "6.0.8", True)]
+
+
+def test_check_revive_does_not_flag_current(tmp_path, monkeypatch):
+    make_revive_install(tmp_path, "current-adserver", "6.0.8")
+    monkeypatch.setattr(vs, "latest_revive_version", lambda timeout=5: "6.0.8")
+    results = vs.check_revive(str(tmp_path))
+    assert results[0][3] is False
+
+
+def test_latest_revive_version_picks_highest_by_version_not_api_order(monkeypatch):
+    # GitHub's tags API order isn't guaranteed to be newest-first -
+    # must compare by actual version, not trust list position.
+    class FakeResp:
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def read(self):
+            return json.dumps([{"name": "v6.0.8"}, {"name": "v6.0.10"}, {"name": "v6.0.9"}]).encode()
+
+    monkeypatch.setattr(vs.urllib.request, "urlopen", lambda url, timeout=5: FakeResp())
+    assert vs.latest_revive_version() == "6.0.10"
