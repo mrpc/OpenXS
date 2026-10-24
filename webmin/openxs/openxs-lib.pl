@@ -44,8 +44,9 @@ our %editable_file_help = (
 	'modsec_exclusions' => "One path prefix per line (e.g. <code>/admin</code>) - fully disables ModSecurity/CRS for matching requests. Blank lines and '#' comments are ignored.",
 	'modsec_mode' => "One <code>&lt;hostname&gt; &lt;mode&gt;</code> per line, mode is <code>on</code>/<code>detection</code>/<code>off</code> (e.g. <code>www.example.com detection</code>). ".
 		"For the server-wide default (a bare <code>*</code> hostname), use the toggle above instead of typing it here by hand. Blank lines and '#' comments are ignored.",
-	'modsec_rule_exclusions' => "One <code>&lt;rule id&gt; &lt;variable&gt; [path prefix]</code> per line (e.g. <code>930120 ARGS:scope</code>) - rule id must be numeric, ".
-		"path prefix is optional (omit it to exclude that rule+variable everywhere). Blank lines and '#' comments are ignored.",
+	'modsec_rule_exclusions' => "One <code>&lt;rule id&gt; &lt;variable&gt;</code> per line (e.g. <code>930120 ARGS:scope</code>) - rule id must be numeric. ".
+		"Server-wide only, no path scoping - confirmed by hand that it doesn't work on this stack (see Settings' own note below). ".
+		"Blank lines and '#' comments are ignored.",
 );
 
 # One validator sub per editable file that needs one - takes the
@@ -168,6 +169,13 @@ return @errors;
 
 sub openxs_validate_modsec_rule_exclusions
 {
+# Server-wide only ("<rule id> <variable>", no path) - a third field
+# used to optionally scope this to one path, but that never actually
+# worked (confirmed by hand on a real incident, 2026-10-24: neither
+# LocationMatch, <If>, ctl:ruleRemoveById, nor a mod_rewrite env var
+# made SecRuleUpdateTargetById/SecRuleRemoveById conditional on
+# anything but SecRuleEngine itself) - see
+# openxs_modsec_rule_exclusions.py's own docstring for the full story.
 my ($lines) = @_;
 my @errors;
 my $n = 0;
@@ -176,15 +184,12 @@ foreach my $line (@$lines) {
 	my $l = $line;
 	$l =~ s/^\s+|\s+$//g;
 	next if ($l eq '' || $l =~ /^#/);
-	my @parts = split(/\s+/, $l, 3);
-	if (@parts < 2) {
-		push(@errors, "Line $n: expected '<rule id> <variable> [path prefix]', got '$l'");
+	my @parts = split(/\s+/, $l);
+	if (@parts != 2) {
+		push(@errors, "Line $n: expected '<rule id> <variable>' (server-wide only, no path - path scoping doesn't work), got '$l'");
 		}
 	elsif ($parts[0] !~ /^\d+$/) {
 		push(@errors, "Line $n: rule id '$parts[0]' should be numeric");
-		}
-	elsif (@parts == 3 && $parts[2] !~ m{^/}) {
-		push(@errors, "Line $n: path prefix '$parts[2]' should start with /");
 		}
 	}
 return @errors;

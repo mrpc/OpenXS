@@ -14,13 +14,16 @@ def test_regenerate_writes_global_target_update(tmp_path, monkeypatch):
 
     entries = m.regenerate()
 
-    assert entries == [("930120", "ARGS:scope", None)]
+    assert entries == [("930120", "ARGS:scope")]
     content = out.read_text()
     assert 'SecRuleUpdateTargetById 930120 "!ARGS:scope"' in content
     assert "<LocationMatch" not in content
 
 
-def test_regenerate_scopes_to_path_when_given(tmp_path, monkeypatch):
+def test_regenerate_ignores_a_third_field(tmp_path, monkeypatch):
+    # Path scoping used to be optional here - confirmed by hand it never
+    # actually worked (see the module's own docstring), so a stray third
+    # field is just an invalid line now, not silently path-scoped.
     excl = tmp_path / "modsec_rule_exclusions"
     out = tmp_path / "out.conf"
     excl.write_text("941310 ARGS:notes /el/parent/saveclassified\n")
@@ -29,10 +32,8 @@ def test_regenerate_scopes_to_path_when_given(tmp_path, monkeypatch):
 
     entries = m.regenerate()
 
-    assert entries == [("941310", "ARGS:notes", "/el/parent/saveclassified")]
-    content = out.read_text()
-    assert '<LocationMatch "^/el/parent/saveclassified">' in content
-    assert 'SecRuleUpdateTargetById 941310 "!ARGS:notes"' in content
+    assert entries == []
+    assert "<LocationMatch" not in out.read_text()
 
 
 def test_non_numeric_rule_id_is_skipped(tmp_path, monkeypatch):
