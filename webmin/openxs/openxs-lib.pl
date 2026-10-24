@@ -483,7 +483,12 @@ my %cfg = ( 'EMAIL' => 'root@localhost', 'SCAN_PATH' => '/var/www', 'QUARANTINE_
             # key set must keep working exactly as before.
             'VERSION_SCAN_ENABLED' => '1', 'APT_SECURITY_ENABLED' => '1',
             'WATCHD_MAX_RSS_MB' => '1024', 'OPENXS_SRC' => '', 'AUTO_UPDATE' => '0',
-            'VMRSS_MAX_MB' => '2000' );
+            'VMRSS_MAX_MB' => '2000',
+            # Off by default - this bans a real IP (temporarily, but
+            # still a production-affecting action), only ever on an
+            # exact, unambiguous watch-daemon correlation (never the
+            # batch scan - see csf_autoban.py's own docstring).
+            'CSF_AUTOBAN_ENABLED' => '0', 'CSF_AUTOBAN_TTL' => '3d' );
 if (open(my $fh, '<', $config_file)) {
 	while (<$fh>) {
 		chomp;
@@ -690,6 +695,27 @@ return $svg;
 # definition (message, what it's for) in the OWASP Core Rule Set source,
 # rather than trying to keep our own copy of every rule's explanation in
 # sync with whatever CRS version is actually installed.
+sub openxs_modsec_global_mode
+{
+# The bare '*' line's own mode (on/detection/off), 'on' if unset - the
+# server-wide default, as a single value instead of parsing the whole
+# per-host summary for it.
+my $mode_file = '/etc/openxs/modsec_mode';
+return 'on' if (!open(my $fh, '<', $mode_file));
+while (<$fh>) {
+	chomp;
+	s/^\s+|\s+$//g;
+	next if ($_ eq '' || /^#/);
+	my ($host, $mode) = split(/\s+/, $_);
+	if (defined($host) && $host eq '*' && defined($mode)) {
+		close($fh);
+		return $mode;
+		}
+	}
+close($fh);
+return 'on';
+}
+
 sub openxs_modsec_mode_overrides_summary
 {
 # Short "anotherserver.com: off, ..." text for the dashboard, so a host-level
