@@ -5,11 +5,17 @@
 # entry here when a false positive is on software likely present on
 # OTHER installs too, not just this fleet's own accounts.
 #
-# PramnosFramework (our own framework, vendored into several sites)
+# PramnosFramework (our own framework, vendored into several sites) -
+# the exact file, not the whole vendor directory: ignoring a whole
+# directory would also silently skip anything else dropped in there,
+# including a real backdoor disguised inside a trusted vendor path.
 /PramnosFramework.php
-/vendor/mrpc/pramnosframework/
-# Adminer (DB admin tool) - legitimately can run arbitrary SQL/code
-/vendor/vrana/adminer/
+/vendor/mrpc/pramnosframework/src/Pramnos/Application/Controllers/Adminer.php
+# Adminer (DB admin tool) - legitimately can run arbitrary SQL/code.
+# Same reasoning: only the one file confirmed, not the whole adminer/
+# directory - add other specific Adminer files here individually if
+# they turn out to be false positives too.
+/vendor/vrana/adminer/adminer/include/errors.inc.php
 # PHPUnit's own eval-stdin test utility (dev dependency, not site code)
 /vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php
 # Loco Translate (WordPress plugin)
@@ -18,3 +24,5 @@
 /wp-content/plugins/simple-lightbox/load.php
 # GOTMLS (WordPress malware-scanner plugin - ironically flags itself)
 /wp-content/plugins/gotmls/index.php
+# Our own framework's findings-tracking doc (text content, not code)
+docs/FRAMEWORK_FINDINGS.md
