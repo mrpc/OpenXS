@@ -19,6 +19,7 @@ SCAN_MAILBOXES="0"
 MAILBOX_RECENT_HOURS=""
 VERSION_SCAN_ENABLED="1"
 APT_SECURITY_ENABLED="1"
+VMRSS_MAX_MB="2000"
 # Parsed as plain data, not `source`-d: the config file is writable via the
 # Webmin settings form, and `source` would execute $()/`` in any value as
 # real shell code (e.g. a crafted EMAIL value running arbitrary commands
@@ -41,6 +42,7 @@ if [ -f "$CONFIG" ]; then
             MAILBOX_RECENT_HOURS) MAILBOX_RECENT_HOURS="$value" ;;
             VERSION_SCAN_ENABLED) VERSION_SCAN_ENABLED="$value" ;;
             APT_SECURITY_ENABLED) APT_SECURITY_ENABLED="$value" ;;
+            VMRSS_MAX_MB) VMRSS_MAX_MB="$value" ;;
         esac
     done < "$CONFIG"
 fi
@@ -83,6 +85,7 @@ export OPENXS_THROTTLE_LOAD="$THROTTLE_LOAD"
 export OPENXS_QUIET="$QUIET"
 export OPENXS_QUARANTINE_CATEGORIES="$QUARANTINE_CATEGORIES"
 export OPENXS_FAST_PHP_ONLY="$FAST_PHP_ONLY"
+export OPENXS_VMRSS_MAX_KB=$((VMRSS_MAX_MB * 1024))
 python3 pmf_scan.py scan php.yar filelist.txt > scan_results.txt 2> scan.log
 
 # Proactive whitelist-drift check: a whitelisted file whose content has
