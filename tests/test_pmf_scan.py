@@ -343,3 +343,60 @@ def test_file_hashes_read_is_bounded_even_if_size_check_is_stale(tmp_path):
     f.write_bytes(b"y" * 400)  # under max_size=500, so the read proceeds
     md5, sha256 = pmf_scan.file_hashes(str(f), max_size=500)
     assert md5 == hashlib.md5(b"y" * 400).hexdigest()
+
+
+# --- WordPress core checksum false-positive suppression --------------------
+
+def test_find_wp_root_for_finds_ancestor_with_version_php(tmp_path):
+    pmf_scan._WP_ROOT_CACHE.clear()
+    wp_root = tmp_path / "public_html"
+    (wp_root / "wp-includes").mkdir(parents=True)
+    (wp_root / "wp-includes" / "version.php").write_text("<?php $wp_version = '6.0';")
+    target = wp_root / "wp-includes" / "comment.php"
+    target.write_text("x")
+    assert pmf_scan.find_wp_root_for(str(target)) == str(wp_root)
+
+
+def test_find_wp_root_for_no_wordpress_returns_none(tmp_path):
+    pmf_scan._WP_ROOT_CACHE.clear()
+    target = tmp_path / "some" / "random" / "file.php"
+    target.parent.mkdir(parents=True)
+    target.write_text("x")
+    assert pmf_scan.find_wp_root_for(str(target)) is None
+
+
+def test_is_unmodified_wordpress_core_file_true_for_matching_checksum(tmp_path, monkeypatch):
+    pmf_scan._WP_ROOT_CACHE.clear()
+    wp_root = tmp_path / "public_html"
+    (wp_root / "wp-includes").mkdir(parents=True)
+    (wp_root / "wp-includes" / "version.php").write_text("$wp_version = '6.0';")
+    f = wp_root / "wp-includes" / "comment.php"
+    f.write_bytes(b"stock content")
+
+    import wp_core_checksums
+    monkeypatch.setattr(wp_core_checksums, "fetch_checksums",
+                         lambda version, **kw: {"wp-includes/comment.php": hashlib.md5(b"stock content").hexdigest()})
+
+    assert pmf_scan.is_unmodified_wordpress_core_file(str(f))
+
+
+def test_is_unmodified_wordpress_core_file_false_when_modified(tmp_path, monkeypatch):
+    pmf_scan._WP_ROOT_CACHE.clear()
+    wp_root = tmp_path / "public_html"
+    (wp_root / "wp-includes").mkdir(parents=True)
+    (wp_root / "wp-includes" / "version.php").write_text("$wp_version = '6.0';")
+    f = wp_root / "wp-includes" / "comment.php"
+    f.write_bytes(b"backdoored content")
+
+    import wp_core_checksums
+    monkeypatch.setattr(wp_core_checksums, "fetch_checksums",
+                         lambda version, **kw: {"wp-includes/comment.php": hashlib.md5(b"stock content").hexdigest()})
+
+    assert not pmf_scan.is_unmodified_wordpress_core_file(str(f))
+
+
+def test_is_unmodified_wordpress_core_file_false_outside_wordpress(tmp_path):
+    pmf_scan._WP_ROOT_CACHE.clear()
+    f = tmp_path / "random.php"
+    f.write_text("x")
+    assert not pmf_scan.is_unmodified_wordpress_core_file(str(f))

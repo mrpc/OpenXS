@@ -146,6 +146,68 @@ def log_quarantine(original_path, quarantine_path, category, rule_name):
         pass
 
 
+_WP_ROOT_CACHE = {}
+
+
+def find_wp_root_for(fname):
+    """Nearest ancestor directory of fname that looks like a WordPress
+    root (has wp-includes/version.php), or None. Memoized per directory
+    since many flagged files in one scan share the same WP install."""
+    d = os.path.dirname(fname)
+    checked = []
+    while d and d not in ("/", ""):
+        if d in _WP_ROOT_CACHE:
+            result = _WP_ROOT_CACHE[d]
+            for c in checked:
+                _WP_ROOT_CACHE[c] = result
+            return result
+        checked.append(d)
+        if os.path.isfile(os.path.join(d, "wp-includes", "version.php")):
+            for c in checked:
+                _WP_ROOT_CACHE[c] = d
+            return d
+        parent = os.path.dirname(d)
+        if parent == d:
+            break
+        d = parent
+    for c in checked:
+        _WP_ROOT_CACHE[c] = None
+    return None
+
+
+def is_unmodified_wordpress_core_file(fname):
+    """True if fname sits under a detected WordPress install and matches
+    that exact version's official checksum from wordpress.org - i.e. a
+    YARA hit on it (of any category, even a "Known exploit" fingerprint
+    match) is a false positive: it's provably stock code, byte for byte,
+    not something a webshell could be hiding behind. Supplements
+    php-malware-finder's bundled wordpress.yar whitelist, which only
+    recognizes whatever version it was last generated against (frozen
+    2018) and otherwise flags a site's own legitimate, up-to-date core
+    files once it falls behind. Silently does nothing (returns False) if
+    WordPress isn't installed here or the server has no outbound
+    internet access to reach the checksums API."""
+    wp_root = find_wp_root_for(fname)
+    if not wp_root:
+        return False
+    try:
+        import version_scan
+        import wp_core_checksums
+    except ImportError:
+        return False
+    try:
+        with open(os.path.join(wp_root, "wp-includes", "version.php"), errors="replace") as f:
+            m = version_scan.WP_VERSION_RE.search(f.read())
+    except OSError:
+        return False
+    if not m:
+        return False
+    checksums = wp_core_checksums.fetch_checksums(m.group(1))
+    if not checksums:
+        return False
+    return wp_core_checksums.is_unmodified_core_file(fname, wp_root, checksums)
+
+
 def categorize(rule_name):
     """cxs quarantines only a conservative default (Viruses + Known
     Exploits) 'to avoid otherwise breaking web sites' - filesystem
@@ -519,6 +581,14 @@ def main():
                 print(f"# Skipped (unencodable path): {fname!r}", file=sys.stderr)
                 continue
             real = [m for m in matches if m.rule != "IsWhitelisted" and m.rule != "IsPhp"]
+            if real and is_unmodified_wordpress_core_file(fname):
+                # Byte-for-byte matches wordpress.org's official checksum
+                # for this exact version - whatever rule just matched is
+                # a false positive, not something a webshell could be
+                # hiding behind. See is_unmodified_wordpress_core_file()'s
+                # docstring for why php-malware-finder's own bundled
+                # whitelist doesn't already catch this.
+                real = []
             custom_hits = check_custom_rules(fname, custom_rules)
             # Scan inside zip/tar archives too (cxs's --options Z) - a
             # webshell uploaded inside a zip would otherwise never be seen,
