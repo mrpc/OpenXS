@@ -43,13 +43,39 @@ if ($stage eq 'scan' && $done ne '' && -f "$pmf_dir/filelist.txt") {
 return $result;
 }
 
+# Stage-equal-slice is a rough guess (clamav/maldet/fs can each take very
+# different amounts of real time). Comparing elapsed time against how
+# long past full scans actually took is a better "how much is left"
+# estimate - cheap to compute (one sqlite query), so just do both and
+# let the UI show the sharper one.
+sub overall_pct_from_history
+{
+my ($etimes) = @_;
+return undef if (!$etimes);
+my $out = `python3 -c "
+import sys
+sys.path.insert(0, '$pmf_dir')
+import openxs_db
+durations = [d for _, _, _, files, _, d, _ in openxs_db.recent_scans(10) if files and files > 100000 and d]
+print(sum(durations) / len(durations) if durations else '')
+" 2>/dev/null`;
+$out =~ s/\s+//g;
+return undef if ($out eq '' || $out !~ /^[\d.]+$/);
+return sprintf("%.1f", $etimes / $out * 100) + 0;
+}
+
 my %cfg = &openxs_read_config();
+my $scan_proc = &proc_json(&openxs_scan_pid());
 my $data = {
 	scand => &proc_json(&openxs_daemon_pid()),
 	watchd => &proc_json(&openxs_watchd_pid()),
-	scan => &proc_json(&openxs_scan_pid()),
+	scan => $scan_proc,
 	scan_progress => &scan_progress_json(),
 	};
+if ($data->{'scan_progress'} && $scan_proc->{'pid'}) {
+	my $hist_pct = &overall_pct_from_history($scan_proc->{'etimes'});
+	$data->{'scan_progress'}->{'overall_pct_from_history'} = $hist_pct if (defined($hist_pct));
+	}
 
 print "Content-type: application/json\n\n";
 print JSON::PP->new->encode($data);
