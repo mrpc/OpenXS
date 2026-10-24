@@ -58,10 +58,11 @@ if ($only ne '' && $logs{$only}) {
 			.then(function(r) { return r.json(); })
 			.then(function(d) {
 				if (!d.scan || !d.scan.pid || !d.scan_progress) { progressWrap.style.display = 'none'; return; }
+				var p = d.scan_progress;
 				progressWrap.style.display = '';
-				progressBar.style.width = d.scan_progress.pct + '%';
-				progressLabel.textContent = '~' + d.scan_progress.pct + '% done (' +
-					d.scan_progress.done + ' of ' + d.scan_progress.total + ' files)';
+				progressBar.style.width = (p.pct !== undefined ? p.pct : 0) + '%';
+				progressLabel.textContent = 'Stage ' + p.stage_num + '/' + p.stage_count + ' (' + p.stage + ')' +
+					(p.pct !== undefined ? ': ~' + p.pct + '% done (' + p.done + ' of ' + p.total + ' files)' : '');
 				})
 			.catch(function() {});
 		}
