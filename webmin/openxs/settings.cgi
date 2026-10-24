@@ -250,6 +250,14 @@ if ($csf_ok) {
 			"<a href='edit_file.cgi?f=csf_blocklists'>Edit csf.blocklists &raquo;</a>"));
 	}
 
+my $remoteip_active = &openxs_remoteip_active();
+print &ui_table_row("mod_remoteip (real visitor IP behind Cloudflare)",
+	&row_value(&status_cell($remoteip_active, "Active - %h/[client ...] show the real visitor IP, not Cloudflare's edge IP",
+			"Not active - any Cloudflare-fronted site on this server has every IP-based decision (CSF bans, logs) ".
+			"seeing Cloudflare's own edge IP instead of who's actually making the request") .
+		($remoteip_active ? "<br><i style='font-size:12px;color:#888'>Re-running Install refreshes Cloudflare's published IP ranges.</i>" : ""),
+		&mini_form("install_mod_remoteip.cgi", &ui_submit($remoteip_active ? "Re-apply / refresh ranges" : "Install", "install"))));
+
 print &ui_table_end();
 
 print "<p><a href='index.cgi'>&laquo; Back to dashboard</a></p>\n";
