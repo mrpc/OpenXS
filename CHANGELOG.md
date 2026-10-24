@@ -51,17 +51,46 @@ Release from that section's text.
   default) and `yara_heuristic` (generic patterns, now opt-in only) -
   the root fix for a stale-whitelist false-positive storm auto-
   quarantining real site files.
+- Genuinely binary file content (detected via a NUL byte in the first
+  chunk, same heuristic `git`/`grep -I` use) now skips only the YARA
+  text-heuristic ruleset instead of false-positiving on it (found live:
+  `.git/index` and pack files flagging as `ObfuscatedPhp`/`NonPrintableChars`
+  purely because a `<?` byte sequence appeared by chance in binary
+  data) - ClamAV and custom rules still scan the file regardless, and
+  nothing is path-excluded (a `.git` directory can still host a real
+  exploit).
+- `settings.cgi`: a newly-added row (server-wide mod_security mode) had
+  its own `<form>` nested inside the still-open main Settings form -
+  invalid HTML, which made the browser collapse every row after it
+  into one unstructured line of buttons.
+- The scan progress file was removed right after ClamAV finished,
+  before maldet/fs_scan even started - the dashboard/live log showed
+  nothing for the rest of the scan even on runs where those two stages
+  were individually slower than YARA+ClamAV combined. Now tracks all 4
+  stages (scan/clamav/maldet/fs), cleaned up only once at the very end.
+- The scan progress bar fell back to 0% width on every stage without a
+  per-file percentage (clamav/maldet/fs), looking identically empty
+  whether 1/4 or fully done through the pipeline.
 
 ### Added
 - `VMRSS_MAX_MB` as a real Settings-page option instead of a silent
   hardcoded scan memory ceiling.
 - Weekly GitHub Action keeping the WordPress checksums bundle current
   with new releases automatically.
-- Dashboard: live scan-completion percentage, stage indicator
-  (scanning vs ClamAV post-processing), and a progress bar in the live
-  scanlog view, all fed by `pmf_scan.py`'s own progress file. Resource
-  widgets (scan daemon/watch daemon/manual scan) now link through to
-  their own live log view.
+- Dashboard: live scan-completion percentage, stage indicator (all 4
+  scan stages - YARA, ClamAV, maldet, filesystem checks), a per-stage
+  progress bar plus a second, history-based overall-progress bar (the
+  scan's elapsed time against the average duration of recent full
+  scans) in the live scanlog view, all fed by `pmf_scan.py`'s own
+  progress file. Resource widgets (scan daemon/watch daemon/manual
+  scan) now link through to their own live log view.
+- Settings page: a "Components" section holds every component's own
+  install/update/on-off toggle (detection engine, ClamAV, maldet,
+  mod_security, CSF, mod_remoteip, the Servers Status widget, IP
+  reputation feeds) - the dashboard itself now only shows what's
+  actually running right now (daemons, last scan, quarantine count,
+  FIM, pending updates) plus day-to-day actions and log links, instead
+  of mixing in every one-time setup/toggle control.
 - `version_scan.py`: WordPress plugin/theme outdated-version checks
   (wordpress.org's plugin/theme info API) and Joomla core version
   detection/EOL-branch flagging (1.x/2.x/3.x) - closes the real gap
@@ -71,13 +100,27 @@ Release from that section's text.
   bookkeeping jobs (mod_security block-count history, the blocks-view
   cache) instead of a separate `/etc/cron.d` file per feature.
 - mod_security detection-only mode (`/etc/openxs/modsec_mode`, one
-  `<hostname> <mode>` per line) and precise rule exclusions
-  (`/etc/openxs/modsec_rule_exclusions`, one `<rule id> <variable>
-  [path]` per line via `SecRuleUpdateTargetById`) - a confirmed false
-  positive gets a surgical fix (one rule, one variable) instead of
-  `openxs_modsec_exclusions.py`'s blunter "disable everything for this
-  path", found live on a real incident (CRS 930120 false-positiving on
-  Google OAuth's `scope` parameter).
+  `<hostname> <mode>` per line, plus a server-wide on/detection/off
+  dropdown surfaced directly on Settings) and precise rule exclusions
+  (`/etc/openxs/modsec_rule_exclusions`, one `<rule id> <variable>` per
+  line via `SecRuleUpdateTargetById`, server-wide only - confirmed by
+  hand that neither `LocationMatch`, `<If>`, `ctl:ruleRemoveById` nor a
+  mod_rewrite env var scopes it to one path on this stack) - a
+  confirmed false positive gets a surgical fix (one rule, one variable)
+  instead of `openxs_modsec_exclusions.py`'s blunter "disable
+  everything for this path", found live on a real incident (CRS 930120
+  false-positiving on Google OAuth's `scope` parameter).
+- `mod_remoteip`, installable from Settings: resolves the real visitor
+  IP behind Cloudflare (`CF-Connecting-IP`, trusted against Cloudflare's
+  own published ranges) instead of every Cloudflare-fronted site's logs
+  and IP-based decisions seeing only Cloudflare's own edge IPs.
+- CSF auto-ban (opt-in, Settings): the watch daemon temporarily bans
+  (`csf -td`, reversible) an uploader's IP on a high-confidence
+  yara_exploit/virus/maldet finding, but only when exactly one client
+  made a POST/PUT to that account's domain in the preceding seconds -
+  zero or multiple candidates just log a line, never guess. Refuses to
+  even save as enabled until `mod_remoteip` is active, and refuses to
+  ban an IP that's actually Cloudflare's own edge range.
 - `MIGRATION.md`: step-by-step cxs migration guide (comparison table +
   the actual `migrate_from_cxs.py` subcommands in order), not just the
   README's "why" explanation.
@@ -107,6 +150,10 @@ Release from that section's text.
 - mod_security's "grouped by host/path/rule" view reads from a 5-minute
   cron-refreshed cache instead of re-grepping every Apache error log on
   the box on every page view.
+- mod_security's two "off" controls (the lightweight rule-engine mode
+  dropdown vs. `Disable` actually unloading Apache's module) merged
+  into one Settings row with the relationship between them spelled
+  out, instead of sitting in separate, unrelated-looking rows.
 
 ## [v0.1.2] - 2026-10-24
 
