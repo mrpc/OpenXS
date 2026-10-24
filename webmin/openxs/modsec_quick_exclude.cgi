@@ -8,7 +8,10 @@
 # exact variable - refine to a narrower variable or add a path scope
 # later via Settings if this turns out too broad for that rule). "path"
 # fully disables ModSecurity for that exact path (same as an entry in
-# Settings' path exclusions).
+# Settings' path exclusions). Pure exclude only - no false-positive
+# telemetry here, since excluding isn't always because something is a
+# false positive. See mark_false_positive.cgi for that (source=modsec),
+# which also applies this same rule-exclusion as a side effect.
 
 require './openxs-lib.pl';
 &ReadParse();
@@ -26,13 +29,9 @@ if (!$file || $line eq '') {
 	print "<p style='color:red'>Missing or invalid action.</p>\n";
 	}
 else {
-	my $uri = $in{'uri'} || '';
-	my $rule_id = $in{'rule_id'} || '';
 	my @existing = -e $file ? @{ &read_file_lines($file, 1) } : ();
-	my $action_taken;
 	if (grep { $_ eq $line } @existing) {
 		print "<p>Already excluded: <code>" . &html_escape($line) . "</code></p>\n";
-		$action_taken = "already excluded ($action)";
 		}
 	else {
 		open(my $fh, '>>', $file) || print "<p style='color:red'>Could not write $file: $!</p>\n";
@@ -45,7 +44,6 @@ else {
 			print "<p style='color:green'>Added <code>" . &html_escape($line) . "</code> to " . &html_escape($file) .
 				", regenerated the Apache config, and reloaded.</p>\n";
 			print "<pre style='background:#1e1e1e;color:#e8e8e8;padding:8px'>" . &html_escape($out) . "</pre>";
-			$action_taken = "$action exclusion applied ($line)";
 			if ($action eq 'rule') {
 				print "<p><i>This excludes the rule across ARGS generally - edit <a href='edit_file.cgi?f=modsec_rule_exclusions'>".
 					"$file</a> directly to narrow it to one specific variable or path once you've confirmed the exact match ".
@@ -53,11 +51,10 @@ else {
 				}
 			}
 		}
-	# Clicking exclude IS marking it a false positive - one telemetry
-	# record either way (see mark_false_positive.cgi's doc comment for
-	# why this exists at all), so this doesn't need its own separate
-	# "Mark false positive" button on the mod_security views.
-	system('python3', $pmf_dir . '/openxs_mark_false_positive.py', 'modsec', $uri, $rule_id, $action_taken) if (defined($action_taken));
+	# Deliberately no false-positive telemetry here - excluding
+	# something isn't always because it's a false positive (could be an
+	# accepted risk, a known-noisy but legitimate pattern, etc.). Use
+	# the separate "Mark false positive" button for that.
 	}
 
 print "<p><a href='modsec_log.cgi'>&laquo; Back to mod_security blocks</a></p>\n";

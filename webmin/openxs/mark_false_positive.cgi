@@ -1,14 +1,20 @@
 #!/usr/bin/perl
 # mark_false_positive.cgi
-# "Mark false positive" for a YARA/ClamAV/maldet/version-check finding -
-# records it (false_positive_reports, for later review/aggregation -
-# e.g. a future telemetry step) AND, where a suppression mechanism
-# actually exists, applies it automatically (adds the exact file path
-# to /etc/openxs/ignore) - same idea as mod_security's quick-exclude
-# buttons, just for the scan-side detectors instead. A version-check
-# "(oldversion)" finding has no suppression mechanism (there's nothing
-# to toggle - the package genuinely is outdated), so only the telemetry
-# record happens for that source.
+# "Mark false positive" for a finding (YARA/ClamAV/maldet/version-check)
+# or a mod_security block - always records it (false_positive_reports,
+# for later review/aggregation - e.g. a future telemetry step) AND,
+# where a suppression mechanism actually exists, applies it
+# automatically. Deliberately separate from mod_security's own quick-
+# exclude buttons (modsec_quick_exclude.cgi) - excluding something
+# isn't always because it's a false positive (could be an accepted
+# risk, a known-noisy but legitimate pattern), so this is its own
+# explicit action, not implied by clicking "Exclude".
+#
+# source=finding: adds the exact file path to /etc/openxs/ignore.
+# source=oldversion: no suppression mechanism exists (the package
+# genuinely is outdated) - telemetry only.
+# source=modsec: applies the same rule-exclusion (path=rule_id, detail=uri)
+# as modsec_quick_exclude.cgi's "rule" action would.
 
 require './openxs-lib.pl';
 &ReadParse();
@@ -18,7 +24,7 @@ my $source = $in{'source'};
 my $path = $in{'path'};
 my $detail = $in{'detail'};
 
-if ($source !~ /^(finding|oldversion)$/ || $path eq '') {
+if ($source !~ /^(finding|oldversion|modsec)$/ || $path eq '') {
 	print "<p style='color:red'>Missing or invalid parameters.</p>\n";
 	}
 else {
@@ -38,6 +44,27 @@ else {
 				}
 			}
 		}
+	elsif ($source eq 'modsec') {
+		# path is the rule_id here, detail is the uri - see the URL
+		# builder in openxs_modsec_quick_exclude_links().
+		my $rule_file = '/etc/openxs/modsec_rule_exclusions';
+		my $line = "$path ARGS";
+		my @existing = -e $rule_file ? @{ &read_file_lines($rule_file, 1) } : ();
+		if (grep { $_ eq $line } @existing) {
+			$action_taken = "already excluded (rule)";
+			}
+		else {
+			open(my $fh, '>>', $rule_file) || print "<p style='color:red'>Could not write $rule_file: $!</p>\n";
+			if (fileno($fh)) {
+				print $fh "$line\n";
+				close($fh);
+				my $out = `python3 $pmf_dir/openxs_modsec_rule_exclusions.py 2>&1`;
+				system("apache2ctl -t 2>/dev/null && (systemctl reload apache2 2>/dev/null || service apache2 reload 2>/dev/null)");
+				print "<pre style='background:#1e1e1e;color:#e8e8e8;padding:8px'>" . &html_escape($out) . "</pre>";
+				$action_taken = "rule exclusion applied ($line)";
+				}
+			}
+		}
 	else {
 		$action_taken = undef;
 		}
@@ -47,9 +74,10 @@ else {
 	system('python3', @cmd);
 
 	print "<p style='color:green'>Marked as false positive" .
-		(defined($action_taken) ? " - $action_taken (future scans will skip this exact path)." : " - recorded (no automatic suppression exists for version-check findings).") .
+		(defined($action_taken) ? " - $action_taken." : " - recorded (no automatic suppression exists for version-check findings).") .
 		"</p>\n";
 	}
 
-print "<p><a href='findings.cgi'>&laquo; Back to findings</a></p>\n";
+my $back = $source eq 'modsec' ? 'modsec_log.cgi' : 'findings.cgi';
+print "<p><a href='$back'>&laquo; Back</a></p>\n";
 &ui_print_footer("/", "Webmin index page");
