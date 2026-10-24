@@ -93,9 +93,12 @@ print &ui_subheading("Version checks (initial sversionscan-equivalent)");
 print "<p>Two independent, read-only checks run with the daily scheduled scan (not on the mod_security/watch-daemon ".
       "real-time paths - both make live network calls):</p><ul>".
       "<li><b>WordPress core</b> (<code>version_scan.py</code>): finds every <code>wp-includes/version.php</code> ".
-      "under the scan path, compares against WordPress.org's own latest-version API. The only CMS type actually ".
-      "found installed across our fleet so far - a generic vulnerable-plugin-version scanner is a much bigger, ".
-      "still-unsolved problem (needs a CVE/vulnerability database we don't have).</li>".
+      "under the scan path, compares against WordPress.org's own latest-version API. A generic vulnerable-plugin-".
+      "version scanner is a much bigger, still-unsolved problem (needs a CVE/vulnerability database we don't have).</li>".
+      "<li><b>Revive Adserver</b> (same script): finds every install (a <code>constants.php</code> defining ".
+      "<code>VERSION</code>, alongside <code>adview.php</code>), compares against the highest released tag on ".
+      "<a href='https://github.com/revive-adserver/revive-adserver' target='_blank'>GitHub</a>. The actively-".
+      "maintained fork of the old OpenX Adserver - don't confuse the two.</li>".
       "<li><b>Composer packages</b> (same script): reads every <code>composer.lock</code> found and checks each ".
       "installed package's version against <a href='https://packagist.org' target='_blank'>Packagist</a> - no ".
       "built-in knowledge of any specific package needed (our own framework included - it just asks Packagist ".
