@@ -47,14 +47,14 @@ print "<div style='display:flex;gap:16px;margin:16px 0;flex-wrap:wrap'>" .
 	"</div>";
 
 if ($scan_pid) {
-	my $etimes = `ps -o etimes= -p $scan_pid 2>/dev/null`;
-	$etimes =~ s/\s+//g;
-	if ($etimes =~ /^\d+$/) {
-		my $mins = int($etimes / 60);
-		my $secs = $etimes % 60;
-		print "<p><b>Scan in progress</b> - running for ${mins}m ${secs}s. ".
-			"<a href='logs.cgi?only=scanlog'>View live log &raquo;</a></p>\n";
-		}
+	print "<p id='scan-progress-line'><b>Scan in progress</b> - <span id='scan-progress-text'>(loading...)</span>. ".
+		"<a href='logs.cgi?only=scanlog'>View live log &raquo;</a></p>\n";
+	}
+else {
+	# Hidden placeholder, shown by the JS below if a scan starts while
+	# this page is already open (no reload needed to notice).
+	print "<p id='scan-progress-line' style='display:none'><b>Scan in progress</b> - ".
+		"<span id='scan-progress-text'></span>. <a href='logs.cgi?only=scanlog'>View live log &raquo;</a></p>\n";
 	}
 
 # Auto-refresh the widget numbers every few seconds without a full page
@@ -85,12 +85,27 @@ print <<'JSEOF';
 		var cpuEl = document.getElementById('cpu-' + key);
 		if (cpuEl) cpuEl.innerHTML = d.cpu + "<span style='font-size:14px'>%</span>";
 		}
+	function paintScanProgress(scan, progress) {
+		var line = document.getElementById('scan-progress-line');
+		var text = document.getElementById('scan-progress-text');
+		if (!line || !text) return;
+		if (!scan || !scan.pid) { line.style.display = 'none'; return; }
+		line.style.display = '';
+		var mins = Math.floor(scan.etimes / 60), secs = scan.etimes % 60;
+		var msg = 'running for ' + mins + 'm ' + secs + 's';
+		if (progress) msg += ' - ~' + progress.pct + '% done (' + progress.done + ' of ' + progress.total + ' files)';
+		text.textContent = msg;
+		}
 	function tick() {
 		fetch('daemon_stats.cgi', {credentials: 'same-origin'})
 			.then(function(r) { return r.json(); })
-			.then(function(d) { paint('scand', d.scand); paint('watchd', d.watchd); paint('scan', d.scan); })
+			.then(function(d) {
+				paint('scand', d.scand); paint('watchd', d.watchd); paint('scan', d.scan);
+				paintScanProgress(d.scan, d.scan_progress);
+				})
 			.catch(function() {});
 		}
+	tick();
 	setInterval(tick, 4000);
 	})();
 </script>
