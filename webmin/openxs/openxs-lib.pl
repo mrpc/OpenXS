@@ -770,7 +770,11 @@ else {
 		"onclick=\"return confirm('Exclude path \\'" . &html_escape($uri) . "\\' - disables ALL mod_security checks for it?')\">Exclude path</a>";
 	}
 
-return "$rule_part $path_part";
+my $fp_url = "mark_false_positive.cgi?source=modsec&path=" . &urlize($rule_id) . "&detail=" . &urlize($uri);
+my $fp_part = "<a href='$fp_url' style='$btn_style;background:#fdeef0;color:#9a3b4a;border:1px solid #edc3cc' ".
+	"onclick=\"return confirm('Mark as false positive (also applies the rule exclusion above if not already done)?')\">Mark false positive</a>";
+
+return "$rule_part $path_part $fp_part";
 }
 
 # Kill-switch, checked once here (every .cgi requires this file first) so
