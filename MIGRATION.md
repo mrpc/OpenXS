@@ -10,9 +10,10 @@ exists). It assumes an existing cxs install on a Virtualmin/Webmin server.
 | `exploitscan` (heuristic PHP scanning) | php-malware-finder (YARA) | OpenXS splits hits into `yara_exploit` (high-confidence) vs `yara_heuristic` (generic patterns, opt-in quarantine) - cxs didn't distinguish these, which is what caused a false-positive incident on the old model |
 | `virusscan` (ClamAV) | ClamAV, same engine | Same detector, same install |
 | Mailbox virus scanning | `tools/mailbox_scan.py` | cxs had this too; opt-in here as well |
-| `sversionscan` (outdated-software detection) | WordPress core + Drupal core + Composer packages + pending apt security updates | **Narrower**: cxs covered many more CMS platforms generically against a vulnerable-version database; OpenXS currently checks WordPress/Drupal core versions and Composer/apt, not arbitrary plugin-level CVEs. Known gap, tracked, not silently dropped. |
+| `sversionscan` (outdated-software detection) | WordPress core + Drupal core + Revive Adserver + Composer packages + pending apt security updates | **Narrower in one specific way**: no arbitrary plugin-level CVE database (cxs's own vulnerable-version DB covered many more platforms this way). But **not as narrow as it looks**: the Composer check flags *any* outdated package against Packagist, including ones with no CVE on file anywhere - most real-world "outdated WordPress plugin" exposure in practice is exactly this (an unpatched old version), not a documented CVE, and Composer-managed PHP projects get that coverage without OpenXS needing to know about the specific package at all. The WordPress/Drupal/Revive checks also aren't a frozen snapshot like a vendored CVE database would be: WordPress/Drupal checksums refresh weekly via GitHub Actions, and the Revive Adserver check queries its GitHub tags live - "new version came out, are we behind" doesn't need a code update to notice. |
 | Command Wizard "Other Options" (ignore file, change-time filter, throttle, quiet mode, `*.php`-only) | `tools/fs_scan.py` + scan options, `/etc/openxs/ignore` | Covered |
-| Command Wizard "Other Options": Bayesian probability scoring, max-resources-per-directory limit, multi-threaded scanning | *(not implemented)* | Known gap - described here rather than silently dropped |
+| Command Wizard "Other Options": Bayesian probability scoring | *(not implemented as such)* | Covered differently, not left open: Bayesian scoring exists to soften false positives/negatives from a single heuristic engine's confidence; OpenXS addresses the same problem with the `yara_exploit`/`yara_heuristic` category split plus byte-for-byte checksum suppression against official releases - more precise than a probability estimate where it applies, at the cost of only covering platforms with a known-official-release checksum source. |
+| Command Wizard "Other Options": max-resources-per-directory limit, multi-threaded scanning | *(not implemented)* | Known gap - described here rather than silently dropped |
 | CSF `LF_CXS` auto-block on malicious upload | `regex.custom.pm` CSF hook | Reproduced end-to-end, uses CSF's own documented custom-trigger mechanism |
 | mod_security `@inspectFile` real-time upload block | Same mechanism | Covered |
 | cxs's own `cxs.db` (scan history/stats) | SQLite-backed scan history (`tools/openxs_db.py`) | Covered, plus per-detector duration and system load |
@@ -74,10 +75,11 @@ running cxs and OpenXS side by side for as long as you want before continuing.
 
 ## What to double-check after migrating
 
-- Re-read the "Narrower" row above: if you relied on cxs's `sversionscan` for
-  plugin-level CVE coverage beyond WordPress/Drupal/Composer core versions,
-  that gap doesn't close automatically - review what it was actually catching
-  on your sites.
+- Re-read the `sversionscan` row above: if you relied on cxs flagging a
+  specific *documented CVE* in a plugin that isn't Composer-managed (so the
+  generic outdated-package check can't see it either), that specific gap
+  doesn't close automatically - review what it was actually catching on your
+  sites.
 - Anything `migrate_from_cxs.py` printed under "item(s) need your attention"
   at any step - it reports what it can't translate instead of silently
   dropping it.
