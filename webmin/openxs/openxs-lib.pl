@@ -700,21 +700,77 @@ return "<a href='https://github.com/coreruleset/coreruleset/search?q=" . &html_e
 	"' target='_blank' rel='noopener'>rule $rule_id</a>";
 }
 
+sub openxs_modsec_excluded_rule_ids
+{
+# {rule_id => 1} for every rule_id already present in
+# modsec_rule_exclusions, any variable/path - so a row for a rule
+# that's already excluded (even narrower than our own "ARGS" default)
+# doesn't keep inviting another click.
+my %ids;
+if (open(my $fh, '<', '/etc/openxs/modsec_rule_exclusions')) {
+	while (<$fh>) {
+		chomp;
+		s/^\s+|\s+$//g;
+		next if ($_ eq '' || /^#/);
+		my ($id) = split(/\s+/, $_);
+		$ids{$id} = 1 if ($id =~ /^\d+$/);
+		}
+	close($fh);
+	}
+return \%ids;
+}
+
+sub openxs_modsec_excluded_path_prefixes
+{
+my @prefixes;
+if (open(my $fh, '<', '/etc/openxs/modsec_exclusions')) {
+	while (<$fh>) {
+		chomp;
+		s/^\s+|\s+$//g;
+		push(@prefixes, $_) if ($_ ne '' && !/^#/);
+		}
+	close($fh);
+	}
+return \@prefixes;
+}
+
 sub openxs_modsec_quick_exclude_links
 {
 # One-click "exclude rule" / "exclude path" per mod_security blocks
 # row - see modsec_quick_exclude.cgi. Confirm first, since both are
 # real security-config changes (reversible via Settings, but not
-# something a stray click should do silently).
-my ($rule_id, $uri) = @_;
+# something a stray click should do silently). $excluded_rules /
+# $excluded_path_prefixes are precomputed once per page (not re-read
+# per row) via the two subs above - a row already covered shows a
+# static "Excluded" instead of inviting another click.
+my ($rule_id, $uri, $excluded_rules, $excluded_path_prefixes) = @_;
 my $btn_style = "display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;font-size:11px;".
 	"border-radius:3px;text-decoration:none;white-space:nowrap";
-my $rule_url = "modsec_quick_exclude.cgi?action=rule&rule_id=" . &urlize($rule_id);
-my $path_url = "modsec_quick_exclude.cgi?action=path&uri=" . &urlize($uri);
-return "<a href='$rule_url' style='$btn_style;background:#fdf3e7;color:#8a5a1f;border:1px solid #edd6b3' ".
-	"onclick=\"return confirm('Exclude rule $rule_id (ARGS) across the whole server?')\">Exclude rule</a> " .
-	"<a href='$path_url' style='$btn_style;background:#eef3fa;color:#2b5a8c;border:1px solid #c3d6ea' ".
-	"onclick=\"return confirm('Exclude path \\'" . &html_escape($uri) . "\\' - disables ALL mod_security checks for it?')\">Exclude path</a>";
+my $done_style = "display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;font-size:11px;".
+	"border-radius:3px;white-space:nowrap;background:#eef7ee;color:#2e7d32;border:1px solid #c3e0c3";
+
+my $rule_part;
+if ($excluded_rules->{$rule_id}) {
+	$rule_part = "<span style='$done_style' title='Already has a rule exclusion - see Settings'>&#10003; Rule excluded</span>";
+	}
+else {
+	my $rule_url = "modsec_quick_exclude.cgi?action=rule&rule_id=" . &urlize($rule_id);
+	$rule_part = "<a href='$rule_url' style='$btn_style;background:#fdf3e7;color:#8a5a1f;border:1px solid #edd6b3' ".
+		"onclick=\"return confirm('Exclude rule $rule_id (ARGS) across the whole server?')\">Exclude rule</a>";
+	}
+
+my $path_already_excluded = grep { index($uri, $_) == 0 } @$excluded_path_prefixes;
+my $path_part;
+if ($path_already_excluded) {
+	$path_part = "<span style='$done_style' title='Already covered by a path exclusion - see Settings'>&#10003; Path excluded</span>";
+	}
+else {
+	my $path_url = "modsec_quick_exclude.cgi?action=path&uri=" . &urlize($uri);
+	$path_part = "<a href='$path_url' style='$btn_style;background:#eef3fa;color:#2b5a8c;border:1px solid #c3d6ea' ".
+		"onclick=\"return confirm('Exclude path \\'" . &html_escape($uri) . "\\' - disables ALL mod_security checks for it?')\">Exclude path</a>";
+	}
+
+return "$rule_part $path_part";
 }
 
 # Kill-switch, checked once here (every .cgi requires this file first) so
