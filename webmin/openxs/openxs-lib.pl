@@ -66,6 +66,17 @@ my ($pid) = split(/\s+/, $out);
 return $pid;
 }
 
+# A manual or scheduled scan (pmf_scan.py scan ...) isn't a long-running
+# daemon with its own PID file - found the same way, by matching its
+# command line, specifically the "scan" subcommand (not "whitelist").
+sub openxs_scan_pid
+{
+my $pattern = &pgrep_safe_pattern("pmf_scan.py scan");
+my $out = `pgrep -f '$pattern' 2>/dev/null`;
+my ($pid) = split(/\s+/, $out);
+return $pid;
+}
+
 sub openxs_socket_exists
 {
 return -S $socket_path ? 1 : 0;
