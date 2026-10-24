@@ -146,6 +146,27 @@ FS_RULES = {"SUID file", "world-writable directory", "symlink", "socket",
 
 QUARANTINE_LOG = "/var/log/openxs-quarantine.log"
 
+# A rule's own YARA 'score' meta (upstream's confidence rating) doesn't
+# correlate well with how noisy it actually is on this fleet (e.g.
+# WEBSHELL_PHP_Generic_Callback scores lower than several rules found
+# far less prone to false-positiving in practice) - so this is a hand-
+# curated, fleet-specific list instead, built up as we find a rule's
+# real-world hit rate. Level 1 (default) is every rule not listed here;
+# level 2 is "we've confirmed this one hits legitimate common software
+# a lot - only report it if OPENXS_YARA_PARANOIA_LEVEL >= 2". Not 4
+# levels like mod_security's CRS paranoia (that's curated per-rule by
+# the CRS project itself, across thousands of rules - we don't have
+# that depth of curation here); add level 3/4 buckets if/when a level
+# 2 rule turns out to need even narrower opt-in.
+RULE_PARANOIA_LEVEL = {
+    "WEBSHELL_PHP_Generic_Callback": 2,
+    "EXT_WEBSHELL_PHP_Generic": 2,
+    "WEBSHELL_PHP_Dynamic_Big": 2,
+}
+
+def paranoia_level_for(rule_name):
+    return RULE_PARANOIA_LEVEL.get(rule_name.split(" (", 1)[0], 1)
+
 
 def log_quarantine(original_path, quarantine_path, category, rule_name):
     """One line per quarantine action - which file, why, where it went -
@@ -168,6 +189,19 @@ def log_quarantine(original_path, quarantine_path, category, rule_name):
 # marker at each directory level, so a new platform costs O(1) more
 # marker checks per level, never a second independent traversal of the
 # same site's directory tree.
+def _is_phpmyadmin_root(d):
+    # libraries/classes/Config.php + sql/ alone are too generic to key
+    # off safely - composer.json's own package name is the unambiguous
+    # signal (confirmed by hand: every phpMyAdmin release ships one).
+    if not (os.path.isfile(os.path.join(d, "libraries", "classes", "Config.php"))
+            and os.path.isdir(os.path.join(d, "sql"))):
+        return False
+    try:
+        with open(os.path.join(d, "composer.json"), errors="replace") as f:
+            return '"phpmyadmin/phpmyadmin"' in f.read()
+    except OSError:
+        return False
+
 _PLATFORMS = [
     {
         "name": "wordpress",
@@ -196,6 +230,21 @@ _PLATFORMS = [
         "version_relpath": "constants.php",
         "version_re_attr": "REVIVE_VERSION_RE",
         "checksums_module": "revive_core_checksums",
+    },
+    {
+        "name": "roundcube",
+        "marker": lambda d: (os.path.isfile(os.path.join(d, "program", "include", "iniset.php"))
+                              and os.path.isfile(os.path.join(d, "program", "lib", "Roundcube", "rcube.php"))),
+        "version_relpath": os.path.join("program", "include", "iniset.php"),
+        "version_re_attr": "ROUNDCUBE_VERSION_RE",
+        "checksums_module": "roundcube_core_checksums",
+    },
+    {
+        "name": "phpmyadmin",
+        "marker": _is_phpmyadmin_root,
+        "version_relpath": "composer.json",
+        "version_re_attr": "PHPMYADMIN_VERSION_RE",
+        "checksums_module": "phpmyadmin_core_checksums",
     },
 ]
 
@@ -294,26 +343,39 @@ def categorize(rule_name):
         return "yara_exploit"
     return "yara_heuristic"
 
+DEFAULT_RULES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "default_rules")
+
+def _load_rules_file(path, patterns, md5s, sha256s):
+    if not path or not os.path.isfile(path):
+        return
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("md5:"):
+                md5s[line[4:].strip().lower()] = line
+            elif line.startswith("sha256:"):
+                sha256s[line[7:].strip().lower()] = line
+            else:
+                try:
+                    patterns.append(re.compile(line.encode()))
+                except re.error:
+                    continue
+
 def load_custom_rules(path):
     """cxs's rule/xtra file: extra regexes to flag, or 'md5:<hash>'/
     'sha256:<hash>' to flag an exact known-exploit file by content hash
-    (cxs's --xtra md5sum:/sha256: entries)."""
+    (cxs's --xtra md5sum:/sha256: entries).
+
+    Also always loads default_rules (shipped alongside this script,
+    updated via git pull + install.sh) - general exploit-kit signatures
+    worth detecting on every install, not just whatever's in this one
+    server's local, user-editable `path`. Same relationship as
+    load_ignore_patterns() has to default_ignore."""
     patterns, md5s, sha256s = [], {}, {}
-    if path and os.path.isfile(path):
-        with open(path) as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                if line.startswith("md5:"):
-                    md5s[line[4:].strip().lower()] = line
-                elif line.startswith("sha256:"):
-                    sha256s[line[7:].strip().lower()] = line
-                else:
-                    try:
-                        patterns.append(re.compile(line.encode()))
-                    except re.error:
-                        continue
+    _load_rules_file(DEFAULT_RULES_FILE, patterns, md5s, sha256s)
+    _load_rules_file(path, patterns, md5s, sha256s)
     return patterns, md5s, sha256s
 
 class _RegexTimeout(Exception):
@@ -612,6 +674,7 @@ def main():
     rules = compile_ruleset(yar_path)
 
     ignore_patterns = load_ignore_patterns(os.environ.get("OPENXS_IGNORE_FILE", "/etc/openxs/ignore"))
+    paranoia_level = int(os.environ.get("OPENXS_YARA_PARANOIA_LEVEL") or 1)
     changed_hours = os.environ.get("OPENXS_CHANGED_HOURS")
     quiet = os.environ.get("OPENXS_QUIET") == "1"
     throttle(os.environ.get("OPENXS_THROTTLE_LOAD"))
@@ -698,7 +761,8 @@ def main():
                     except OSError:
                         print(f"# Skipped (unreadable, unencodable path): {fname!r}", file=sys.stderr)
                         continue
-            real = [m for m in matches if m.rule != "IsWhitelisted" and m.rule != "IsPhp"]
+            real = [m for m in matches if m.rule != "IsWhitelisted" and m.rule != "IsPhp"
+                    and paranoia_level_for(m.rule) <= paranoia_level]
             if real and is_unmodified_core_file(fname):
                 # Byte-for-byte matches the official checksum for this
                 # exact version - whatever rule just matched is a false
@@ -715,7 +779,7 @@ def main():
             if fname.endswith(ARCHIVE_EXTS):
                 for member_name, data in iter_archive_members(fname):
                     for m in rules.match(data=data):
-                        if m.rule not in ("IsWhitelisted", "IsPhp"):
+                        if m.rule not in ("IsWhitelisted", "IsPhp") and paranoia_level_for(m.rule) <= paranoia_level:
                             archive_hits.append(f"{m.rule} (in archive member {member_name})")
             if real or custom_hits or archive_hits:
                 for rule_name in [m.rule for m in real] + custom_hits + archive_hits:
@@ -815,6 +879,20 @@ def main():
             import openxs_db
             label = os.environ.get("OPENXS_SCAN_LABEL", filelist_path)
             scan_id = openxs_db.record_scan(label, total, findings, duration=duration, load_avg=load_avg)
+
+            # Separate file (not scan_results.txt itself) for the email-
+            # alert pipeline to prefer for heuristic/fs findings - a
+            # legitimate, unchanged file shouldn't nag on every single
+            # scheduled scan forever just because it looks obfuscated.
+            # scan_results.txt / the Findings DB page still carry every
+            # finding regardless, for browsing/audit.
+            new_path = os.environ.get("OPENXS_NEW_FINDINGS_FILE", "new_findings.txt")
+            try:
+                with open(new_path, "w") as nf:
+                    for fname, rule_name in openxs_db.new_finding_ids(scan_id):
+                        nf.write(f"{fname}\t{rule_name}\n")
+            except OSError:
+                pass
 
             if findings:
                 # cxs's own default: only quarantine Viruses and Known

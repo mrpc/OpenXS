@@ -1,0 +1,17 @@
+# Shipped with OpenXS (not user-editable config) - general exploit-kit
+# signatures worth detecting on every install, not just this fleet's own
+# accounts. Ships via git pull + install.sh, always loaded in addition
+# to the local, per-server /etc/openxs/rules. Same relationship to that
+# file as default_ignore has to /etc/openxs/ignore.
+#
+# "Self-doubled MD5" password-gated backdoor: md5($x.md5($x))==(hash),
+# then some gated payload (eval, base64_decode, file_put_contents, an
+# SSRF/outbound-request relay, ...). Found live 2026-10-24: 13 of these
+# were already caught by generic YARA heuristics (ObfuscatedPhp etc.),
+# but 5 variants of the exact same kit used a plain, unobfuscated hash
+# literal with an SSRF-relay payload instead of eval/file_put_contents -
+# none of our existing rules key on dangerous-sink keywords that happen
+# to not be present in that variant, so those 5 went completely
+# undetected. This regex targets the one structural element present in
+# every variant regardless of payload: the self-doubled MD5 gate itself.
+md5\(\s*\$\w+(\[[^\]]+\])?\s*\.\s*md5\(\s*\$\w+(\[[^\]]+\])?\s*\)\s*\)\s*==\s*\(
