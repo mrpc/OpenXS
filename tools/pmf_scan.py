@@ -611,10 +611,18 @@ def main():
             except UnicodeEncodeError:
                 # A path with a raw non-UTF8 byte (surrogateescape'd by
                 # iter_files) can't be passed through to yara's C
-                # extension - skip this one file rather than crash the
-                # whole scan over it.
-                print(f"# Skipped (unencodable path): {fname!r}", file=sys.stderr)
-                continue
+                # extension as a filepath string - but the file itself
+                # still needs scanning (a webshell doesn't stop being
+                # one for having an oddly-encoded name). Python's own
+                # open() handles a surrogateescape'd path fine, so read
+                # the bytes ourselves and match against those instead.
+                try:
+                    with open(fname, "rb") as f:
+                        data = f.read()
+                    matches = rules.match(data=data, fast=True)
+                except OSError:
+                    print(f"# Skipped (unreadable, unencodable path): {fname!r}", file=sys.stderr)
+                    continue
             real = [m for m in matches if m.rule != "IsWhitelisted" and m.rule != "IsPhp"]
             if real and is_unmodified_core_file(fname):
                 # Byte-for-byte matches the official checksum for this
