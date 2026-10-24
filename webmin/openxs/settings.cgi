@@ -213,6 +213,14 @@ print &ui_table_row("maldet (Linux Malware Detect, 3rd detector)",
 
 my $modsec_active = &openxs_modsecurity_active();
 my $modsec_overrides = &openxs_modsec_mode_overrides_summary();
+{
+# Two different "off" mechanisms used to sit in separate, unrelated-
+# looking rows (confusing - explicit feedback) - one combined row now,
+# with the relationship between them spelled out: Mode is the light,
+# instant, routine toggle (module stays loaded, logging/"View recent
+# blocks" keeps working even in Detection/Off); Install/Disable is the
+# heavier one (actually unloads the Apache module - a2dismod/a2enmod).
+my $modsec_global_mode = $modsec_ok ? &openxs_modsec_global_mode() : 'on';
 print &ui_table_row("mod_security (real-time upload blocking)",
 	&row_value(&status_cell($modsec_ok && $modsec_hook_ok && $modsec_active,
 			$modsec_ok && $modsec_hook_ok ? "Installed and hooked up" : "Not installed",
@@ -224,24 +232,23 @@ print &ui_table_row("mod_security (real-time upload blocking)",
 			# the module stops it recording NEW blocks, but the history
 			# already on disk (cache + DB) is still worth being able to
 			# see, not hidden away along with the toggle.
-			? "<a href='modsec_log.cgi'>View recent blocks &raquo;</a> " .
+			? "<a href='modsec_log.cgi'>View recent blocks &raquo;</a><br>" .
+				"<b>Mode (quick, keeps the module loaded):</b> " .
+				&ui_form_start("edit_file.cgi", "post") . &ui_hidden("f", "modsec_mode") .
+					&ui_select("global_mode", $modsec_global_mode, [["on", "On"], ["detection", "Detection only"], ["off", "Off"]]) .
+					" " . &ui_submit("Set", "set_global") . &ui_form_end() .
+				"<i style='font-size:12px'>Detection only logs what would have been blocked, without blocking it - for ".
+				"investigating a false positive. Per-host overrides, path exclusions, and rule exclusions are all above, ".
+				"in Settings.</i><br>" .
+				"<b>Module (heavier - actually unloads Apache's mod_security):</b> " .
 				($modsec_active
 					? &mini_form("disable_modsecurity.cgi", &ui_submit("Disable", "disable", 0,
 						"onclick=\"return confirm('Disable mod_security entirely on this server? ".
-						"(reversible - Install re-enables it)')\""))
+						"(reversible - Install re-enables it. For routine on/off, use Mode above instead.)')\""))
 					: "<i style='color:#888;font-size:12px'>(showing history from before it was disabled)</i> " .
 						&mini_form("install_modsecurity.cgi", &ui_submit("Re-enable", "install")))
 			: &mini_form("install_modsecurity.cgi", &ui_submit("Install", "install"))));
-
-if ($modsec_ok) {
-	my $modsec_global_mode = &openxs_modsec_global_mode();
-	print &ui_table_row("mod_security - server-wide mode",
-		&ui_form_start("edit_file.cgi", "post") . &ui_hidden("f", "modsec_mode") .
-			&ui_select("global_mode", $modsec_global_mode, [["on", "On"], ["detection", "Detection only"], ["off", "Off"]]) .
-			" " . &ui_submit("Set", "set_global") . &ui_form_end() .
-			"<i>DetectionOnly logs what would have been blocked without actually blocking it, while you investigate a ".
-			"false positive. Per-host overrides, path exclusions, and rule exclusions are all above, in Settings.</i>");
-	}
+}
 
 if ($csf_ok && &openxs_csf_old()) {
 	my $v = `csf -v 2>/dev/null`;
