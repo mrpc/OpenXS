@@ -31,6 +31,12 @@ REVIVE_VERSION_RE = re.compile(r"""define\s*\(\s*['"]VERSION['"]\s*,\s*['"]([^'"
 REVIVE_TAGS_URL = "https://api.github.com/repos/revive-adserver/revive-adserver/tags?per_page=30"
 DRUPAL_VERSION_RE = re.compile(r"""define\s*\(\s*['"]VERSION['"]\s*,\s*['"](7\.[^'"]+)['"]\s*\)""")
 DRUPAL_RELEASE_HISTORY_URL = "https://updates.drupal.org/release-history/drupal/7.x"
+JOOMLA_MANIFEST_RELPATH = os.path.join("administrator", "manifests", "files", "joomla.xml")
+JOOMLA_VERSION_RE = re.compile(r"<version>([^<]+)</version>")
+JOOMLA_TAGS_URL = "https://api.github.com/repos/joomla/joomla-cms/tags?per_page=100"
+WP_PLUGIN_VERSION_RE = re.compile(r"""^\s*\*?\s*(?:Stable tag|Version)\s*:\s*(\S+)""", re.IGNORECASE | re.MULTILINE)
+WP_PLUGIN_INFO_URL = "https://api.wordpress.org/plugins/info/1.0/{slug}.json"
+WP_THEME_INFO_URL = "https://api.wordpress.org/themes/info/1.0/{slug}.json"
 PACKAGIST_URL = "https://repo.packagist.org/p2/{name}.json"
 PACKAGE_CACHE_DB = os.environ.get("OPENXS_PACKAGE_CACHE_DB", "/var/lib/openxs/package_versions.db")
 PACKAGE_CACHE_TTL = 7 * 24 * 3600  # re-check a package at most once a week
@@ -151,6 +157,53 @@ def check_drupal(root):
     return results
 
 
+def find_joomla_installs(root):
+    """Yields (install_root, installed_version) for every Joomla install
+    found under root. administrator/manifests/files/joomla.xml is a
+    single, stable marker across Joomla's whole history (1.6 through
+    5.x) with its own <version>X.Y.Z</version>, unlike the internal
+    version-class file whose format/location changed across major
+    versions (JVersion properties pre-4.0, Version:: constants 4.0+)."""
+    for dirpath, dirnames, filenames in os.walk(root):
+        manifest = os.path.join(dirpath, JOOMLA_MANIFEST_RELPATH)
+        if os.path.isdir(os.path.join(dirpath, "administrator")) and os.path.isfile(manifest):
+            try:
+                with open(manifest, errors="replace") as f:
+                    m = JOOMLA_VERSION_RE.search(f.read())
+            except OSError:
+                continue
+            if m:
+                yield dirpath, m.group(1)
+            dirnames[:] = [d for d in dirnames if d != "administrator"]
+
+
+def latest_joomla_version(timeout=5):
+    """None if unreachable. Joomla doesn't use GitHub Releases consistently
+    across its whole history either - plain tags, same approach as Revive."""
+    try:
+        with urllib.request.urlopen(JOOMLA_TAGS_URL, timeout=timeout) as resp:
+            data = json.loads(resp.read())
+        versions = [t["name"].lstrip("v") for t in data if re.match(r"^v?\d+\.\d+\.\d+$", t.get("name", ""))]
+        return max(versions, key=_version_tuple) if versions else None
+    except Exception:
+        return None
+
+
+def check_joomla(root):
+    """Returns a list of (install_root, installed, latest, outdated,
+    branch_unsupported) tuples, same shape as check_drupal. Joomla 1.x/2.x/3.x
+    are all end of life (3.x reached EOL 2023-10-17); only 4.x/5.x are
+    still officially supported."""
+    latest = latest_joomla_version()
+    results = []
+    for install_root, installed in find_joomla_installs(root):
+        major = _version_tuple(installed)[:1]
+        branch_unsupported = bool(major) and major[0] < 4
+        outdated = latest is not None and _version_tuple(installed) < _version_tuple(latest)
+        results.append((install_root, installed, latest, outdated, branch_unsupported))
+    return results
+
+
 def _version_tuple(v):
     # Good enough for "a.b.c" / "a.b" comparisons. Pre-release suffixes
     # (e.g. "6.4-beta1-12345") come after the first '-' - stripped first,
@@ -165,6 +218,125 @@ def check_wordpress(root):
     for wp_root, installed in find_wordpress_installs(root):
         outdated = latest is not None and _version_tuple(installed) < _version_tuple(latest)
         results.append((wp_root, installed, latest, outdated))
+    return results
+
+
+def find_wp_plugins(wp_root):
+    """Yields (slug, installed_version) for every plugin under a
+    WordPress install's wp-content/plugins/ - reads readme.txt's "Stable
+    tag:" line (the actual deployed version per WordPress.org convention)
+    falling back to any top-level .php file's standard "Version:" header
+    comment for plugins that ship without a readme.txt."""
+    plugins_dir = os.path.join(wp_root, "wp-content", "plugins")
+    try:
+        slugs = sorted(d for d in os.listdir(plugins_dir) if os.path.isdir(os.path.join(plugins_dir, d)))
+    except OSError:
+        return
+    for slug in slugs:
+        plugin_dir = os.path.join(plugins_dir, slug)
+        version = None
+        readme = os.path.join(plugin_dir, "readme.txt")
+        if os.path.isfile(readme):
+            try:
+                with open(readme, errors="replace") as f:
+                    m = re.search(r"^\s*Stable tag\s*:\s*(\S+)", f.read(), re.IGNORECASE | re.MULTILINE)
+                if m and m.group(1).lower() != "trunk":
+                    version = m.group(1)
+            except OSError:
+                pass
+        if version is None:
+            try:
+                for fn in sorted(os.listdir(plugin_dir)):
+                    if not fn.endswith(".php"):
+                        continue
+                    with open(os.path.join(plugin_dir, fn), errors="replace") as f:
+                        m = WP_PLUGIN_VERSION_RE.search(f.read(2048))
+                    if m:
+                        version = m.group(1)
+                        break
+            except OSError:
+                pass
+        if version:
+            yield slug, version
+
+
+def find_wp_themes(wp_root):
+    """Yields (slug, installed_version) for every theme under a WordPress
+    install's wp-content/themes/ - style.css's standard header comment."""
+    themes_dir = os.path.join(wp_root, "wp-content", "themes")
+    try:
+        slugs = sorted(d for d in os.listdir(themes_dir) if os.path.isdir(os.path.join(themes_dir, d)))
+    except OSError:
+        return
+    for slug in slugs:
+        style_css = os.path.join(themes_dir, slug, "style.css")
+        try:
+            with open(style_css, errors="replace") as f:
+                m = WP_PLUGIN_VERSION_RE.search(f.read(2048))
+        except OSError:
+            continue
+        if m:
+            yield slug, m.group(1)
+
+
+def _wp_asset_cache_connect():
+    os.makedirs(os.path.dirname(PACKAGE_CACHE_DB), exist_ok=True)
+    conn = sqlite3.connect(PACKAGE_CACHE_DB)
+    conn.execute("CREATE TABLE IF NOT EXISTS wp_asset_versions "
+                 "(kind TEXT NOT NULL, slug TEXT NOT NULL, latest_version TEXT, checked_at REAL NOT NULL, "
+                 "PRIMARY KEY (kind, slug))")
+    return conn
+
+
+def _latest_wp_asset_version(kind, slug, conn, timeout=5):
+    """kind is "plugin" or "theme". Same cache shape/TTL as Packagist
+    lookups - a popular plugin/theme can show up on dozens of sites."""
+    row = conn.execute("SELECT latest_version, checked_at FROM wp_asset_versions WHERE kind = ? AND slug = ?",
+                        (kind, slug)).fetchone()
+    if row and time.time() - row[1] < PACKAGE_CACHE_TTL:
+        return row[0]
+
+    latest = None
+    try:
+        url = (WP_PLUGIN_INFO_URL if kind == "plugin" else WP_THEME_INFO_URL).format(slug=slug)
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            data = json.loads(resp.read())
+        latest = data.get("version") or None
+    except Exception:
+        pass  # unreachable, not on wordpress.org (premium/custom), or malformed - cached as "unknown" too
+
+    conn.execute("INSERT INTO wp_asset_versions (kind, slug, latest_version, checked_at) VALUES (?, ?, ?, ?) "
+                 "ON CONFLICT(kind, slug) DO UPDATE SET latest_version=excluded.latest_version, checked_at=excluded.checked_at",
+                 (kind, slug, latest, time.time()))
+    conn.commit()
+    return latest
+
+
+def check_wp_plugins(wp_results):
+    """Takes check_wordpress()'s own results (so plugins/themes are only
+    checked for installs it already found) and returns a list of
+    (wp_root, slug, installed, latest, outdated) tuples."""
+    conn = _wp_asset_cache_connect()
+    results = []
+    for wp_root, _installed, _latest, _outdated in wp_results:
+        for slug, installed in find_wp_plugins(wp_root):
+            latest = _latest_wp_asset_version("plugin", slug, conn)
+            outdated = bool(latest and _version_tuple(installed) < _version_tuple(latest))
+            results.append((wp_root, slug, installed, latest, outdated))
+    conn.close()
+    return results
+
+
+def check_wp_themes(wp_results):
+    """Same shape as check_wp_plugins, for themes."""
+    conn = _wp_asset_cache_connect()
+    results = []
+    for wp_root, _installed, _latest, _outdated in wp_results:
+        for slug, installed in find_wp_themes(wp_root):
+            latest = _latest_wp_asset_version("theme", slug, conn)
+            outdated = bool(latest and _version_tuple(installed) < _version_tuple(latest))
+            results.append((wp_root, slug, installed, latest, outdated))
+    conn.close()
     return results
 
 
@@ -243,7 +415,8 @@ def check_composer(root):
     return results
 
 
-def record_findings(root, wp_results, revive_results, drupal_results, composer_results):
+def record_findings(root, wp_results, revive_results, drupal_results, joomla_results,
+                     wp_plugin_results, wp_theme_results, composer_results):
     """Records OUTDATED hits into OpenXS's own scan-history db (rule_name
     tagged "(oldversion)", same suffix-based convention pmf_scan.py's
     categorize() already uses for "(ClamAV)"/"(maldet)") - so they show
@@ -258,13 +431,25 @@ def record_findings(root, wp_results, revive_results, drupal_results, composer_r
                   f"no more official security coverage regardless of patch level"
                   + (f" (also behind latest 7.x: {latest})" if outdated else "") + " (oldversion)")
                  for install_root, installed, latest, outdated, branch_unsupported in drupal_results]
+    findings += [(install_root, f"Joomla core: {installed}"
+                  + (" - this major branch is end of life, no more official security coverage"
+                     if branch_unsupported else f" (latest: {latest})" if outdated else "")
+                  + " (oldversion)")
+                 for install_root, installed, latest, outdated, branch_unsupported in joomla_results
+                 if outdated or branch_unsupported]
+    findings += [(wp_root, f"Outdated WordPress plugin {slug}: {installed} (latest: {latest}) (oldversion)")
+                 for wp_root, slug, installed, latest, outdated in wp_plugin_results if outdated]
+    findings += [(wp_root, f"Outdated WordPress theme {slug}: {installed} (latest: {latest}) (oldversion)")
+                 for wp_root, slug, installed, latest, outdated in wp_theme_results if outdated]
     findings += [(lock_path, f"Outdated package {name}: {installed} (latest: {latest}) (oldversion)")
                  for lock_path, name, installed, latest, outdated in composer_results if outdated]
     if not findings:
         return
+    total = (len(wp_results) + len(revive_results) + len(drupal_results) + len(joomla_results)
+             + len(wp_plugin_results) + len(wp_theme_results) + len(composer_results))
     try:
         import openxs_db
-        openxs_db.record_scan(root, len(wp_results) + len(revive_results) + len(drupal_results) + len(composer_results), findings)
+        openxs_db.record_scan(root, total, findings)
     except Exception as e:
         print(f"# (version scan history not recorded: {e})", file=sys.stderr)
 
@@ -278,11 +463,18 @@ def main():
     wp_results = check_wordpress(root)
     revive_results = check_revive(root)
     drupal_results = check_drupal(root)
+    joomla_results = check_joomla(root)
+    wp_plugin_results = check_wp_plugins(wp_results)
+    wp_theme_results = check_wp_themes(wp_results)
     composer_results = check_composer(root)
 
     wp_outdated = sum(1 for _, _, _, outdated in wp_results if outdated)
     revive_outdated = sum(1 for _, _, _, outdated in revive_results if outdated)
     drupal_unsupported = len(drupal_results)  # always a finding, branch itself is EOL
+    joomla_flagged = sum(1 for _, _, _, outdated, branch_unsupported in joomla_results
+                          if outdated or branch_unsupported)
+    wp_plugin_outdated = sum(1 for _, _, _, _, outdated in wp_plugin_results if outdated)
+    wp_theme_outdated = sum(1 for _, _, _, _, outdated in wp_theme_results if outdated)
     composer_outdated = sum(1 for _, _, _, _, outdated in composer_results if outdated)
 
     print(f"# WordPress: {len(wp_results)} install(s), {wp_outdated} outdated")
@@ -293,6 +485,16 @@ def main():
             print(f"OUTDATED\t{wp_root}\t{installed}\t(latest: {latest})")
         else:
             print(f"OK\t{wp_root}\t{installed}")
+
+    print(f"# WordPress plugins: {len(wp_plugin_results)} checked, {wp_plugin_outdated} outdated")
+    for wp_root, slug, installed, latest, outdated in wp_plugin_results:
+        if outdated:
+            print(f"OUTDATED\t{wp_root}\t{slug}\t{installed}\t(latest: {latest})")
+
+    print(f"# WordPress themes: {len(wp_theme_results)} checked, {wp_theme_outdated} outdated")
+    for wp_root, slug, installed, latest, outdated in wp_theme_results:
+        if outdated:
+            print(f"OUTDATED\t{wp_root}\t{slug}\t{installed}\t(latest: {latest})")
 
     print(f"# Revive Adserver: {len(revive_results)} install(s), {revive_outdated} outdated")
     for install_root, installed, latest, outdated in revive_results:
@@ -308,13 +510,24 @@ def main():
         note = f"(latest 7.x: {latest})" if outdated and latest else ""
         print(f"UNSUPPORTED\t{install_root}\t{installed}\t{note}")
 
+    print(f"# Joomla: {len(joomla_results)} install(s), {joomla_flagged} flagged")
+    for install_root, installed, latest, outdated, branch_unsupported in joomla_results:
+        if branch_unsupported:
+            print(f"UNSUPPORTED\t{install_root}\t{installed}\t(latest: {latest})")
+        elif outdated:
+            print(f"OUTDATED\t{install_root}\t{installed}\t(latest: {latest})")
+        else:
+            print(f"OK\t{install_root}\t{installed}")
+
     print(f"# Composer packages: {len(composer_results)} checked, {composer_outdated} outdated")
     for lock_path, name, installed, latest, outdated in composer_results:
         if outdated:
             print(f"OUTDATED\t{lock_path}\t{name}\t{installed}\t(latest: {latest})")
 
-    record_findings(root, wp_results, revive_results, drupal_results, composer_results)
-    sys.exit(1 if (wp_outdated or revive_outdated or drupal_unsupported or composer_outdated) else 0)
+    record_findings(root, wp_results, revive_results, drupal_results, joomla_results,
+                     wp_plugin_results, wp_theme_results, composer_results)
+    sys.exit(1 if (wp_outdated or revive_outdated or drupal_unsupported or joomla_flagged
+                   or wp_plugin_outdated or wp_theme_outdated or composer_outdated) else 0)
 
 
 if __name__ == "__main__":
