@@ -72,6 +72,15 @@ if (-d '/etc/modsecurity') {
 	print &ui_table_row("mod_security path exclusions", "<a href='edit_file.cgi?f=modsec_exclusions'>Edit /etc/openxs/modsec_exclusions &raquo;</a> ".
 		"<i>one path prefix per line (e.g. /admin) - fully disables ModSecurity/CRS for matching requests. ".
 		"For a real false positive on a first-party endpoint (analytics beacon, already-authenticated admin area), not a general bypass.</i>");
+	print &ui_table_row("mod_security detection-only mode", "<a href='edit_file.cgi?f=modsec_mode'>Edit /etc/openxs/modsec_mode &raquo;</a> ".
+		"<i>one '&lt;hostname&gt; &lt;mode&gt;' per line, mode is on/detection/off (e.g. <code>www.example.com detection</code>) - ".
+		"DetectionOnly logs what would have been blocked without actually blocking it, while you investigate a false positive and ".
+		"narrow it down to a precise rule exclusion below. A bare <code>*</code> hostname sets the server-wide default.</i>");
+	print &ui_table_row("mod_security rule exclusions", "<a href='edit_file.cgi?f=modsec_rule_exclusions'>Edit /etc/openxs/modsec_rule_exclusions &raquo;</a> ".
+		"<i>one '&lt;rule id&gt; &lt;variable&gt; [path prefix]' per line (e.g. <code>930120 ARGS:scope</code>) - disables one specific ".
+		"CRS rule for one specific request variable, everything else about that rule (and every other rule) stays active. The precise ".
+		"fix for a confirmed false positive - see <a href='modsec_log.cgi'>mod_security blocks</a> and its own audit log entry ".
+		"(<code>grep &lt;unique_id&gt; /var/log/apache2/modsec_audit.log</code>) to find which rule+variable actually misfired.</i>");
 	}
 print &ui_table_row("File integrity monitoring - watched paths", "<a href='edit_file.cgi?f=fim_paths'>Edit /etc/openxs/fim_paths &raquo;</a> ".
 	"<i>one file or directory per line, e.g. /etc/passwd or your framework's core folder - hashed and checked for drift ".
