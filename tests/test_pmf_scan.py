@@ -400,3 +400,48 @@ def test_is_unmodified_wordpress_core_file_false_outside_wordpress(tmp_path):
     f = tmp_path / "random.php"
     f.write_text("x")
     assert not pmf_scan.is_unmodified_wordpress_core_file(str(f))
+
+
+# --- Drupal core checksum false-positive suppression ------------------------
+
+def test_find_drupal_root_for_finds_ancestor(tmp_path):
+    pmf_scan._DRUPAL_ROOT_CACHE.clear()
+    drupal_root = tmp_path / "public_html"
+    (drupal_root / "includes").mkdir(parents=True)
+    (drupal_root / "modules").mkdir()
+    (drupal_root / "sites").mkdir()
+    (drupal_root / "includes" / "bootstrap.inc").write_text("<?php define('VERSION', '7.32');")
+    target = drupal_root / "includes" / "bootstrap.inc"
+    assert pmf_scan.find_drupal_root_for(str(target)) == str(drupal_root)
+
+
+def test_find_drupal_root_for_requires_modules_and_sites(tmp_path):
+    pmf_scan._DRUPAL_ROOT_CACHE.clear()
+    root = tmp_path / "public_html"
+    (root / "includes").mkdir(parents=True)
+    (root / "includes" / "bootstrap.inc").write_text("<?php")
+    target = root / "includes" / "bootstrap.inc"
+    assert pmf_scan.find_drupal_root_for(str(target)) is None
+
+
+def test_is_unmodified_drupal_core_file_true_for_matching_checksum(tmp_path, monkeypatch):
+    pmf_scan._DRUPAL_ROOT_CACHE.clear()
+    drupal_root = tmp_path / "public_html"
+    (drupal_root / "includes").mkdir(parents=True)
+    (drupal_root / "modules").mkdir()
+    (drupal_root / "sites").mkdir()
+    (drupal_root / "includes" / "bootstrap.inc").write_text("<?php define('VERSION', '7.32');")
+    f = drupal_root / "includes" / "bootstrap.inc"
+
+    import drupal_core_checksums
+    monkeypatch.setattr(drupal_core_checksums, "fetch_checksums",
+                         lambda version: {"includes/bootstrap.inc": hashlib.sha256(f.read_bytes()).hexdigest()})
+
+    assert pmf_scan.is_unmodified_drupal_core_file(str(f))
+
+
+def test_is_unmodified_drupal_core_file_false_outside_drupal(tmp_path):
+    pmf_scan._DRUPAL_ROOT_CACHE.clear()
+    f = tmp_path / "random.php"
+    f.write_text("x")
+    assert not pmf_scan.is_unmodified_drupal_core_file(str(f))

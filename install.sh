@@ -99,6 +99,7 @@ cp "$HERE"/tools/*.py "$HERE"/tools/*.sh "$PMF_DIR/"
 chmod +x "$PMF_DIR"/*.py "$PMF_DIR"/*.sh
 cp -r "$HERE"/tools/openxs-rules "$PMF_DIR/"
 cp -r "$HERE"/tools/wp_checksums "$PMF_DIR/"
+cp -r "$HERE"/tools/drupal_checksums "$PMF_DIR/"
 
 echo "==> ClamAV (2nd detector)..."
 bash "$PMF_DIR/install_clamav.sh"

@@ -133,7 +133,7 @@ def test_record_findings_writes_outdated_hits_tagged_oldversion(tmp_path, monkey
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
     wp_results = [(str(tmp_path / "wp"), "5.0", "6.4.2", True), (str(tmp_path / "wp2"), "6.4.2", "6.4.2", False)]
     composer_results = [(str(tmp_path / "composer.lock"), "acme/pkg", "1.0.0", "2.0.0", True)]
-    vs.record_findings(str(tmp_path), wp_results, [], composer_results)
+    vs.record_findings(str(tmp_path), wp_results, [], [], composer_results)
     scans = db.recent_scans(limit=1)
     findings = db.findings_for_scan(scans[0][0])
     assert len(findings) == 2  # only the outdated ones, not the up-to-date wp2
@@ -144,7 +144,7 @@ def test_record_findings_does_nothing_when_all_up_to_date(tmp_path, monkeypatch)
     import openxs_db as db
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
     wp_results = [(str(tmp_path / "wp"), "6.4.2", "6.4.2", False)]
-    vs.record_findings(str(tmp_path), wp_results, [], [])
+    vs.record_findings(str(tmp_path), wp_results, [], [], [])
     assert not os.path.exists(str(tmp_path / "openxs.db"))  # never even connects
 
 
@@ -200,3 +200,55 @@ def test_latest_revive_version_picks_highest_by_version_not_api_order(monkeypatc
 
     monkeypatch.setattr(vs.urllib.request, "urlopen", lambda url, timeout=5: FakeResp())
     assert vs.latest_revive_version() == "6.0.10"
+
+
+# --- Drupal 7 ------------------------------------------------------------
+
+def make_drupal_install(tmp_path, name, version):
+    root = tmp_path / name
+    (root / "includes").mkdir(parents=True)
+    (root / "modules").mkdir()
+    (root / "sites").mkdir()
+    (root / "includes" / "bootstrap.inc").write_text(f"<?php\ndefine('VERSION', '{version}');\n")
+    return root
+
+
+def test_find_drupal_installs_parses_version(tmp_path):
+    make_drupal_install(tmp_path, "site1", "7.32")
+    found = list(vs.find_drupal_installs(str(tmp_path)))
+    assert len(found) == 1
+    assert found[0][1] == "7.32"
+
+
+def test_find_drupal_installs_requires_modules_and_sites_dirs(tmp_path):
+    # bootstrap.inc alone is too generic a filename to key off safely
+    root = tmp_path / "notdrupal" / "includes"
+    root.mkdir(parents=True)
+    (root / "bootstrap.inc").write_text("<?php\ndefine('VERSION', '7.0');\n")
+    assert list(vs.find_drupal_installs(str(tmp_path))) == []
+
+
+def test_check_drupal_always_flags_as_unsupported(tmp_path, monkeypatch):
+    make_drupal_install(tmp_path, "site", "7.103")
+    monkeypatch.setattr(vs, "latest_drupal_7_version", lambda timeout=5: "7.103")
+    results = vs.check_drupal(str(tmp_path))
+    assert results == [(str(tmp_path / "site"), "7.103", "7.103", False, True)]
+
+
+def test_check_drupal_flags_outdated_within_branch_too(tmp_path, monkeypatch):
+    make_drupal_install(tmp_path, "old-site", "7.32")
+    monkeypatch.setattr(vs, "latest_drupal_7_version", lambda timeout=5: "7.103")
+    results = vs.check_drupal(str(tmp_path))
+    assert results == [(str(tmp_path / "old-site"), "7.32", "7.103", True, True)]
+
+
+def test_record_findings_always_records_drupal_installs(tmp_path, monkeypatch):
+    import openxs_db as db
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
+    drupal_results = [(str(tmp_path / "site"), "7.103", "7.103", False, True)]
+    vs.record_findings(str(tmp_path), [], [], drupal_results, [])
+    scans = db.recent_scans(limit=1)
+    findings = db.findings_for_scan(scans[0][0])
+    assert len(findings) == 1
+    assert "end of life" in findings[0][2]
+    assert findings[0][2].endswith("(oldversion)")
