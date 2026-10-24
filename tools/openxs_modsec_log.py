@@ -11,9 +11,15 @@ either a real false positive, or an underlying app bug ModSecurity is
 correctly catching, as happened for real on babysitter.gr) stands out
 from one-off attack-scanner noise (many different URIs, few hits each)."""
 import glob
+import json
+import os
 import re
 import subprocess
+import sys
+import time
 from datetime import datetime
+
+CACHE_PATH = os.environ.get("OPENXS_MODSEC_CACHE", "/var/lib/openxs/modsec_summary.json")
 
 BLOCK_RE = re.compile(
     r"^\[(?P<ts>[^\]]+)\].*ModSecurity: Access denied.*"
@@ -77,9 +83,31 @@ def daily_counts():
     return counts
 
 
-if __name__ == "__main__":
+def write_cache(path=CACHE_PATH):
+    """Run by cron (install_modsecurity.sh, every 5 min) so the Webmin
+    page reads a file instead of re-grepping every Apache error log on
+    the box on every single page view - the same "expensive scan once,
+    cheap read many times" split openxs_modsec_record.py already does
+    for the daily-counts history, just on a tighter interval since this
+    view is meant to show *recent* blocks."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    data = {"generated_at": time.time(), "rows": summarize()}
+    tmp_path = f"{path}.tmp"
+    with open(tmp_path, "w") as f:
+        json.dump(data, f)
+    os.replace(tmp_path, path)  # atomic - a reader never sees a half-written file
+
+
+def main():
+    if "--write-cache" in sys.argv:
+        write_cache()
+        return
     # Tab-separated, one row per line - meant to be parsed (by the Webmin
     # CGI, so it can render a real table with a per-rule lookup link),
     # not read directly as formatted CLI output.
     for row in summarize():
         print(f"{row['count']}\t{row['host']}\t{row['uri']}\t{row['rule_id']}\t{row['first']}\t{row['last']}")
+
+
+if __name__ == "__main__":
+    main()

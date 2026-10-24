@@ -402,6 +402,25 @@ return join('', @last);
 # both render from the same real data instead of one reformatting raw text.
 sub openxs_modsec_rows
 {
+# Cron (install_modsecurity.sh, every 5 min) keeps this cache fresh so
+# a page view is a cheap file read, not a live `grep -r` across every
+# Apache error log on the box - same split openxs_modsec_record.py
+# already uses for the Stats page's daily counts, just on a tighter
+# interval. Falls back to the live (slow) path only when no cache file
+# exists yet - a fresh install before cron has fired once, or an older
+# install_modsecurity.sh run that predates this cache.
+my $cache_file = '/var/lib/openxs/modsec_summary.json';
+if (open(my $fh, '<', $cache_file)) {
+	local $/;
+	my $json = <$fh>;
+	close($fh);
+	my $data = eval { decode_json($json) };
+	if ($data && ref($data->{'rows'}) eq 'ARRAY') {
+		return (map { { count => $_->{'count'}, host => $_->{'host'}, uri => $_->{'uri'},
+		                 rule_id => $_->{'rule_id'}, first => $_->{'first'}, last => $_->{'last'} } }
+		        @{$data->{'rows'}});
+		}
+	}
 my $out = `python3 $pmf_dir/openxs_modsec_log.py 2>&1`;
 my @rows;
 foreach my $line (split(/\n/, $out)) {
@@ -410,6 +429,18 @@ foreach my $line (split(/\n/, $out)) {
 	push(@rows, { count => $count, host => $host, uri => $uri, rule_id => $rule_id, first => $first, last => $last });
 	}
 return @rows;
+}
+
+sub openxs_modsec_cache_age
+{
+# Seconds since the cache was last written, or undef if it doesn't
+# exist yet (still running the live path above).
+my $cache_file = '/var/lib/openxs/modsec_summary.json';
+return undef if (!open(my $fh, '<', $cache_file));
+local $/;
+my $data = eval { decode_json(<$fh>) };
+close($fh);
+return ($data && $data->{'generated_at'}) ? time() - $data->{'generated_at'} : undef;
 }
 
 # Inline SVG bar chart, no external JS/CDN (some of our servers have no

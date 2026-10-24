@@ -56,3 +56,14 @@ cat > /etc/cron.d/openxs-modsec-record <<'EOF'
 EOF
 chmod 644 /etc/cron.d/openxs-modsec-record
 python3 /opt/php-malware-finder/openxs_modsec_record.py 2>&1 || true
+
+# Caches the "grouped by host/path/rule" view (modsec_log.cgi, and the
+# dashboard's log page) so viewing it is a fast file read instead of a
+# live `grep -r` across every Apache error log on the box on every
+# single page view - the same split as the daily-counts cron above,
+# just on a tight enough interval that "recent blocks" stays meaningful.
+cat > /etc/cron.d/openxs-modsec-cache <<'EOF'
+*/5 * * * * root python3 /opt/php-malware-finder/openxs_modsec_log.py --write-cache >> /opt/php-malware-finder/cron.log 2>&1
+EOF
+chmod 644 /etc/cron.d/openxs-modsec-cache
+python3 /opt/php-malware-finder/openxs_modsec_log.py --write-cache 2>&1 || true

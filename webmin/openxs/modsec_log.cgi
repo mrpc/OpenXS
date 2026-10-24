@@ -9,7 +9,9 @@ require './openxs-lib.pl';
 &ui_print_header(undef, 'OpenXS Exploit Scanner', "");
 print $openxs_nav;
 
-print &ui_subheading("mod_security blocks - grouped by host/path/rule");
+my $cache_age = &openxs_modsec_cache_age();
+my $age_note = defined($cache_age) ? "updated " . int($cache_age / 60) . "m ago" : "live (no cache yet)";
+print &ui_subheading("mod_security blocks - grouped by host/path/rule <small>($age_note)</small>");
 print "<p>A repeated block on the SAME host+path is worth a closer look - either a real false " .
 	"positive (exclude it in <a href='settings.cgi'>Settings</a>), or an underlying issue " .
 	"ModSecurity is correctly catching (this is how a real information-leak bug on a live site " .

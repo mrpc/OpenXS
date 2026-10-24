@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 
@@ -69,3 +70,24 @@ def test_daily_counts_skips_unparseable_timestamp(tmp_path, monkeypatch):
     monkeypatch.setattr(m, "log_files", lambda: [str(log)])
 
     assert m.daily_counts() == {}
+
+
+def test_write_cache_writes_summarize_result_with_timestamp(tmp_path, monkeypatch):
+    log = tmp_path / "error.log"
+    log.write_text(SAMPLE_LINE + "\n")
+    monkeypatch.setattr(m, "log_files", lambda: [str(log)])
+
+    cache_path = tmp_path / "modsec_summary.json"
+    m.write_cache(str(cache_path))
+
+    data = json.loads(cache_path.read_text())
+    assert data["rows"][0]["rule_id"] == "959100"
+    assert isinstance(data["generated_at"], float)
+
+
+def test_write_cache_overwrites_atomically_no_leftover_tmp_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(m, "log_files", lambda: [])
+    cache_path = tmp_path / "modsec_summary.json"
+    m.write_cache(str(cache_path))
+    assert cache_path.exists()
+    assert not (tmp_path / "modsec_summary.json.tmp").exists()

@@ -101,7 +101,9 @@ else {
 		}
 
 	if (-d '/etc/modsecurity') {
-		print &ui_subheading("mod_security blocks <small>(across every Apache error log on this server)</small>");
+		my $cache_age = &openxs_modsec_cache_age();
+		my $age_note = defined($cache_age) ? "updated " . int($cache_age / 60) . "m ago" : "live (no cache yet)";
+		print &ui_subheading("mod_security blocks <small>(across every Apache error log on this server - $age_note)</small>");
 		my @rows = &openxs_modsec_rows();
 		if (!@rows) {
 			print "<p>(no blocks found)</p>\n";
