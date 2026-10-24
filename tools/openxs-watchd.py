@@ -199,6 +199,20 @@ def scan_one(fname, ignore, custom_rules, path_overrides, global_fast_php_only):
             for fid, _, rule_name, _ in openxs_db.findings_for_scan(scan_id):
                 if pmf_scan.categorize(rule_name) in allowed:
                     openxs_db.quarantine_file(fid)
+
+        if os.environ.get("OPENXS_CSF_AUTOBAN_ENABLED", "0") == "1":
+            high_confidence = [r for _, r in findings if pmf_scan.categorize(r) in ("yara_exploit", "virus", "maldet")]
+            if high_confidence:
+                import csf_autoban
+                ip = csf_autoban.find_unambiguous_recent_uploader_ip(fname)
+                if ip:
+                    ttl = os.environ.get("OPENXS_CSF_AUTOBAN_TTL", "3d")
+                    reason = f"openxs-watchd: {high_confidence[0]} in {fname}"
+                    success = csf_autoban.ban(ip, reason, ttl=ttl)
+                    openxs_db.record_csf_ban(ip, fname, high_confidence[0], ttl, success)
+                    log(f"{'BANNED' if success else 'BAN FAILED'} {ip} ({ttl}) - {reason}")
+                else:
+                    log(f"CSF auto-ban: no unambiguous uploader IP for {fname} - not banning")
     except Exception as e:
         log(f"(not recorded: {e})")
     _mem("after-db-record", fname)
@@ -240,6 +254,8 @@ def main():
     max_rss_kb = int(float(cfg.get("WATCHD_MAX_RSS_MB", "1024") or "1024") * 1024)
     os.environ.setdefault("OPENXS_QUARANTINE_ENABLED", cfg.get("QUARANTINE_ENABLED", "0"))
     os.environ.setdefault("OPENXS_QUARANTINE_CATEGORIES", cfg.get("QUARANTINE_CATEGORIES", "virus,yara_exploit,maldet"))
+    os.environ.setdefault("OPENXS_CSF_AUTOBAN_ENABLED", cfg.get("CSF_AUTOBAN_ENABLED", "0"))
+    os.environ.setdefault("OPENXS_CSF_AUTOBAN_TTL", cfg.get("CSF_AUTOBAN_TTL", "3d"))
 
     log(f"Starting, watching: {', '.join(watch_paths)}")
     cmd = ["inotifywait", "-m", "-r", "-e", "create,modify,moved_to", "--format", "%w%f"] + watch_paths

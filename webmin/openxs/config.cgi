@@ -52,6 +52,25 @@ $cfg{'APT_SECURITY_ENABLED'} = (defined($in{'apt_security_enabled'}) && $in{'apt
 $cfg{'SCAN_MAILBOXES'} = (defined($in{'scan_mailboxes'}) && $in{'scan_mailboxes'} eq '1') ? '1' : '0';
 $cfg{'MAILBOX_RECENT_HOURS'} = &one_line($in{'mailbox_recent_hours'}) if (defined($in{'mailbox_recent_hours'}));
 $cfg{'MAILBOX_RECENT_HOURS'} =~ s/[^0-9]//g if ($cfg{'MAILBOX_RECENT_HOURS'} ne '');
+if (defined($in{'csf_autoban_enabled'}) && $in{'csf_autoban_enabled'} eq '1' && !&openxs_remoteip_active()) {
+	# The one hard guard this feature needs: a CSF ban is only ever
+	# applied to an attribution IP that's already confirmed NOT a
+	# Cloudflare edge address (csf_autoban.py's own safety net), but
+	# without mod_remoteip active, every single site behind Cloudflare
+	# on this server would simply never attribute anything (the
+	# candidate IP in the access log IS Cloudflare's edge IP) - so the
+	# feature would silently never do anything useful there, giving a
+	# false sense that it's protecting those sites. Refuse to even
+	# save the setting until that's fixed, rather than silently no-op.
+	&openxs_result_page(
+		"Not saved: mod_remoteip isn't active on this server yet. Enabling CSF auto-ban without it means any ".
+		"site behind Cloudflare would never get a useful IP to ban (the watch daemon would only ever see ".
+		"Cloudflare's own edge IP, which csf_autoban.py already refuses to ban) - install mod_remoteip in ".
+		"Settings first, then come back and enable this.", 1, "Back to Settings", "settings.cgi");
+	}
+$cfg{'CSF_AUTOBAN_ENABLED'} = (defined($in{'csf_autoban_enabled'}) && $in{'csf_autoban_enabled'} eq '1') ? '1' : '0';
+$cfg{'CSF_AUTOBAN_TTL'} = &one_line($in{'csf_autoban_ttl'}) if (defined($in{'csf_autoban_ttl'}) && $in{'csf_autoban_ttl'} ne '');
+
 if ($cfg{'OPENXS_SRC'} ne '' && -d "$cfg{'OPENXS_SRC'}/.git") {
 	$cfg{'AUTO_UPDATE'} = (defined($in{'auto_update'}) && $in{'auto_update'} eq '1') ? '1' : '0';
 	my $cron_file = '/etc/cron.d/openxs-selfupdate';

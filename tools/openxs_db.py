@@ -17,7 +17,7 @@ QUARANTINE_DIR = os.environ.get("OPENXS_QUARANTINE", "/var/lib/openxs/quarantine
 # a fresh process can skip all migration DDL with one cheap read instead
 # of re-running CREATE TABLE IF NOT EXISTS + several ALTER TABLE/except
 # attempts on every single process start.
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS scans (
@@ -76,6 +76,21 @@ CREATE TABLE IF NOT EXISTS false_positive_reports (
     action_taken TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_fp_reports_reported_at ON false_positive_reports(reported_at);
+-- Every CSF auto-ban attempt the watch daemon makes (csf_autoban.py) -
+-- an audit trail independent of CSF's own logs, so "what did OpenXS
+-- itself decide to ban, and why" is visible from inside OpenXS too.
+-- success=0 rows (csf -td itself failed) are kept too, not just
+-- successful bans - worth knowing CSF rejected/couldn't apply one.
+CREATE TABLE IF NOT EXISTS csf_auto_bans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    banned_at REAL NOT NULL,
+    ip TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    rule_name TEXT NOT NULL,
+    ttl TEXT NOT NULL,
+    success INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_csf_auto_bans_banned_at ON csf_auto_bans(banned_at);
 """
 
 
@@ -211,6 +226,25 @@ def false_positive_reports(limit=500):
     rows = conn.execute(
         "SELECT reported_at, source, path, detail, action_taken FROM false_positive_reports "
         "ORDER BY id DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    conn.close()
+    return rows
+
+
+def record_csf_ban(ip, file_path, rule_name, ttl, success):
+    conn = _connect()
+    conn.execute(
+        "INSERT INTO csf_auto_bans (banned_at, ip, file_path, rule_name, ttl, success) VALUES (?, ?, ?, ?, ?, ?)",
+        (time.time(), ip, file_path, rule_name, ttl, 1 if success else 0),
+    )
+    conn.commit()
+
+
+def recent_csf_bans(limit=100):
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT banned_at, ip, file_path, rule_name, ttl, success FROM csf_auto_bans ORDER BY id DESC LIMIT ?",
         (limit,),
     ).fetchall()
     conn.close()
