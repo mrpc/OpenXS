@@ -29,10 +29,17 @@ sed -i \
 # silently no-ops such a directive (confirmed by hand on nannuka.com's
 # incident, 2026-10-24 - apachectl configtest passes either way, only an
 # actual request shows whether it took effect).
+#
+# Edits mods-available/, NOT mods-enabled/ - a2enmod/a2dismod expect
+# mods-enabled/*.conf to stay a symlink to mods-available/*.conf; `sed -i`
+# on the symlink path replaces it with a real file (sed -i writes a new
+# file then renames over the original path), silently breaking that
+# tracking - confirmed by hand, 2026-10-24 (a2enmod then refuses to
+# touch it: "is a real file, not touching it").
 mkdir -p /etc/modsecurity/after-crs
-if ! grep -q 'after-crs' /etc/apache2/mods-enabled/security2.conf; then
+if ! grep -q 'after-crs' /etc/apache2/mods-available/security2.conf; then
     sed -i '/IncludeOptional \/usr\/share\/modsecurity-crs\/\*.load/a\\tIncludeOptional /etc/modsecurity/after-crs/*.conf' \
-        /etc/apache2/mods-enabled/security2.conf
+        /etc/apache2/mods-available/security2.conf
 fi
 
 cat > "$MODSEC_RULE" <<'EOF'
