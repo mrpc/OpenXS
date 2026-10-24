@@ -215,20 +215,26 @@ return " - ${mb}MB RAM, ${cpu}% CPU";
 # close to its own limit" is visible before it actually trips.
 sub openxs_resource_widget
 {
-my ($key, $label, $pid, $limit_mb) = @_;
+# $log_key: which logs.cgi?only=... page this box should link to -
+# defaults to $key, but the scan widget's own key ("scan") doesn't
+# match its log's key ("scanlog"), so callers can override it.
+my ($key, $label, $pid, $limit_mb, $log_key) = @_;
+$log_key ||= $key;
 my $box_style = "flex:1;min-width:200px;border-radius:6px;padding:16px;text-align:center";
+my $link_open = "<a href='logs.cgi?only=$log_key' style='text-decoration:none;color:inherit;display:block'>";
+my $link_close = "</a>";
 if (!$pid) {
-	return "<div id='widget-$key' style='$box_style;background:#f5f5f5;border:2px solid #ddd'>".
+	return "<div id='widget-$key' style='$box_style;background:#f5f5f5;border:2px solid #ddd'>$link_open".
 		"<div style='font-size:13px;color:#888;margin-bottom:6px'>$label</div>".
-		"<div style='font-size:22px;color:#888'>Not running</div></div>";
+		"<div style='font-size:22px;color:#888'>Not running</div>$link_close</div>";
 	}
 my $out = `ps -o rss=,%cpu= -p $pid 2>/dev/null`;
 $out =~ s/^\s+//;
 my ($rss_kb, $cpu) = split(/\s+/, $out);
 if ($rss_kb eq '' || $rss_kb !~ /^\d+$/) {
-	return "<div id='widget-$key' style='$box_style;background:#f5f5f5;border:2px solid #ddd'>".
+	return "<div id='widget-$key' style='$box_style;background:#f5f5f5;border:2px solid #ddd'>$link_open".
 		"<div style='font-size:13px;color:#888;margin-bottom:6px'>$label</div>".
-		"<div style='font-size:22px;color:#888'>Unknown</div></div>";
+		"<div style='font-size:22px;color:#888'>Unknown</div>$link_close</div>";
 	}
 my $mb = $rss_kb / 1024;
 my $pct = $limit_mb ? ($mb / $limit_mb * 100) : 0;
@@ -238,13 +244,16 @@ my $mb_fmt = sprintf("%.0f", $mb);
 # place every few seconds, instead of a full page reload - Webmin's
 # authentic theme already has a known, pre-existing "refresh resets to
 # dashboard" quirk, so this avoids triggering that for something that's
-# meant to just tick in the background.
-return "<div id='widget-$key' style='$box_style;background:#fff;border:2px solid $color' data-limit-mb='" . ($limit_mb || 0) . "'>".
+# meant to just tick in the background. The whole box is also a link
+# through to that process's own live log view.
+return "<div id='widget-$key' style='$box_style;background:#fff;border:2px solid $color' data-limit-mb='" . ($limit_mb || 0) . "'>$link_open".
 	"<div style='font-size:13px;color:#555;margin-bottom:6px'>$label (pid <span id='pid-$key'>$pid</span>)</div>".
 	"<div id='rss-$key' style='font-size:34px;font-weight:bold;color:$color;line-height:1.1'>${mb_fmt}<span style='font-size:16px'>MB</span></div>".
 	"<div style='font-size:12px;color:#888'>RAM" . ($limit_mb ? " of ${limit_mb}MB limit" : "") . "</div>".
 	"<div id='cpu-$key' style='font-size:22px;font-weight:bold;margin-top:10px;color:#333'>${cpu}<span style='font-size:14px'>%</span></div>".
-	"<div style='font-size:12px;color:#888'>CPU</div></div>";
+	"<div style='font-size:12px;color:#888'>CPU</div>".
+	"<div id='extra-$key' style='font-size:12px;color:#888;margin-top:8px'></div>".
+	"$link_close</div>";
 }
 
 sub openxs_full_status
