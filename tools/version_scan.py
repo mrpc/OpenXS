@@ -27,6 +27,8 @@ import urllib.request
 
 WP_VERSION_RE = re.compile(r"""\$wp_version\s*=\s*['"]([^'"]+)['"]""")
 LATEST_VERSION_URL = "https://api.wordpress.org/core/version-check/1.7/"
+REVIVE_VERSION_RE = re.compile(r"""define\s*\(\s*['"]VERSION['"]\s*,\s*['"]([^'"]+)['"]\s*\)""")
+REVIVE_TAGS_URL = "https://api.github.com/repos/revive-adserver/revive-adserver/tags?per_page=30"
 PACKAGIST_URL = "https://repo.packagist.org/p2/{name}.json"
 PACKAGE_CACHE_DB = os.environ.get("OPENXS_PACKAGE_CACHE_DB", "/var/lib/openxs/package_versions.db")
 PACKAGE_CACHE_TTL = 7 * 24 * 3600  # re-check a package at most once a week
@@ -57,6 +59,47 @@ def latest_wordpress_version(timeout=5):
         return data["offers"][0]["current"]
     except Exception:
         return None
+
+
+def find_revive_installs(root):
+    """Yields (install_root, installed_version) for every Revive Adserver
+    (the maintained, actively-developed fork of the old OpenX Adserver)
+    install found under root. constants.php alone is too generic a
+    filename to key off safely - also requires adview.php alongside it,
+    one of Revive's own top-level delivery scripts."""
+    for dirpath, dirnames, filenames in os.walk(root):
+        if "constants.php" in filenames and "adview.php" in filenames:
+            try:
+                with open(os.path.join(dirpath, "constants.php"), errors="replace") as f:
+                    m = REVIVE_VERSION_RE.search(f.read())
+            except OSError:
+                continue
+            if m:
+                yield dirpath, m.group(1)
+            dirnames[:] = []  # don't descend into a Revive install's own internals
+
+
+def latest_revive_version(timeout=5):
+    """None if unreachable. Revive Adserver doesn't use GitHub's Releases
+    feature, only plain tags (v6.0.8, ...) - picks the highest by actual
+    version comparison, not whatever order the API happens to return."""
+    try:
+        with urllib.request.urlopen(REVIVE_TAGS_URL, timeout=timeout) as resp:
+            data = json.loads(resp.read())
+        versions = [t["name"].lstrip("v") for t in data if t.get("name", "").lstrip("v")]
+        return max(versions, key=_version_tuple) if versions else None
+    except Exception:
+        return None
+
+
+def check_revive(root):
+    """Returns a list of (install_root, installed, latest, outdated) tuples."""
+    latest = latest_revive_version()
+    results = []
+    for install_root, installed in find_revive_installs(root):
+        outdated = latest is not None and _version_tuple(installed) < _version_tuple(latest)
+        results.append((install_root, installed, latest, outdated))
+    return results
 
 
 def _version_tuple(v):
@@ -151,7 +194,7 @@ def check_composer(root):
     return results
 
 
-def record_findings(root, wp_results, composer_results):
+def record_findings(root, wp_results, revive_results, composer_results):
     """Records OUTDATED hits into OpenXS's own scan-history db (rule_name
     tagged "(oldversion)", same suffix-based convention pmf_scan.py's
     categorize() already uses for "(ClamAV)"/"(maldet)") - so they show
@@ -160,13 +203,15 @@ def record_findings(root, wp_results, composer_results):
     ever living in a separate version_results.txt no UI reads from."""
     findings = [(wp_root, f"Outdated WordPress core: {installed} (latest: {latest}) (oldversion)")
                 for wp_root, installed, latest, outdated in wp_results if outdated]
+    findings += [(install_root, f"Outdated Revive Adserver: {installed} (latest: {latest}) (oldversion)")
+                 for install_root, installed, latest, outdated in revive_results if outdated]
     findings += [(lock_path, f"Outdated package {name}: {installed} (latest: {latest}) (oldversion)")
                  for lock_path, name, installed, latest, outdated in composer_results if outdated]
     if not findings:
         return
     try:
         import openxs_db
-        openxs_db.record_scan(root, len(wp_results) + len(composer_results), findings)
+        openxs_db.record_scan(root, len(wp_results) + len(revive_results) + len(composer_results), findings)
     except Exception as e:
         print(f"# (version scan history not recorded: {e})", file=sys.stderr)
 
@@ -178,9 +223,11 @@ def main():
     root = sys.argv[1]
 
     wp_results = check_wordpress(root)
+    revive_results = check_revive(root)
     composer_results = check_composer(root)
 
     wp_outdated = sum(1 for _, _, _, outdated in wp_results if outdated)
+    revive_outdated = sum(1 for _, _, _, outdated in revive_results if outdated)
     composer_outdated = sum(1 for _, _, _, _, outdated in composer_results if outdated)
 
     print(f"# WordPress: {len(wp_results)} install(s), {wp_outdated} outdated")
@@ -192,13 +239,22 @@ def main():
         else:
             print(f"OK\t{wp_root}\t{installed}")
 
+    print(f"# Revive Adserver: {len(revive_results)} install(s), {revive_outdated} outdated")
+    for install_root, installed, latest, outdated in revive_results:
+        if latest is None:
+            print(f"UNKNOWN\t{install_root}\t{installed}\t(could not reach {REVIVE_TAGS_URL})")
+        elif outdated:
+            print(f"OUTDATED\t{install_root}\t{installed}\t(latest: {latest})")
+        else:
+            print(f"OK\t{install_root}\t{installed}")
+
     print(f"# Composer packages: {len(composer_results)} checked, {composer_outdated} outdated")
     for lock_path, name, installed, latest, outdated in composer_results:
         if outdated:
             print(f"OUTDATED\t{lock_path}\t{name}\t{installed}\t(latest: {latest})")
 
-    record_findings(root, wp_results, composer_results)
-    sys.exit(1 if (wp_outdated or composer_outdated) else 0)
+    record_findings(root, wp_results, revive_results, composer_results)
+    sys.exit(1 if (wp_outdated or revive_outdated or composer_outdated) else 0)
 
 
 if __name__ == "__main__":
