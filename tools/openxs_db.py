@@ -171,6 +171,21 @@ def record_false_positive(source, path, detail, action_taken=None):
     conn.commit()
 
 
+def false_positive_reports(limit=500):
+    """Every "mark false positive" click ever recorded, newest first -
+    for the export page (false_positive_export.cgi), meant to be pasted
+    into a GitHub issue to help improve detection rules upstream, since
+    there's no real telemetry pipeline yet."""
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT reported_at, source, path, detail, action_taken FROM false_positive_reports "
+        "ORDER BY id DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    conn.close()
+    return rows
+
+
 def record_scan(path, files_scanned, findings, duration=None, load_avg=None):
     """findings: list of (file_path, rule_name) tuples. Each finding's
     file size is captured now (the file still sits where it was found -
