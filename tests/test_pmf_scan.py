@@ -35,7 +35,7 @@ def test_load_ignore_patterns_missing_file_still_loads_shipped_defaults():
     # always loaded, regardless of whether the local, user-editable
     # ignore file at `path` exists.
     plain, md5s, sha256s, regexes = pmf_scan.load_ignore_patterns("/no/such/file")
-    assert "/PramnosFramework.php" in plain
+    assert "/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php" in plain
 
 
 def test_load_ignore_patterns_compiles_regex_entries(tmp_path):
@@ -199,6 +199,31 @@ def test_check_custom_rules_no_match(tmp_path):
     write(f, "<?php echo 'hi'; ?>")
     rules = pmf_scan.load_custom_rules(str(tmp_path / "nonexistent"))
     assert pmf_scan.check_custom_rules(str(f), rules) == []
+
+
+def test_load_custom_rules_missing_file_still_loads_shipped_defaults(tmp_path):
+    # default_rules ships with the code (general exploit-kit signatures
+    # likely to recur on other installs) and is always loaded, regardless
+    # of whether the local, user-editable rules file at `path` exists.
+    f = tmp_path / "shell.php"
+    write(f, "<?php $_=$_POST;if(!empty($_['a'])&&md5($_['a'].md5($_['a']))==('e9b41d635eb83057eedb535bdd6d5456')){echo 1;} ?>")
+    rules = pmf_scan.load_custom_rules("/no/such/file")
+    hits = pmf_scan.check_custom_rules(str(f), rules)
+    assert any("md5" in h for h in hits)
+
+
+def test_default_rules_self_doubled_md5_gate_variants():
+    # Same structural "self-doubled MD5" password gate, different
+    # obfuscation/quoting styles - the exact shapes found live tonight.
+    variants = [
+        "md5($rsn['w'].md5($rsn['w']))==('629c1124a8fa2605b2be6d497efd71a3')",
+        "md5( $zbk['a'] . md5( $zbk['a'] ) ) == ( '93' )",
+        "md5($_['a'].md5($_['a']))==('e9b41d635eb83057eedb535bdd6d5456')",
+    ]
+    rules = pmf_scan.load_custom_rules("/no/such/file")
+    patterns, _, _ = rules
+    for v in variants:
+        assert any(p.search(v.encode()) for p in patterns), f"didn't match: {v}"
 
 
 # --- archive scanning --------------------------------------------------------
@@ -413,6 +438,56 @@ def test_find_platform_root_for_requires_drupal_modules_and_sites_dirs(tmp_path)
     assert pmf_scan.find_platform_root_for(str(target)) == (None, None)
 
 
+def test_find_platform_root_for_detects_roundcube(tmp_path):
+    pmf_scan._PLATFORM_ROOT_CACHE.clear()
+    rc_root = tmp_path / "roundcube"
+    (rc_root / "program" / "include").mkdir(parents=True)
+    (rc_root / "program" / "lib" / "Roundcube").mkdir(parents=True)
+    (rc_root / "program" / "include" / "iniset.php").write_text("<?php define('RCMAIL_VERSION', '1.6.9 ');")
+    (rc_root / "program" / "lib" / "Roundcube" / "rcube.php").write_text("<?php")
+    target = rc_root / "program" / "lib" / "Roundcube" / "rcube_utils.php"
+    target.write_text("x")
+    platform, root = pmf_scan.find_platform_root_for(str(target))
+    assert platform["name"] == "roundcube"
+    assert root == str(rc_root)
+
+
+def test_find_platform_root_for_requires_roundcube_rcube_php_too(tmp_path):
+    # iniset.php alone is too generic a filename to key off safely
+    pmf_scan._PLATFORM_ROOT_CACHE.clear()
+    root = tmp_path / "roundcube"
+    (root / "program" / "include").mkdir(parents=True)
+    (root / "program" / "include" / "iniset.php").write_text("<?php")
+    target = root / "program" / "include" / "iniset.php"
+    assert pmf_scan.find_platform_root_for(str(target)) == (None, None)
+
+
+def test_find_platform_root_for_detects_phpmyadmin(tmp_path):
+    pmf_scan._PLATFORM_ROOT_CACHE.clear()
+    pma_root = tmp_path / "phpmyadmin"
+    (pma_root / "libraries" / "classes").mkdir(parents=True)
+    (pma_root / "sql").mkdir()
+    (pma_root / "libraries" / "classes" / "Config.php").write_text("<?php")
+    (pma_root / "composer.json").write_text('{"name": "phpmyadmin/phpmyadmin", "version": "5.2.2"}')
+    target = pma_root / "libraries" / "classes" / "Util.php"
+    target.write_text("x")
+    platform, root = pmf_scan.find_platform_root_for(str(target))
+    assert platform["name"] == "phpmyadmin"
+    assert root == str(pma_root)
+
+
+def test_find_platform_root_for_requires_phpmyadmin_composer_json_name(tmp_path):
+    # Config.php + sql/ alone are too generic to key off safely
+    pmf_scan._PLATFORM_ROOT_CACHE.clear()
+    root = tmp_path / "phpmyadmin"
+    (root / "libraries" / "classes").mkdir(parents=True)
+    (root / "sql").mkdir()
+    (root / "libraries" / "classes" / "Config.php").write_text("<?php")
+    (root / "composer.json").write_text('{"name": "some/other-package"}')
+    target = root / "libraries" / "classes" / "Config.php"
+    assert pmf_scan.find_platform_root_for(str(target)) == (None, None)
+
+
 def test_find_platform_root_for_no_platform_returns_none(tmp_path):
     pmf_scan._PLATFORM_ROOT_CACHE.clear()
     target = tmp_path / "some" / "random" / "file.php"
@@ -534,3 +609,19 @@ def test_is_probably_binary_only_checks_the_sniffed_prefix():
 
 def test_is_probably_binary_empty_data():
     assert not pmf_scan.is_probably_binary(b"")
+
+
+# --- paranoia_level_for ----------------------------------------------------
+
+def test_paranoia_level_for_unknown_rule_defaults_to_1():
+    assert pmf_scan.paranoia_level_for("ObfuscatedPhp") == 1
+
+
+def test_paranoia_level_for_known_noisy_rule_is_2():
+    assert pmf_scan.paranoia_level_for("WEBSHELL_PHP_Generic_Callback") == 2
+
+
+def test_paranoia_level_for_strips_archive_member_suffix():
+    assert pmf_scan.paranoia_level_for(
+        "WEBSHELL_PHP_Dynamic_Big (in archive member libraries/videos.php)"
+    ) == 2
