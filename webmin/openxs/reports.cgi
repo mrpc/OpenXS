@@ -13,10 +13,19 @@ my $scan_id = $in{'scan_id'};
 $scan_id =~ s/[^0-9]//g;
 my $view_quarantine = $in{'view'} eq 'quarantine';
 
+# "world-writable directory" findings go through the same permission-fix
+# UI here as they do on the Findings page (findings.cgi) - missed here
+# at first (reports.cgi has its own separate rendering), which is why
+# clicking "Fix permissions" from a scan's own findings list (not the
+# unified Findings page) failed with "Invalid request." - the button it
+# showed was actually still the quarantine one, which doesn't apply to
+# a directory at all.
 sub quarantine_action_links
 {
-my ($fid, $qpath) = @_;
-return &openxs_quarantine_action_links($fid, $qpath, $scan_id);
+my ($fid, $qpath, $rule, $perm_fix_new_mode) = @_;
+return ($rule eq 'world-writable directory')
+	? &openxs_permission_action_links($fid, $perm_fix_new_mode)
+	: &openxs_quarantine_action_links($fid, $qpath, $scan_id);
 }
 
 sub quarantine_sort_header
@@ -72,7 +81,7 @@ for fid, f, r, q, ts, size, scan_path in openxs_db.quarantined_files(limit=$page
 			my $date = $ts ne '' && $ts ne 'None' ? &make_date($ts, 1) : "<i>unknown</i>";
 			my $size_h = $size ne '' ? "${size}B" : "-";
 			print &ui_columns_row([$date, &html_escape($user), &html_escape($source),
-				&html_escape($f), &html_escape($r), $size_h, &quarantine_action_links($fid, $q)]);
+				&html_escape($f), &html_escape($r), $size_h, &quarantine_action_links($fid, $q, $r, undef)]);
 			}
 		print &ui_columns_end();
 		print "<p>";
@@ -90,7 +99,8 @@ import sys
 sys.path.insert(0, '$pmf_dir')
 import openxs_db
 for fid, f, r, q in openxs_db.findings_for_scan($scan_id):
-    print(str(fid) + '\\t' + f + '\\t' + r + '\\t' + (q or ''))
+    perm_fix = openxs_db.permission_fix_for(fid) if r == 'world-writable directory' else None
+    print(str(fid) + '\\t' + f + '\\t' + r + '\\t' + (q or '') + '\\t' + (str(perm_fix[1]) if perm_fix else ''))
 "`;
 	my @rows = grep { $_ ne "" } split(/\n/, $out);
 	if (!@rows) {
@@ -99,8 +109,8 @@ for fid, f, r, q in openxs_db.findings_for_scan($scan_id):
 	else {
 		print &ui_columns_start(["File", "Rule", "Quarantine"]);
 		foreach my $row (@rows) {
-			my ($fid, $f, $r, $q) = split(/\t/, $row);
-			print &ui_columns_row([&html_escape($f), &html_escape($r), &quarantine_action_links($fid, $q)]);
+			my ($fid, $f, $r, $q, $perm_fix_new_mode) = split(/\t/, $row);
+			print &ui_columns_row([&html_escape($f), &html_escape($r), &quarantine_action_links($fid, $q, $r, $perm_fix_new_mode)]);
 			}
 		print &ui_columns_end();
 		}
