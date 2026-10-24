@@ -105,6 +105,13 @@ Release from that section's text.
   exploit).
 
 ### Added
+- "Resolved" filter on the Findings page (All / Unresolved only /
+  Resolved only) - "resolved" means actually acted on (quarantined/
+  deleted, or has an active permission fix). Lets an admin hide what's
+  already been dealt with and see only what's left, instead of
+  re-scanning the same already-handled findings mentally on every
+  visit - a real need after fixing thousands of world-writable-
+  directory findings by hand in one sitting.
 - "Fix permissions" button on a "world-writable directory" finding
   (strips just the world-write bit) - found live 2026-10-24 that one
   account alone had its entire upload tree at 0777 with no technical

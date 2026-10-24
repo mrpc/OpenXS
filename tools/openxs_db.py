@@ -680,7 +680,13 @@ _CATEGORY_SQL = {
 }
 
 
-def search_findings(category=None, search=None, limit=50, offset=0, sort="date", order="desc"):
+_RESOLVED_SQL = (
+    "(f.quarantine_path IS NOT NULL AND f.quarantine_path != '' "
+    "OR EXISTS (SELECT 1 FROM permission_fixes pf WHERE pf.finding_id = f.id AND pf.restored_at IS NULL))"
+)
+
+
+def search_findings(category=None, search=None, limit=50, offset=0, sort="date", order="desc", resolved=None):
     """Unified findings browser query (cxs's own tabbed All/Exploits/
     Virus/Old Versions/... view, which this mirrors) - every finding
     ever recorded, not just quarantined ones, with its scan's date and
@@ -688,7 +694,13 @@ def search_findings(category=None, search=None, limit=50, offset=0, sort="date",
     _CATEGORY_SQL's keys, or None for everything. search: substring
     match against the file path, case-insensitive. sort/order: same
     FINDING_SORT_COLUMNS as quarantined_files() - plain id order isn't
-    date order for a bulk historical import."""
+    date order for a bulk historical import. resolved: True/False to
+    filter by whether the finding has actually been acted on (quarantined/
+    deleted, or has an active permission fix - a directory can't be
+    quarantined the way a file can), None for no filter - lets an admin
+    hide what's already been dealt with and see only what's left, or the
+    reverse, instead of re-scanning the same already-handled findings
+    mentally on every visit."""
     conn = _connect()
     where = []
     params = []
@@ -697,6 +709,10 @@ def search_findings(category=None, search=None, limit=50, offset=0, sort="date",
     if search:
         where.append("f.file_path LIKE ?")
         params.append(f"%{search}%")
+    if resolved is True:
+        where.append(_RESOLVED_SQL)
+    elif resolved is False:
+        where.append(f"NOT {_RESOLVED_SQL}")
     where_sql = ("WHERE " + " AND ".join(where)) if where else ""
     sort_col = FINDING_SORT_COLUMNS.get(sort, FINDING_SORT_COLUMNS["date"])
     sort_dir = "ASC" if order == "asc" else "DESC"
