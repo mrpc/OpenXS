@@ -266,6 +266,8 @@ print &ui_form_end();
 
 print &ui_subheading("Support");
 print "<p><a href='support.cgi'>Install Information</a> <i>(diagnostic dump, for troubleshooting)</i></p>\n";
+print "<p><a href='false_positive_export.cgi'>Export false positive reports</a> <i>(every \"Mark false positive\" click, ".
+	"as Markdown - paste into a GitHub issue to help improve detection rules)</i></p>\n";
 
 print &ui_subheading("Danger zone");
 print &ui_form_start("disable_ui.cgi", "post");
