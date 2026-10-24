@@ -17,7 +17,7 @@ QUARANTINE_DIR = os.environ.get("OPENXS_QUARANTINE", "/var/lib/openxs/quarantine
 # a fresh process can skip all migration DDL with one cheap read instead
 # of re-running CREATE TABLE IF NOT EXISTS + several ALTER TABLE/except
 # attempts on every single process start.
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS scans (
@@ -62,6 +62,20 @@ CREATE TABLE IF NOT EXISTS modsec_daily_stats (
     date TEXT PRIMARY KEY,
     blocks INTEGER NOT NULL DEFAULT 0
 );
+-- Every "Mark false positive" click, across every detector (mod_security,
+-- YARA/ClamAV/maldet findings, version-check "(oldversion)" findings) -
+-- a plain audit trail for later aggregation (e.g. future telemetry, or
+-- just "what have we marked FP this month"), independent of whatever
+-- exclusion mechanism (if any) was also applied at the same time.
+CREATE TABLE IF NOT EXISTS false_positive_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    reported_at REAL NOT NULL,
+    source TEXT NOT NULL,
+    path TEXT NOT NULL,
+    detail TEXT NOT NULL,
+    action_taken TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_fp_reports_reported_at ON false_positive_reports(reported_at);
 """
 
 
@@ -142,6 +156,19 @@ def _connect():
             conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         _schema_initialized_for = DB_PATH
     return _KeepOpenConnection(conn)
+
+
+def record_false_positive(source, path, detail, action_taken=None):
+    """source: 'modsec' / 'finding' / 'oldversion'. action_taken: a short
+    description of what exclusion (if any) was also applied at the same
+    time (e.g. "rule 930120 excluded (ARGS)", "added to ignore file"),
+    or None if nothing could be auto-excluded for this source."""
+    conn = _connect()
+    conn.execute(
+        "INSERT INTO false_positive_reports (reported_at, source, path, detail, action_taken) VALUES (?, ?, ?, ?, ?)",
+        (time.time(), source, path, detail, action_taken),
+    )
+    conn.commit()
 
 
 def record_scan(path, files_scanned, findings, duration=None, load_avg=None):
