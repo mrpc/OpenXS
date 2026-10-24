@@ -2,4 +2,4 @@ name=OpenXS
 category=system
 desc=OpenXS Exploit Scanner
 longdesc=Status, control and manual scans for the OpenXS exploit-detection daemon.
-version=0.1.2
+version=0.1.3
