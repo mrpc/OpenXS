@@ -7,44 +7,63 @@ require './openxs-lib.pl';
 &ui_print_header(undef, 'OpenXS Exploit Scanner', "");
 print $openxs_nav;
 
-my $n = $in{'lines'};
-$n =~ s/[^0-9]//g;
-$n = 100 if ($n eq '' || $n < 1);
-
 my %logs = (
-	"Scan daemon (openxs-scand)" => $daemon_log,
-	"Watch daemon (openxs-watchd)" => $watchd_log,
-	"Scheduled scan (cron)" => "$pmf_dir/cron.log",
-	"Scheduled scan - scanner's own stderr" => "$pmf_dir/scan.log",
-	"Quarantine actions" => "/var/log/openxs-quarantine.log",
-	"File integrity - last check" => "$pmf_dir/fim_results.txt",
+	"scand" => ["Scan daemon (openxs-scand)", $daemon_log],
+	"watchd" => ["Watch daemon (openxs-watchd)", $watchd_log],
+	"cron" => ["Scheduled scan (cron)", "$pmf_dir/cron.log"],
+	"scanlog" => ["Scheduled scan - scanner's own stderr", "$pmf_dir/scan.log"],
+	"quarantine" => ["Quarantine actions", "/var/log/openxs-quarantine.log"],
+	"fim" => ["File integrity - last check", "$pmf_dir/fim_results.txt"],
 );
 
-foreach my $title (sort keys %logs) {
-	my $file = $logs{$title};
+my $only = $in{'only'};
+
+if ($only ne '' && $logs{$only}) {
+	# Single-log view, with its own independent "show more" control -
+	# no more ambiguity about which log a "show more lines" link applied to.
+	my $n = $in{'lines'};
+	$n =~ s/[^0-9]//g;
+	$n = 200 if ($n eq '' || $n < 1);
+
+	my ($title, $file) = @{$logs{$only}};
 	print &ui_subheading("$title <small>(<code>$file</code>)</small>");
-	print "<pre style='background:#1e1e1e;color:#e8e8e8;padding:8px;max-height:300px;overflow:auto'>".
+	print "<pre style='background:#1e1e1e;color:#e8e8e8;padding:8px;max-height:600px;overflow:auto'>".
 		&html_escape(&openxs_tail($file, $n))."</pre>\n";
+	print "<p><a href='logs.cgi?only=$only&lines=" . ($n * 5) . "'>Show more lines (last $n shown)</a></p>\n";
+	print "<p><a href='logs.cgi'>&laquo; Back to all logs</a></p>\n";
 	}
-
-if (-d '/etc/modsecurity') {
-	print &ui_subheading("mod_security blocks <small>(across every Apache error log on this server)</small>");
-	my @rows = &openxs_modsec_rows();
-	if (!@rows) {
-		print "<p>(no blocks found)</p>\n";
+else {
+	my $preview_lines = 10;
+	foreach my $key (sort keys %logs) {
+		my ($title, $file) = @{$logs{$key}};
+		print &ui_subheading("$title <small>(<code>$file</code>)</small>");
+		print "<pre style='background:#1e1e1e;color:#e8e8e8;padding:8px;max-height:300px;overflow:auto'>".
+			&html_escape(&openxs_tail($file, $preview_lines))."</pre>\n";
+		print "<p><a href='logs.cgi?only=$key'>View full log &raquo;</a></p>\n";
 		}
-	else {
-		my $last = $#rows > $n - 1 ? $n - 1 : $#rows;
-		print &ui_columns_start(["Count", "Host", "Path", "Rule"]);
-		foreach my $r (@rows[0 .. $last]) {
-			print &ui_columns_row([$r->{'count'}, &html_escape($r->{'host'}), &html_escape($r->{'uri'}),
-				&openxs_modsec_rule_link($r->{'rule_id'})]);
+
+	if (-d '/etc/modsecurity') {
+		print &ui_subheading("mod_security blocks <small>(across every Apache error log on this server)</small>");
+		my @rows = &openxs_modsec_rows();
+		if (!@rows) {
+			print "<p>(no blocks found)</p>\n";
 			}
-		print &ui_columns_end();
+		else {
+			my $n = $in{'lines'};
+			$n =~ s/[^0-9]//g;
+			$n = 100 if ($n eq '' || $n < 1);
+			my $last = $#rows > $n - 1 ? $n - 1 : $#rows;
+			print &ui_columns_start(["Count", "Host", "Path", "Rule"]);
+			foreach my $r (@rows[0 .. $last]) {
+				print &ui_columns_row([$r->{'count'}, &html_escape($r->{'host'}), &html_escape($r->{'uri'}),
+					&openxs_modsec_rule_link($r->{'rule_id'})]);
+				}
+			print &ui_columns_end();
+			print "<p><a href='logs.cgi?lines=" . ($n * 5) . "'>Show more mod_security rows (last $n shown)</a></p>\n";
+			}
+		print "<p><a href='modsec_log.cgi'>Full view with grouping notes &raquo;</a></p>\n";
 		}
-	print "<p><a href='modsec_log.cgi'>Full view with grouping notes &raquo;</a></p>\n";
 	}
 
-print "<p><a href='logs.cgi?lines=" . ($n * 5) . "'>Show more lines (last $n shown)</a></p>\n";
 print "<p><a href='index.cgi'>&laquo; Back to dashboard</a></p>\n";
 &ui_print_footer("/", "Webmin index page");
