@@ -46,24 +46,9 @@ apachectl configtest
 systemctl restart apache2 2>/dev/null || service apache2 restart
 echo "Apache restarted."
 
-# Persists daily block counts into openxs.db - without this, the Stats
-# page's mod_security chart/column would only ever show whatever's
-# still in the current (unrotated) Apache error logs, silently losing
-# older days once logrotate does its thing. Scheduled before 02:17's
-# scan and well before a typical distro's default logrotate run.
-cat > /etc/cron.d/openxs-modsec-record <<'EOF'
-10 2 * * * root python3 /opt/php-malware-finder/openxs_modsec_record.py >> /opt/php-malware-finder/cron.log 2>&1
-EOF
-chmod 644 /etc/cron.d/openxs-modsec-record
+# Its periodic upkeep (daily block-count history, the "grouped by
+# host/path/rule" view's cache) runs as a job inside openxs_collector.py,
+# whose own single cron entry already exists from install.sh - just do
+# an immediate first run now so the dashboard isn't empty until that
+# cron next fires.
 python3 /opt/php-malware-finder/openxs_modsec_record.py 2>&1 || true
-
-# Caches the "grouped by host/path/rule" view (modsec_log.cgi, and the
-# dashboard's log page) so viewing it is a fast file read instead of a
-# live `grep -r` across every Apache error log on the box on every
-# single page view - the same split as the daily-counts cron above,
-# just on a tight enough interval that "recent blocks" stays meaningful.
-cat > /etc/cron.d/openxs-modsec-cache <<'EOF'
-*/5 * * * * root python3 /opt/php-malware-finder/openxs_modsec_log.py --write-cache >> /opt/php-malware-finder/cron.log 2>&1
-EOF
-chmod 644 /etc/cron.d/openxs-modsec-cache
-python3 /opt/php-malware-finder/openxs_modsec_log.py --write-cache 2>&1 || true
