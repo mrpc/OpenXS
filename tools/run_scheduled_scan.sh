@@ -20,6 +20,7 @@ MAILBOX_RECENT_HOURS=""
 VERSION_SCAN_ENABLED="1"
 APT_SECURITY_ENABLED="1"
 VMRSS_MAX_MB="2000"
+YARA_PARANOIA_LEVEL="1"
 # Parsed as plain data, not `source`-d: the config file is writable via the
 # Webmin settings form, and `source` would execute $()/`` in any value as
 # real shell code (e.g. a crafted EMAIL value running arbitrary commands
@@ -43,6 +44,7 @@ if [ -f "$CONFIG" ]; then
             VERSION_SCAN_ENABLED) VERSION_SCAN_ENABLED="$value" ;;
             APT_SECURITY_ENABLED) APT_SECURITY_ENABLED="$value" ;;
             VMRSS_MAX_MB) VMRSS_MAX_MB="$value" ;;
+            YARA_PARANOIA_LEVEL) YARA_PARANOIA_LEVEL="$value" ;;
         esac
     done < "$CONFIG"
 fi
@@ -86,6 +88,7 @@ export OPENXS_QUIET="$QUIET"
 export OPENXS_QUARANTINE_CATEGORIES="$QUARANTINE_CATEGORIES"
 export OPENXS_FAST_PHP_ONLY="$FAST_PHP_ONLY"
 export OPENXS_VMRSS_MAX_KB=$((VMRSS_MAX_MB * 1024))
+export OPENXS_YARA_PARANOIA_LEVEL="$YARA_PARANOIA_LEVEL"
 python3 pmf_scan.py scan php.yar filelist.txt > scan_results.txt 2> scan.log
 
 # Proactive whitelist-drift check: a whitelisted file whose content has
@@ -143,12 +146,25 @@ fi
 
 hits=$(grep -c . scan_results.txt || true)
 
+# Split by severity so the email leads with what actually needs a human's
+# attention - a night with thousands of generic-heuristic hits (common,
+# legitimate minified/obfuscated third-party code) would otherwise bury
+# the 1-2 real virus/exploit/maldet hits in a wall of noise, or make the
+# subject line itself ("N genuine hit(s)") misleadingly alarming.
+eval "$(python3 split_scan_results.py scan_results.txt new_findings.txt scan_results)"
+serious="${serious:-0}"
+heuristic="${heuristic:-0}"
+fs="${fs:-0}"
+
 if [ "$hits" -gt 0 ] || [ "$drift_count" -gt 0 ] || [ "$fim_count" -gt 0 ] || [ "$version_count" -gt 0 ] || [ "$apt_count" -gt 0 ] || [ "$mailbox_count" -gt 0 ]; then
     {
-        if [ "$hits" -gt 0 ]; then
-            echo "OpenXS: $hits genuine hit(s) on $HOST ($SCAN_LABEL)"
+        if [ "$serious" -gt 0 ]; then
+            echo "=== $serious SERIOUS hit(s) (virus/known exploit/maldet) on $HOST ($SCAN_LABEL) ==="
+            cat scan_results.serious.txt
             echo ""
-            cat scan_results.txt
+        fi
+        if [ "$heuristic" -gt 0 ] || [ "$fs" -gt 0 ]; then
+            echo "=== $heuristic NEW generic heuristic hit(s), $fs NEW filesystem-hygiene hit(s) (first time seen - an unchanged file already flagged before doesn't nag again) - usually legitimate minified/obfuscated third-party code or routine symlinks/permissions, see the Findings page for the full list, not dumped here ==="
             echo ""
         fi
         if [ "$drift_count" -gt 0 ]; then
@@ -175,5 +191,5 @@ if [ "$hits" -gt 0 ] || [ "$drift_count" -gt 0 ] || [ "$fim_count" -gt 0 ] || [ 
             echo "=== Mailbox virus scan: $mailbox_count infected file(s) ==="
             echo "$mailbox_output"
         fi
-    } | mail -s "[$HOST] OpenXS: $hits hit(s), $drift_count drift, $fim_count integrity, $version_count outdated, $apt_count apt-security, $mailbox_count mail-virus" "$EMAIL"
+    } | mail -s "[$HOST] OpenXS: $serious serious, $heuristic heuristic, $fs fs-hygiene, $drift_count drift, $fim_count integrity, $version_count outdated, $apt_count apt-security, $mailbox_count mail-virus" "$EMAIL"
 fi

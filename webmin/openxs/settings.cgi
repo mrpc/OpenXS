@@ -118,6 +118,19 @@ print &ui_table_row("Scheduled scan memory limit",
 	"how many files it has to track for the end-of-run ClamAV pass. A site with tens of millions of files " .
 	"(or that can't exclude large non-web-facing directories via the ignore file) may need this raised; " .
 	"check the server's free RAM first.</i>");
+print &ui_table_row("YARA rule paranoia level",
+	&ui_select("yara_paranoia_level", $cfg{'YARA_PARANOIA_LEVEL'} || '1',
+		[["1", "1 - standard (default)"], ["2", "2 - include known-noisy heuristics"]]) .
+	"<i>A handful of the vendored webshell-detection rules are heuristic by their own author's admission - " .
+	"they fire on ANY smallish file that touches request input (\$_GET/\$_POST/etc.) and calls one of ~30 " .
+	"completely ordinary PHP functions (array_map, call_user_func, spl_autoload_register, ...), which is also " .
+	"the shape of a lot of legitimate code (Adminer, PHPUnit's eval-stdin utility, WordPress plugin option " .
+	"handlers). Level 1 (default) doesn't even report these; level 2 includes them, for a deeper one-off look. " .
+	"Not mod_security's 4-level paranoia (that's curated per-rule by the CRS project itself, at a depth we " .
+	"don't have here) - starts at 2 levels, more can be added as specific rules need narrower opt-in. " .
+	"<b>Changing this needs the scan daemon restarted</b> (<code>systemctl restart openxs-scand</code>) for " .
+	"the real-time upload-blocking hook and watch daemon to pick it up - a new scheduled/manual scan picks it " .
+	"up on its own.</i>");
 my $remoteip_active_for_autoban = &openxs_remoteip_active();
 print &ui_table_row("CSF auto-ban (watch daemon, high-confidence findings only)",
 	&ui_checkbox("csf_autoban_enabled", "1",
