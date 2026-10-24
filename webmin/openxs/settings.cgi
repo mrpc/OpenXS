@@ -125,6 +125,19 @@ print &ui_table_row("Scheduled scan memory limit",
 	"how many files it has to track for the end-of-run ClamAV pass. A site with tens of millions of files " .
 	"(or that can't exclude large non-web-facing directories via the ignore file) may need this raised; " .
 	"check the server's free RAM first.</i>");
+my $remoteip_active_for_autoban = &openxs_remoteip_active();
+print &ui_table_row("CSF auto-ban (watch daemon, high-confidence findings only)",
+	&ui_checkbox("csf_autoban_enabled", "1",
+		"Temporarily ban the uploader's IP (yara_exploit/virus/maldet findings only, watch daemon only - never " .
+		"the batch scan) when there's an EXACT, unambiguous correlation to a single recent POST/PUT in the " .
+		"account's access log. Zero or multiple candidates = no ban, just a log line - this never guesses.",
+		$cfg{'CSF_AUTOBAN_ENABLED'} eq '1') .
+	($remoteip_active_for_autoban ? "" : "<br><b style='color:#b30000'>mod_remoteip isn't active on this server - ".
+		"this can't be enabled until it is (Settings, above), or every Cloudflare-fronted site would never ".
+		"attribute anything useful.</b>") .
+	"<br>Ban length: " . &ui_textbox("csf_autoban_ttl", $cfg{'CSF_AUTOBAN_TTL'}, 6) .
+	" <i>(e.g. 3d, 12h - csf -td's own syntax; temporary and reversible (<code>csf -dr &lt;ip&gt;</code>) on purpose, ".
+	"even though the correlation is exact)</i>");
 print &ui_table_end();
 print &ui_submit("Save", "save");
 print &ui_form_end();

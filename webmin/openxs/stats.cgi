@@ -118,6 +118,26 @@ print &ui_form_start("stats.cgi", "get") .
 	print &ui_columns_end();
 	}
 
+my $bout = `python3 -c "
+import sys
+sys.path.insert(0, '$pmf_dir')
+import openxs_db
+for row in openxs_db.recent_csf_bans(limit=20):
+    print('\\t'.join(str(x) for x in row))
+"`;
+my @ban_rows = grep { $_ ne "" } split(/\n/, $bout);
+if (@ban_rows) {
+	print &ui_subheading("Recent CSF auto-bans (watch daemon)");
+	print &ui_columns_start(["When", "IP", "File", "Rule", "TTL", "Result"]);
+	foreach my $r (@ban_rows) {
+		my ($banned_at, $ip, $file_path, $rule_name, $ttl, $success) = split(/\t/, $r);
+		print &ui_columns_row([&make_date($banned_at, 1), &html_escape($ip), &html_escape($file_path),
+			&html_escape($rule_name), &html_escape($ttl),
+			$success eq '1' ? "<b style='color:#2e7d32'>Banned</b>" : "<b style='color:#b30000'>Failed</b>"]);
+		}
+	print &ui_columns_end();
+	}
+
 print &ui_form_start("rebuild_stats.cgi", "post") . &ui_submit("Rebuild stats from scan history", "go") . &ui_form_end();
 print "<p><a href='reports.cgi'>Full scan history &raquo;</a></p>\n";
 print "<p><a href='index.cgi'>&laquo; Back to dashboard</a></p>\n";
