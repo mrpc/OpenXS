@@ -514,6 +514,26 @@ return $svg;
 # definition (message, what it's for) in the OWASP Core Rule Set source,
 # rather than trying to keep our own copy of every rule's explanation in
 # sync with whatever CRS version is actually installed.
+sub openxs_modsec_mode_overrides_summary
+{
+# Short "example.com: off, ..." text for the dashboard, so a host-level
+# override set in Settings isn't invisible from the main page (the
+# module status row alone can't show it - it's server-wide, this is
+# per-host) - the exact confusion that led to writing this.
+my $mode_file = '/etc/openxs/modsec_mode';
+return '' if (!open(my $fh, '<', $mode_file));
+my @parts;
+while (<$fh>) {
+	chomp;
+	s/^\s+|\s+$//g;
+	next if ($_ eq '' || /^#/);
+	my ($host, $mode) = split(/\s+/, $_, 2);
+	push(@parts, "$host: $mode") if ($host ne '' && $mode ne '');
+	}
+close($fh);
+return join(', ', @parts);
+}
+
 sub openxs_modsec_rule_link
 {
 my ($rule_id) = @_;

@@ -160,10 +160,13 @@ print &ui_table_row("Watch daemon (openxs-watchd, account-wide inotify monitor) 
 			&ui_submit("Start", "start") . &ui_submit("Stop", "stop") . &ui_submit("Restart", "restart"))));
 
 my $modsec_active = &openxs_modsecurity_active();
+my $modsec_overrides = &openxs_modsec_mode_overrides_summary();
 print &ui_table_row("mod_security (real-time upload blocking)",
 	&row_value(&status_cell($modsec_ok && $modsec_hook_ok && $modsec_active,
 			$modsec_ok && $modsec_hook_ok ? "Installed and hooked up" : "Not installed",
-			$modsec_ok && $modsec_hook_ok && !$modsec_active ? "Installed but disabled (module not loaded)" : "Not installed"),
+			$modsec_ok && $modsec_hook_ok && !$modsec_active ? "Installed but disabled (module not loaded)" : "Not installed") .
+		($modsec_overrides ne '' ? "<br><span style='font-size:12px;color:#8a5a1f'>Per-host override: " .
+			&html_escape($modsec_overrides) . " (<a href='edit_file.cgi?f=modsec_mode'>edit &raquo;</a>)</span>" : ""),
 		($modsec_ok && $modsec_hook_ok)
 			? ($modsec_active
 				? "<a href='modsec_log.cgi'>View recent blocks &raquo;</a> " .
