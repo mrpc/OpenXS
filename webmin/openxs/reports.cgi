@@ -84,6 +84,7 @@ for fid, f, r, q, ts, size, scan_path in openxs_db.quarantined_files(limit=$page
 				&html_escape($f), &html_escape($r), $size_h, &quarantine_action_links($fid, $q, $r, undef)]);
 			}
 		print &ui_columns_end();
+		print &openxs_flush_mini_forms();
 		print "<p>";
 		my $sort_qs = "qsort=$sort&qorder=$order";
 		print "<a href='reports.cgi?view=quarantine&$sort_qs&qpage=" . ($page - 1) . "'>&laquo; Previous</a> " if ($page > 0);
@@ -113,6 +114,7 @@ for fid, f, r, q in openxs_db.findings_for_scan($scan_id):
 			print &ui_columns_row([&html_escape($f), &html_escape($r), &quarantine_action_links($fid, $q, $r, $perm_fix_new_mode)]);
 			}
 		print &ui_columns_end();
+		print &openxs_flush_mini_forms();
 		}
 	print "<p><a href='reports.cgi'>&laquo; All scans</a></p>\n";
 	}

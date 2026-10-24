@@ -362,17 +362,54 @@ return $out eq 'active' ? 1 : 0;
 # action (Quarantine now/Restore/Delete) goes through the same themed
 # POST form (never a plain <a href> - that navigates out of Webmin's
 # theme frame entirely instead of staying inside it).
+our @openxs_pending_mini_forms;
+our $openxs_mini_form_seq = 0;
+
+# Every per-row action button (Quarantine/Restore/Delete, Fix/Restore
+# permissions) used to be its own <form>...</form> wrapping just that
+# button - fine on its own, except findings.cgi (and the quarantine
+# view in reports.cgi) wrap the WHOLE table in one outer <form> too
+# (for the "Quarantine selected/Restore selected/Delete selected" bulk
+# checkboxes) - nested <form> is invalid HTML, and the browser's own
+# parser recovery collapsed every one of these per-row forms into that
+# single outer one, so every per-row button actually submitted to
+# bulk_action.cgi instead of its own target (found live 2026-10-25:
+# "Invalid request." from bulk_action.cgi, not permissions.cgi, when
+# clicking "Fix permissions" - it had silently been happening to every
+# other per-row action button here too, just never surfaced before).
+#
+# Fix: HTML5's form='<id>' attribute lets a button submit a SEPARATE,
+# out-of-line <form> regardless of where in the DOM it's nested -
+# Authentic theme's own ui_submit() override already looks for and
+# applies exactly this (search its own source for "form='" handling).
+# mini_form() below builds that out-of-line form (collected, not
+# printed immediately - it must never itself end up nested either) and
+# returns just the button, tagged to point at it; openxs_flush_mini_forms()
+# prints every collected one in one place, which the caller must do
+# OUTSIDE the enclosing form (right after its closing &ui_form_end()).
+sub openxs_mini_form
+{
+my ($url, $action, $fid, $label, $scan_id, $tags) = @_;
+my $id = "openxs_mf_" . $openxs_mini_form_seq++;
+push(@openxs_pending_mini_forms,
+	&ui_form_start($url, "post", undef, "id='$id' style='display:none'") .
+	&ui_hidden("action", $action) . &ui_hidden("id", $fid) .
+	(defined($scan_id) ? &ui_hidden("scan_id", $scan_id) : "") .
+	&ui_form_end());
+return &ui_submit($label, "go", 0, "form='$id' style='display:inline-block;margin-right:4px' $tags");
+}
+
+sub openxs_flush_mini_forms
+{
+my $out = join('', @openxs_pending_mini_forms);
+@openxs_pending_mini_forms = ();
+return $out;
+}
+
 sub openxs_quarantine_action_form
 {
 my ($action, $fid, $label, $scan_id, $tags) = @_;
-# display:inline-block - these sit next to each other (e.g. Restore +
-# Delete), not one per line making every row of a 50-row page
-# needlessly tall.
-return &ui_form_start("quarantine.cgi", "post", undef, "style='display:inline-block;margin-right:4px'") .
-	&ui_hidden("action", $action) . &ui_hidden("id", $fid) .
-	&ui_hidden("scan_id", $scan_id) .
-	&ui_submit($label, "go", 0, $tags) .
-	&ui_form_end();
+return &openxs_mini_form("quarantine.cgi", $action, $fid, $label, $scan_id, $tags);
 }
 
 sub openxs_quarantine_action_links
@@ -400,10 +437,7 @@ else {
 sub openxs_permission_action_form
 {
 my ($action, $fid, $label, $tags) = @_;
-return &ui_form_start("permissions.cgi", "post", undef, "style='display:inline-block;margin-right:4px'") .
-	&ui_hidden("action", $action) . &ui_hidden("id", $fid) .
-	&ui_submit($label, "go", 0, $tags) .
-	&ui_form_end();
+return &openxs_mini_form("permissions.cgi", $action, $fid, $label, undef, $tags);
 }
 
 sub openxs_permission_action_links
