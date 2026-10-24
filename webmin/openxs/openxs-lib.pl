@@ -31,6 +31,165 @@ our %editable_files = (
 	'modsec_rule_exclusions' => '/etc/openxs/modsec_rule_exclusions',
 );
 
+# One short format description per editable file, shown above its
+# textarea in edit_file.cgi - so the expected shape is visible right
+# where you're about to type it, not only in a Settings-page link.
+our %editable_file_help = (
+	'ignore' => "One path or substring per line - any file whose path contains this text is skipped entirely. Blank lines and '#' comments are ignored.",
+	'rules' => "One extra regular expression per line, matched against file content in addition to the YARA ruleset. Blank lines and '#' comments are ignored.",
+	'path_settings' => "One override per line: <code>&lt;path prefix&gt; key=value,key2=value2</code> - e.g. <code>/home/bigsite/uploads fast_php_only=1</code>. ".
+		"Known keys: <code>fast_php_only</code>, <code>quarantine_enabled</code> (both <code>0</code> or <code>1</code>). When several prefixes match a file, the longest (most specific) one wins.",
+	'fim_paths' => "One absolute file or directory path per line to baseline and watch for drift (e.g. <code>/etc/passwd</code>).",
+	'csf_blocklists' => "CSF's own <code>csf.blocklists</code> format - passed straight through to CSF, not parsed by OpenXS. See CSF's own documentation.",
+	'modsec_exclusions' => "One path prefix per line (e.g. <code>/admin</code>) - fully disables ModSecurity/CRS for matching requests. Blank lines and '#' comments are ignored.",
+	'modsec_mode' => "One <code>&lt;hostname&gt; &lt;mode&gt;</code> per line, mode is <code>on</code>/<code>detection</code>/<code>off</code> (e.g. <code>www.example.com detection</code>). ".
+		"For the server-wide default (a bare <code>*</code> hostname), use the toggle above instead of typing it here by hand. Blank lines and '#' comments are ignored.",
+	'modsec_rule_exclusions' => "One <code>&lt;rule id&gt; &lt;variable&gt; [path prefix]</code> per line (e.g. <code>930120 ARGS:scope</code>) - rule id must be numeric, ".
+		"path prefix is optional (omit it to exclude that rule+variable everywhere). Blank lines and '#' comments are ignored.",
+);
+
+# One validator sub per editable file that needs one - takes the
+# submitted lines (arrayref), returns a list of "Line N: message"
+# strings (empty list = valid). Deliberately mirrors each config's own
+# real parser (pmf_scan.py's load_path_overrides(), openxs_modsec_mode.py's
+# VALID_MODES, etc.) instead of a separately-invented notion of "valid" -
+# the point is to catch a line the real parser would silently skip,
+# not to enforce some other idea of correctness.
+our %editable_file_validators = (
+	'rules' => \&openxs_validate_rules,
+	'path_settings' => \&openxs_validate_path_settings,
+	'fim_paths' => \&openxs_validate_fim_paths,
+	'modsec_exclusions' => \&openxs_validate_modsec_exclusions,
+	'modsec_mode' => \&openxs_validate_modsec_mode,
+	'modsec_rule_exclusions' => \&openxs_validate_modsec_rule_exclusions,
+);
+
+sub openxs_validate_rules
+{
+my ($lines) = @_;
+my @errors;
+my $n = 0;
+foreach my $line (@$lines) {
+	$n++;
+	my $l = $line;
+	$l =~ s/^\s+|\s+$//g;
+	next if ($l eq '' || $l =~ /^#/);
+	eval { qr/$l/ };
+	push(@errors, "Line $n: not a valid regular expression ($@)") if ($@);
+	}
+return @errors;
+}
+
+sub openxs_validate_path_settings
+{
+my ($lines) = @_;
+my @valid_keys = ('fast_php_only', 'quarantine_enabled');
+my @errors;
+my $n = 0;
+foreach my $line (@$lines) {
+	$n++;
+	my $l = $line;
+	$l =~ s/^\s+|\s+$//g;
+	next if ($l eq '' || $l =~ /^#/);
+	my ($prefix, $kv) = split(/\s+/, $l, 2);
+	if (!defined($kv)) {
+		push(@errors, "Line $n: expected '<path prefix> key=value,...' (missing the settings part)");
+		next;
+		}
+	if ($prefix !~ m{^/}) {
+		push(@errors, "Line $n: path prefix '$prefix' should start with /");
+		}
+	foreach my $pair (split(/,/, $kv)) {
+		if ($pair !~ /^(\w+)=(\S+)$/) {
+			push(@errors, "Line $n: '$pair' isn't 'key=value'");
+			}
+		elsif (!grep { $_ eq $1 } @valid_keys) {
+			push(@errors, "Line $n: unknown key '$1' (known: " . join(', ', @valid_keys) . ")");
+			}
+		elsif ($2 ne '0' && $2 ne '1') {
+			push(@errors, "Line $n: '$1' should be 0 or 1, not '$2'");
+			}
+		}
+	}
+return @errors;
+}
+
+sub openxs_validate_fim_paths
+{
+my ($lines) = @_;
+my @errors;
+my $n = 0;
+foreach my $line (@$lines) {
+	$n++;
+	my $l = $line;
+	$l =~ s/^\s+|\s+$//g;
+	next if ($l eq '' || $l =~ /^#/);
+	push(@errors, "Line $n: '$l' should be an absolute path (starting with /)") if ($l !~ m{^/});
+	}
+return @errors;
+}
+
+sub openxs_validate_modsec_exclusions
+{
+my ($lines) = @_;
+my @errors;
+my $n = 0;
+foreach my $line (@$lines) {
+	$n++;
+	my $l = $line;
+	$l =~ s/^\s+|\s+$//g;
+	next if ($l eq '' || $l =~ /^#/);
+	push(@errors, "Line $n: '$l' should be a path prefix (starting with /)") if ($l !~ m{^/});
+	}
+return @errors;
+}
+
+sub openxs_validate_modsec_mode
+{
+my ($lines) = @_;
+my @valid_modes = ('on', 'detection', 'off');
+my @errors;
+my $n = 0;
+foreach my $line (@$lines) {
+	$n++;
+	my $l = $line;
+	$l =~ s/^\s+|\s+$//g;
+	next if ($l eq '' || $l =~ /^#/);
+	my @parts = split(/\s+/, $l);
+	if (@parts != 2) {
+		push(@errors, "Line $n: expected '<hostname> <mode>', got '$l'");
+		}
+	elsif (!grep { $_ eq $parts[1] } @valid_modes) {
+		push(@errors, "Line $n: mode '$parts[1]' should be one of " . join('/', @valid_modes));
+		}
+	}
+return @errors;
+}
+
+sub openxs_validate_modsec_rule_exclusions
+{
+my ($lines) = @_;
+my @errors;
+my $n = 0;
+foreach my $line (@$lines) {
+	$n++;
+	my $l = $line;
+	$l =~ s/^\s+|\s+$//g;
+	next if ($l eq '' || $l =~ /^#/);
+	my @parts = split(/\s+/, $l, 3);
+	if (@parts < 2) {
+		push(@errors, "Line $n: expected '<rule id> <variable> [path prefix]', got '$l'");
+		}
+	elsif ($parts[0] !~ /^\d+$/) {
+		push(@errors, "Line $n: rule id '$parts[0]' should be numeric");
+		}
+	elsif (@parts == 3 && $parts[2] !~ m{^/}) {
+		push(@errors, "Line $n: path prefix '$parts[2]' should start with /");
+		}
+	}
+return @errors;
+}
+
 sub openxs_ui_disabled
 {
 return -e $ui_disabled_file ? 1 : 0;

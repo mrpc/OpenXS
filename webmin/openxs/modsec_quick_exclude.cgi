@@ -26,7 +26,7 @@ if (!$file || $line eq '') {
 	print "<p style='color:red'>Missing or invalid action.</p>\n";
 	}
 else {
-	my @existing = -e $file ? &read_file_lines($file, 1) : ();
+	my @existing = -e $file ? @{ &read_file_lines($file, 1) } : ();
 	if (grep { $_ eq $line } @existing) {
 		print "<p>Already excluded: <code>" . &html_escape($line) . "</code></p>\n";
 		}
