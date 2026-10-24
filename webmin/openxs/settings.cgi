@@ -1,7 +1,10 @@
 #!/usr/bin/perl
 # settings.cgi
 # OpenXS configuration - split out from the dashboard so status/health
-# and "how it behaves" don't get mixed on the same page.
+# and "how it behaves" don't get mixed on the same page. Also holds
+# every component's install/update/on-off toggle (detection engine,
+# ClamAV, maldet, mod_security, CSF, OpenXS self-update) - one-time
+# setup actions, not something to see on the dashboard every day.
 
 require './openxs-lib.pl';
 &ReadParse();
@@ -77,10 +80,14 @@ if (-d '/etc/modsecurity') {
 		"DetectionOnly logs what would have been blocked without actually blocking it, while you investigate a false positive and ".
 		"narrow it down to a precise rule exclusion below. A bare <code>*</code> hostname sets the server-wide default.</i>");
 	print &ui_table_row("mod_security rule exclusions", "<a href='edit_file.cgi?f=modsec_rule_exclusions'>Edit /etc/openxs/modsec_rule_exclusions &raquo;</a> ".
-		"<i>one '&lt;rule id&gt; &lt;variable&gt; [path prefix]' per line (e.g. <code>930120 ARGS:scope</code>) - disables one specific ".
+		"<i>one '&lt;rule id&gt; &lt;variable&gt;' per line (e.g. <code>930120 ARGS:scope</code>) - disables one specific ".
 		"CRS rule for one specific request variable, everything else about that rule (and every other rule) stays active. The precise ".
 		"fix for a confirmed false positive - see <a href='modsec_log.cgi'>mod_security blocks</a> and its own audit log entry ".
-		"(<code>grep &lt;unique_id&gt; /var/log/apache2/modsec_audit.log</code>) to find which rule+variable actually misfired.</i>");
+		"(<code>grep &lt;unique_id&gt; /var/log/apache2/modsec_audit.log</code>) to find which rule+variable actually misfired. ".
+		"<b>Server-wide only</b> - confirmed by hand (2026-10-24) that there's no working way to scope this to one path on this ".
+		"stack (neither LocationMatch, &lt;If&gt;, ctl:ruleRemoveById, nor a mod_rewrite env var made a difference). For a false ".
+		"positive that genuinely needs path-level scoping, use the <a href='edit_file.cgi?f=modsec_mode'>detection-only mode</a> ".
+		"toggle (host-level, proven to work) or <a href='edit_file.cgi?f=modsec_exclusions'>path exclusions</a> (full disable) instead.</i>");
 	}
 print &ui_table_row("File integrity monitoring - watched paths", "<a href='edit_file.cgi?f=fim_paths'>Edit /etc/openxs/fim_paths &raquo;</a> ".
 	"<i>one file or directory per line, e.g. /etc/passwd or your framework's core folder - hashed and checked for drift ".
@@ -115,6 +122,135 @@ print &ui_table_row("Scheduled scan memory limit",
 print &ui_table_end();
 print &ui_submit("Save", "save");
 print &ui_form_end();
+
+# Components/integrations - installs, updates, on/off toggles. Moved
+# here from the dashboard (2026-10-24, explicit request): the front
+# page should read as "what's running right now" (daemons, scans,
+# quarantine, logs), not get cluttered with one-time setup actions -
+# and a component someone deliberately turned off (mod_security, say)
+# shouldn't keep surfacing itself there every time they look.
+sub status_cell
+{
+my ($ok, $yes, $no) = @_;
+return $ok ? "<b style='color:green'>$yes</b>" : "<b style='color:#b30000'>$no</b>";
+}
+
+sub mini_form
+{
+my ($action, $buttons_html) = @_;
+return &ui_form_start($action, "post") . $buttons_html . &ui_form_end();
+}
+
+sub row_value
+{
+my ($status_html, $action_html) = @_;
+return $status_html . ($action_html ne "" ? "<div style='margin-top:4px'>$action_html</div>" : "");
+}
+
+my $pmf_ok = &openxs_pmf_installed();
+my $modsec_ok = &openxs_modsecurity_installed();
+my $modsec_hook_ok = &openxs_modsecurity_hook_installed();
+my $csf_ok = &openxs_csf_present();
+my $csf_hook_ok = &openxs_csf_hook_installed();
+my $clamav_ok = &openxs_clamav_installed();
+my $clamav_running = &openxs_clamav_running();
+
+print &ui_subheading("Components");
+print &ui_table_start(undef, undef, 1);
+
+print &ui_table_row("Detection engine (php-malware-finder)",
+	&row_value(&status_cell($pmf_ok, "Installed (" . &openxs_pmf_commit() . ")", "Not installed"),
+		$pmf_ok ? &mini_form("update.cgi",
+			&ui_textbox("ruleset_ref", "", 20) . " <i>(blank = latest from our fork; or a specific commit/tag)</i><br>" .
+			&ui_submit("Update now", "update"))
+		        : "<i>installed as part of the base image</i>"));
+
+my %cfg_for_src = &openxs_read_config();
+my $openxs_src = $cfg_for_src{'OPENXS_SRC'};
+if ($openxs_src ne '' && -d "$openxs_src/.git") {
+	my $cur_version = `cd $openxs_src && git describe --tags 2>/dev/null`;
+	chomp($cur_version);
+	if ($cur_version eq '') {
+		# No tags reachable (e.g. a fetch that didn't bring any over) -
+		# fall back to just the hash rather than showing nothing.
+		$cur_version = `cd $openxs_src && git rev-parse --short HEAD 2>/dev/null`;
+		chomp($cur_version);
+		}
+	print &ui_table_row("OpenXS itself (daemon, Webmin module, tools)",
+		&row_value("Installed (" . &html_escape($cur_version) . ")",
+			&mini_form("self_update.cgi", &ui_submit("Check for updates", "check"))));
+	}
+
+my $clamav_apparmor_issue = $clamav_ok && &openxs_clamav_apparmor_issue();
+print &ui_table_row("ClamAV (virus scanning, 2nd detector)",
+	&row_value(($clamav_ok ? &status_cell($clamav_running, "Installed, running", "Installed, not running")
+	                      : "<i style='color:#888'>Not installed - ran without it (optional, degrades gracefully)</i>") .
+		($clamav_apparmor_issue ? "<br><span style='font-size:12px;color:#b38f00'>&#9888; AppArmor is denying ".
+			"some file lookups (<code>dmesg | grep 'clamd.*disconnected path'</code>) - add ".
+			"<code>flags=(attach_disconnected)</code> to <code>/etc/apparmor.d/usr.sbin.clamd</code> ".
+			"and reload with <code>apparmor_parser -r</code>.</span>" : ""),
+		&mini_form("install_clamav.cgi",
+			&ui_submit($clamav_ok ? "Re-apply recommended config" : "Install", "install"))));
+
+my $maldet_ok = &openxs_maldet_installed();
+print &ui_table_row("maldet (Linux Malware Detect, 3rd detector)",
+	&row_value($maldet_ok ? &status_cell(1, "Installed - own MD5/HEX/YARA signature set", "")
+	                      : "<i style='color:#888'>Not installed - ran without it (optional, degrades gracefully)</i>",
+		&mini_form("install_maldet.cgi",
+			&ui_submit($maldet_ok ? "Re-apply recommended config" : "Install", "install"))));
+
+my $modsec_active = &openxs_modsecurity_active();
+my $modsec_overrides = &openxs_modsec_mode_overrides_summary();
+print &ui_table_row("mod_security (real-time upload blocking)",
+	&row_value(&status_cell($modsec_ok && $modsec_hook_ok && $modsec_active,
+			$modsec_ok && $modsec_hook_ok ? "Installed and hooked up" : "Not installed",
+			$modsec_ok && $modsec_hook_ok && !$modsec_active ? "Installed but disabled (module not loaded)" : "Not installed") .
+		($modsec_overrides ne '' ? "<br><span style='font-size:12px;color:#8a5a1f'>Per-host override: " .
+			&html_escape($modsec_overrides) . " (<a href='edit_file.cgi?f=modsec_mode'>edit &raquo;</a>)</span>" : ""),
+		($modsec_ok && $modsec_hook_ok)
+			# "View recent blocks" stays available either way - disabling
+			# the module stops it recording NEW blocks, but the history
+			# already on disk (cache + DB) is still worth being able to
+			# see, not hidden away along with the toggle.
+			? "<a href='modsec_log.cgi'>View recent blocks &raquo;</a> " .
+				($modsec_active
+					? &mini_form("disable_modsecurity.cgi", &ui_submit("Disable", "disable", 0,
+						"onclick=\"return confirm('Disable mod_security entirely on this server? ".
+						"(reversible - Install re-enables it)')\""))
+					: "<i style='color:#888;font-size:12px'>(showing history from before it was disabled)</i> " .
+						&mini_form("install_modsecurity.cgi", &ui_submit("Re-enable", "install")))
+			: &mini_form("install_modsecurity.cgi", &ui_submit("Install", "install"))));
+
+if ($csf_ok && &openxs_csf_old()) {
+	my $v = `csf -v 2>/dev/null`;
+	chomp($v);
+	print &ui_table_row("CSF version",
+		&row_value("<b style='color:#b30000'>Old, pre-GPLv3 release (" . &html_escape($v) . ") - upstream license/download infra is offline</b>",
+			&mini_form("upgrade_csf.cgi", &ui_submit("Upgrade to open-source v15.00", "upgrade"))));
+	}
+
+print &ui_table_row("CSF firewall auto-block hook",
+	&row_value($csf_ok ? &status_cell($csf_hook_ok, "Hooked up", "CSF found, hook not installed")
+	                    : "<i style='color:#888'>CSF not found on this server</i>",
+		($csf_ok && !$csf_hook_ok) ? &mini_form("install_csf_hook.cgi", &ui_submit("Install", "install")) : "")
+	. ($csf_ok && -d "/usr/share/webmin/csf" ? "<div style='margin-top:4px'><a href='../csf/'>Open CSF Firewall module &raquo;</a></div>" : ""));
+
+my $status_widgets_ok = -e "/etc/webmin/status/services/openxs-watchd.serv";
+if (-d "/etc/webmin/status") {
+	print &ui_table_row("Servers Status dashboard widget",
+		&row_value(&status_cell($status_widgets_ok, "Added - watchd/scand show on Webmin's main status page", "Not added"),
+			$status_widgets_ok ? "" : &mini_form("install_status_widgets.cgi", &ui_submit("Add", "install"))));
+	}
+
+if ($csf_ok) {
+	my $active_feeds = `grep -c '^[A-Z]' /etc/csf/csf.blocklists 2>/dev/null`;
+	chomp($active_feeds);
+	print &ui_table_row("IP reputation (CSF BLOCKLIST feeds)",
+		&row_value("<b>" . ($active_feeds || 0) . "</b> feed(s) active - native CSF feature, not tied to any license",
+			"<a href='edit_file.cgi?f=csf_blocklists'>Edit csf.blocklists &raquo;</a>"));
+	}
+
+print &ui_table_end();
 
 print "<p><a href='index.cgi'>&laquo; Back to dashboard</a></p>\n";
 &ui_print_footer("/", "Webmin index page");
