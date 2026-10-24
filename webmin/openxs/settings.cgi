@@ -75,13 +75,6 @@ if (-d '/etc/modsecurity') {
 	print &ui_table_row("mod_security path exclusions", "<a href='edit_file.cgi?f=modsec_exclusions'>Edit /etc/openxs/modsec_exclusions &raquo;</a> ".
 		"<i>one path prefix per line (e.g. /admin) - fully disables ModSecurity/CRS for matching requests. ".
 		"For a real false positive on a first-party endpoint (analytics beacon, already-authenticated admin area), not a general bypass.</i>");
-	my $modsec_global_mode = &openxs_modsec_global_mode();
-	print &ui_table_row("mod_security - server-wide mode",
-		&ui_form_start("edit_file.cgi", "post") . &ui_hidden("f", "modsec_mode") .
-			&ui_select("global_mode", $modsec_global_mode, [["on", "On"], ["detection", "Detection only"], ["off", "Off"]]) .
-			" " . &ui_submit("Set", "set_global") . &ui_form_end() .
-			"<i>DetectionOnly logs what would have been blocked without actually blocking it, while you investigate a ".
-			"false positive. Per-host overrides and the raw file are below.</i>");
 	print &ui_table_row("mod_security detection-only mode (per host)", "<a href='edit_file.cgi?f=modsec_mode'>Edit /etc/openxs/modsec_mode &raquo;</a> ".
 		"<i>one '&lt;hostname&gt; &lt;mode&gt;' per line, mode is on/detection/off (e.g. <code>www.example.com detection</code>) - ".
 		"narrow a false positive down to one host instead of the whole server, or to a precise rule exclusion below.</i>");
@@ -239,6 +232,16 @@ print &ui_table_row("mod_security (real-time upload blocking)",
 					: "<i style='color:#888;font-size:12px'>(showing history from before it was disabled)</i> " .
 						&mini_form("install_modsecurity.cgi", &ui_submit("Re-enable", "install")))
 			: &mini_form("install_modsecurity.cgi", &ui_submit("Install", "install"))));
+
+if ($modsec_ok) {
+	my $modsec_global_mode = &openxs_modsec_global_mode();
+	print &ui_table_row("mod_security - server-wide mode",
+		&ui_form_start("edit_file.cgi", "post") . &ui_hidden("f", "modsec_mode") .
+			&ui_select("global_mode", $modsec_global_mode, [["on", "On"], ["detection", "Detection only"], ["off", "Off"]]) .
+			" " . &ui_submit("Set", "set_global") . &ui_form_end() .
+			"<i>DetectionOnly logs what would have been blocked without actually blocking it, while you investigate a ".
+			"false positive. Per-host overrides, path exclusions, and rule exclusions are all above, in Settings.</i>");
+	}
 
 if ($csf_ok && &openxs_csf_old()) {
 	my $v = `csf -v 2>/dev/null`;
