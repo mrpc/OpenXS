@@ -81,6 +81,13 @@ Release from that section's text.
 - `MIGRATION.md`: step-by-step cxs migration guide (comparison table +
   the actual `migrate_from_cxs.py` subcommands in order), not just the
   README's "why" explanation.
+- "Mark false positive" on findings (adds the file to `/etc/openxs/ignore`
+  automatically) and on mod_security blocks (same effect as its existing
+  quick-exclude buttons) - both also write to a new
+  `false_positive_reports` table for later review/aggregation.
+- Format-hint text and a per-file validator for every Settings text-file
+  editor (`edit_file.cgi`) - a malformed line that the real parser would
+  otherwise silently skip is now rejected at save time instead.
 
 ### Changed
 - `pmf_scan.py`'s per-file platform-checksum checks (WordPress,

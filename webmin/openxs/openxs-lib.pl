@@ -754,7 +754,7 @@ if ($excluded_rules->{$rule_id}) {
 	$rule_part = "<span style='$done_style' title='Already has a rule exclusion - see Settings'>&#10003; Rule excluded</span>";
 	}
 else {
-	my $rule_url = "modsec_quick_exclude.cgi?action=rule&rule_id=" . &urlize($rule_id);
+	my $rule_url = "modsec_quick_exclude.cgi?action=rule&rule_id=" . &urlize($rule_id) . "&uri=" . &urlize($uri);
 	$rule_part = "<a href='$rule_url' style='$btn_style;background:#fdf3e7;color:#8a5a1f;border:1px solid #edd6b3' ".
 		"onclick=\"return confirm('Exclude rule $rule_id (ARGS) across the whole server?')\">Exclude rule</a>";
 	}
@@ -765,7 +765,7 @@ if ($path_already_excluded) {
 	$path_part = "<span style='$done_style' title='Already covered by a path exclusion - see Settings'>&#10003; Path excluded</span>";
 	}
 else {
-	my $path_url = "modsec_quick_exclude.cgi?action=path&uri=" . &urlize($uri);
+	my $path_url = "modsec_quick_exclude.cgi?action=path&uri=" . &urlize($uri) . "&rule_id=" . &urlize($rule_id);
 	$path_part = "<a href='$path_url' style='$btn_style;background:#eef3fa;color:#2b5a8c;border:1px solid #c3d6ea' ".
 		"onclick=\"return confirm('Exclude path \\'" . &html_escape($uri) . "\\' - disables ALL mod_security checks for it?')\">Exclude path</a>";
 	}
