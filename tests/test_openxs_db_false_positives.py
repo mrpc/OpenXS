@@ -30,7 +30,11 @@ def test_false_positive_daily_stats_filled_buckets_by_day(tmp_path, monkeypatch)
     result = db.false_positive_daily_stats_filled(days=7)
     assert len(result) == 7
     today = result[-1]
-    assert today[0] == time.strftime("%Y-%m-%d")
+    # Bucketed by UTC day (date(reported_at, 'unixepoch') - SQLite's
+    # date functions are UTC by default), same convention record_scan()
+    # already uses (time.gmtime(started_at)) - local time.strftime()
+    # disagrees for a few hours around local midnight.
+    assert today[0] == time.strftime("%Y-%m-%d", time.gmtime())
     assert today[1] == 2
 
 

@@ -217,7 +217,11 @@ def false_positive_daily_stats_filled(days=30):
     ).fetchall()
     conn.close()
     by_date = {row[0]: row[1] for row in rows}
-    today = datetime.date.today()
+    # UTC, matching the query above (SQLite's date() is UTC by default) -
+    # datetime.date.today() is local time, which silently mismatched the
+    # UTC-keyed by_date dict for a few hours around local midnight,
+    # showing 0 for a day that genuinely had reports.
+    today = datetime.datetime.now(datetime.timezone.utc).date()
     result = []
     for offset in range(int(days) - 1, -1, -1):
         day = (today - datetime.timedelta(days=offset)).isoformat()
@@ -549,7 +553,11 @@ def daily_stats_filled(days=30):
     for 30 days should always show 30 days, not just however many
     happened to have a scan recorded."""
     by_date = {row[0]: row for row in daily_stats(days)}
-    today = datetime.date.today()
+    # UTC, matching record_scan()'s own day bucketing (time.gmtime) -
+    # datetime.date.today() is local time, which silently mismatched the
+    # UTC-keyed by_date dict for a few hours around local midnight,
+    # showing an empty day that genuinely had a scan recorded.
+    today = datetime.datetime.now(datetime.timezone.utc).date()
     result = []
     for offset in range(int(days) - 1, -1, -1):
         day = (today - datetime.timedelta(days=offset)).isoformat()
