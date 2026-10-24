@@ -26,7 +26,9 @@ if ($only ne '' && $logs{$only}) {
 	$n = 200 if ($n eq '' || $n < 1);
 
 	my ($title, $file) = @{$logs{$only}};
-	print &ui_subheading("$title <small>(<code>$file</code>)</small> <span id='live-indicator' style='font-size:12px;color:#888'>(live)</span>");
+	print &ui_subheading("$title <small>(<code>$file</code>)</small> ".
+		"<button id='live-pause' type='button' class='btn btn-default' style='font-size:12px;padding:1px 8px;margin-left:8px'>Pause</button> ".
+		"<span id='live-indicator' style='font-size:12px;color:#888'>(live)</span>");
 	print "<pre id='live-tail' style='background:#1e1e1e;color:#e8e8e8;padding:8px;max-height:600px;overflow:auto'>".
 		&html_escape(&openxs_tail($file, $n))."</pre>\n";
 	print "<p><a href='logs.cgi?only=$only&lines=" . ($n * 5) . "'>Show more lines (last $n shown)</a></p>\n";
@@ -36,6 +38,9 @@ if ($only ne '' && $logs{$only}) {
 (function() {
 	var pre = document.getElementById('live-tail');
 	var indicator = document.getElementById('live-indicator');
+	var pauseBtn = document.getElementById('live-pause');
+	var timer = null;
+	var paused = false;
 	function tick() {
 		fetch('tail_text.cgi?file=$only&lines=$n', {credentials: 'same-origin'})
 			.then(function(r) { return r.text(); })
@@ -46,7 +51,14 @@ if ($only ne '' && $logs{$only}) {
 				})
 			.catch(function() { indicator.textContent = '(live - last update failed)'; });
 		}
-	setInterval(tick, 4000);
+	function start() { timer = setInterval(tick, 4000); }
+	function stop() { clearInterval(timer); timer = null; }
+	pauseBtn.addEventListener('click', function() {
+		paused = !paused;
+		if (paused) { stop(); pauseBtn.textContent = 'Resume'; indicator.textContent = '(paused)'; }
+		else { start(); pauseBtn.textContent = 'Pause'; tick(); }
+		});
+	start();
 	})();
 </script>
 JSEOF
