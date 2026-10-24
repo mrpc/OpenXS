@@ -281,6 +281,43 @@ def record_scan(path, files_scanned, findings, duration=None, load_avg=None):
     return scan_id
 
 
+def new_finding_ids(scan_id):
+    """(file_path, rule_name) pairs from this scan that were never seen
+    in any earlier scan with the same path/rule/size - i.e. this is the
+    first time this exact finding showed up, not an unmodified file
+    that's been flagged on every single scan since it was installed.
+
+    Used to make the scheduled-scan email alert only on genuinely new
+    heuristic/fs findings (an unchanged legitimate-but-obfuscated-
+    looking plugin file shouldn't nag forever) while still always
+    alerting on serious ones (virus/yara_exploit/maldet) regardless -
+    an unresolved real backdoor should keep nagging until it's actually
+    quarantined, not go quiet just because it's been seen before.
+
+    size is part of the comparison (cheap proxy for "did the file
+    change" - exact hashing would be more precise but is wasted cost
+    for files this is mainly meant to quiet down, which rarely change
+    at all) - a file whose content changed (even at the same path,
+    same rule) is treated as new again."""
+    conn = _connect()
+    rows = conn.execute(
+        """
+        SELECT f1.file_path, f1.rule_name FROM findings f1
+        WHERE f1.scan_id = ?
+          AND NOT EXISTS (
+              SELECT 1 FROM findings f2
+              WHERE f2.scan_id < f1.scan_id
+                AND f2.file_path = f1.file_path
+                AND f2.rule_name = f1.rule_name
+                AND f2.size IS f1.size
+          )
+        """,
+        (scan_id,),
+    ).fetchall()
+    conn.close()
+    return rows
+
+
 def quarantine_file(finding_id):
     """Moves a finding's file into the quarantine dir and records the new
     path. Returns the quarantine path, or None if the file no longer exists

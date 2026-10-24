@@ -28,9 +28,26 @@ Release from that section's text.
   wordpress.org's official per-version checksums (bundled, weekly
   auto-refresh).
 - Revive Adserver: detect installs, flag outdated ones.
+- Roundcube Webmail and phpMyAdmin: suppress false positives on
+  unmodified core files via self-built checksums bundles (same shape as
+  Revive - neither project publishes an official per-file checksums
+  API, so these are computed from each project's own official release
+  archive). Found live 2026-10-24 on our own infra (prod-host-3's webmail
+  and DB-admin installs) - phpMyAdmin legitimately runs arbitrary SQL/
+  code by design, and Roundcube bundles minified/obfuscated-looking
+  vendored JS, both real false-positive sources.
 - Vendored [Neo23x0/signature-base](https://github.com/Neo23x0/signature-base)'s
   webshell ruleset into our php-malware-finder fork (upstream
   php-malware-finder itself has had no activity since 2022).
+- `default_rules` (shipped custom-rule bundle, same relationship to
+  `/etc/openxs/rules` as `default_ignore` has to `/etc/openxs/ignore`):
+  a regex for the "self-doubled MD5" password-gated backdoor
+  (`md5($x.md5($x))==(hash)`, then an eval/base64_decode/file_put_contents/
+  SSRF-relay payload) - found live 2026-10-24, a multi-site compromise
+  where 5 of 68 planted files used a plain hash literal with an SSRF-
+  relay payload that none of the existing heuristics' dangerous-sink
+  keywords happened to match, evading detection entirely. This targets
+  the one structural element every variant shares, regardless of payload.
 
 ### Security
 - PHP2Shell (CVE-2026-109618/109619): ModSecurity rules blocking the
@@ -113,12 +130,12 @@ Release from that section's text.
   editor (`edit_file.cgi`) - a malformed line that the real parser would
   otherwise silently skip is now rejected at save time instead.
 - `default_ignore`: a shipped (not locally-editable) false-positive list
-  for common third-party/first-party software (Adminer, PHPUnit's
-  eval-stdin test utility, Loco Translate, Simple Lightbox, GOTMLS,
-  our own PramnosFramework) - unlike `/etc/openxs/ignore` (local,
-  per-server), this updates on every install via `git pull`, so a false
-  positive found on one install's copy of a common package is
-  suppressed on every other install too, not just the one it was found
+  for common third-party software (Adminer, PHPUnit's eval-stdin test
+  utility, Loco Translate, Simple Lightbox, GOTMLS) - unlike
+  `/etc/openxs/ignore` (local, per-server), this updates on every
+  install via `git pull`, so a false positive found on one install's
+  copy of a common package is suppressed on every other install too,
+  not just the one it was found
   on.
 
 ### Changed
@@ -157,6 +174,30 @@ Release from that section's text.
   its own `<form>` nested inside the still-open main Settings form -
   invalid HTML, which made the browser collapse every row after it
   into one unstructured line of buttons.
+- An unchanged file already flagged by a generic heuristic (a legitimate
+  third-party plugin that just looks obfuscated) got re-alerted on
+  every single scheduled scan forever - findings were never deduplicated
+  across scans at all. `openxs_db.new_finding_ids()` now tracks whether
+  an exact (path, rule, size) finding has shown up in any earlier scan;
+  the email alert only counts heuristic/fs findings the first time
+  they're seen, while serious ones (virus/yara_exploit/maldet) still
+  alert every scan regardless - an unresolved real backdoor should keep
+  nagging until it's actually quarantined, not go quiet just because
+  it's been seen once. This doesn't reduce how much checksums/
+  default_ignore need to cover (that only addresses specific known
+  software) - it's the general fix for the fact that no amount of
+  curation covers every possible legitimate script an account might
+  install.
+- The scheduled-scan email's subject and body lumped every category
+  together into one flat "N genuine hit(s)" count/dump - a night with
+  thousands of generic-heuristic hits (common, legitimate minified/
+  obfuscated third-party code) buried the 1-2 real virus/exploit/maldet
+  hits in a wall of noise, or made the subject line itself misleadingly
+  alarming. `split_scan_results.py` now tiers scan_results.txt into
+  serious/heuristic/fs before the email is built, and leads with
+  serious. The Findings page also now shows a color-coded category
+  badge on every row (not just as a tab filter), so "All" doesn't read
+  as one undifferentiated wall either.
 - The scan progress file was removed right after ClamAV finished,
   before maldet/fs_scan even started - the dashboard/live log showed
   nothing for the rest of the scan even on runs where those two stages
