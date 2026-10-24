@@ -20,43 +20,30 @@ Two ways a version can be protected:
   actually carries the fix, so treat exit 1 as "can't be sure, so
   install the rules" rather than "definitely still vulnerable".
 """
-import re
-import subprocess
+import os
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import php_version_check as pvc
 
 DISCLOSURE_DATE = 20261021
 FIXED_MIN_PATCH = {(8, 2): 35, (8, 3): 36, (8, 4): 27, (8, 5): 12}
-SNAPSHOT_DATE_RE = re.compile(r"~(\d{8})\.")
-
-
-def installed_php_common_versions():
-    """Yields (branch_str, version_string) for every installed php*-common
-    package, e.g. ("7.4", "1:7.4.33-31+0~20261021.121+debian12~1...")."""
-    out = subprocess.run(["dpkg-query", "-W", "-f=${Package}\t${Version}\n"],
-                          capture_output=True, text=True).stdout
-    for line in out.splitlines():
-        pkg, version = line.split("\t", 1)
-        m = re.match(r"php(\d+\.\d+)-common$", pkg)
-        if m:
-            yield m.group(1), version
 
 
 def is_protected(branch, version):
     major, minor = (int(p) for p in branch.split("."))
-    m = re.search(r"(\d+)\.(\d+)\.(\d+)", version)
-    if m and (int(m.group(1)), int(m.group(2))) == (major, minor):
-        patch = int(m.group(3))
-        min_patch = FIXED_MIN_PATCH.get((major, minor))
-        if min_patch is not None and patch >= min_patch:
-            return True
-    snap = SNAPSHOT_DATE_RE.search(version)
-    if snap and int(snap.group(1)) >= DISCLOSURE_DATE:
+    patch = pvc.patch_level(branch, version)
+    min_patch = FIXED_MIN_PATCH.get((major, minor))
+    if patch is not None and min_patch is not None and patch >= min_patch:
+        return True
+    snap = pvc.snapshot_date(version)
+    if snap is not None and snap >= DISCLOSURE_DATE:
         return True
     return False
 
 
 def main():
-    versions = list(installed_php_common_versions())
+    versions = list(pvc.installed_php_common_versions())
     if not versions:
         print("# No php*-common packages found - nothing to check")
         sys.exit(0)
