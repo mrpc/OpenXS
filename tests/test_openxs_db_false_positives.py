@@ -20,3 +20,30 @@ def test_record_false_positive_action_taken_defaults_to_none(tmp_path, monkeypat
     conn = db._connect()
     row = conn.execute("SELECT action_taken FROM false_positive_reports").fetchone()
     assert row[0] is None
+
+
+def test_false_positive_daily_stats_filled_buckets_by_day(tmp_path, monkeypatch):
+    import time
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
+    db.record_false_positive("modsec", "/x", "930120")
+    db.record_false_positive("finding", "/y", "ObfuscatedPhp")
+    result = db.false_positive_daily_stats_filled(days=7)
+    assert len(result) == 7
+    today = result[-1]
+    assert today[0] == time.strftime("%Y-%m-%d")
+    assert today[1] == 2
+
+
+def test_false_positive_daily_stats_filled_zero_fills_empty_days(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
+    result = db.false_positive_daily_stats_filled(days=5)
+    assert len(result) == 5
+    assert all(count == 0 for _date, count in result)
+
+
+def test_false_positive_counts_by_source(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
+    db.record_false_positive("modsec", "/x", "930120")
+    db.record_false_positive("modsec", "/x2", "941310")
+    db.record_false_positive("finding", "/y", "ObfuscatedPhp")
+    assert db.false_positive_counts_by_source() == {"modsec": 2, "finding": 1}

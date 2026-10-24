@@ -171,6 +171,37 @@ def record_false_positive(source, path, detail, action_taken=None):
     conn.commit()
 
 
+def false_positive_daily_stats_filled(days=30):
+    """Same gap-filling shape as modsec_daily_stats_filled() - one
+    (date, count) row per calendar day in the window. Computed directly
+    from false_positive_reports (no separate daily-aggregate table
+    needed - one row per click is a low enough volume to just count
+    from the raw rows on every Stats page view)."""
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT date(reported_at, 'unixepoch') AS d, COUNT(*) FROM false_positive_reports "
+        "WHERE reported_at >= strftime('%s', date('now', ?)) GROUP BY d",
+        (f"-{int(days)} days",),
+    ).fetchall()
+    conn.close()
+    by_date = {row[0]: row[1] for row in rows}
+    today = datetime.date.today()
+    result = []
+    for offset in range(int(days) - 1, -1, -1):
+        day = (today - datetime.timedelta(days=offset)).isoformat()
+        result.append((day, by_date.get(day, 0)))
+    return result
+
+
+def false_positive_counts_by_source():
+    """{source: count} across all time - for a short summary line on
+    the Stats page, not broken down by day."""
+    conn = _connect()
+    rows = conn.execute("SELECT source, COUNT(*) FROM false_positive_reports GROUP BY source").fetchall()
+    conn.close()
+    return dict(rows)
+
+
 def false_positive_reports(limit=500):
     """Every "mark false positive" click ever recorded, newest first -
     for the export page (false_positive_export.cgi), meant to be pasted
