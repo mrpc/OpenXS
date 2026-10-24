@@ -93,8 +93,13 @@ print &ui_subheading("Version checks (initial sversionscan-equivalent)");
 print "<p>Two independent, read-only checks run with the daily scheduled scan (not on the mod_security/watch-daemon ".
       "real-time paths - both make live network calls):</p><ul>".
       "<li><b>WordPress core</b> (<code>version_scan.py</code>): finds every <code>wp-includes/version.php</code> ".
-      "under the scan path, compares against WordPress.org's own latest-version API. A generic vulnerable-plugin-".
-      "version scanner is a much bigger, still-unsolved problem (needs a CVE/vulnerability database we don't have).</li>".
+      "under the scan path, compares against WordPress.org's own latest-version API.</li>".
+      "<li><b>WordPress plugins/themes</b> (same script): for every WordPress install found above, reads each ".
+      "plugin's <code>readme.txt</code> \"Stable tag:\" (falling back to its main file's standard <code>Version:</code> ".
+      "header) and each theme's <code>style.css</code> header, compares against WordPress.org's plugin/theme info ".
+      "API. Not a CVE/vulnerability database - just \"is this the latest release\" - but that already covers most ".
+      "real-world plugin exposure, which is an unpatched old version rather than a documented CVE. A SQLite cache ".
+      "(same db as the Composer check, 1-week TTL) avoids re-querying a popular plugin for every site it's on.</li>".
       "<li><b>Revive Adserver</b> (same script): finds every install (a <code>constants.php</code> defining ".
       "<code>VERSION</code>, alongside <code>adview.php</code>), compares against the highest released tag on ".
       "<a href='https://github.com/revive-adserver/revive-adserver' target='_blank'>GitHub</a>. The actively-".
@@ -102,6 +107,11 @@ print "<p>Two independent, read-only checks run with the daily scheduled scan (n
       "<li><b>Drupal core</b> (same script): finds every Drupal 7 install (<code>includes/bootstrap.inc</code> ".
       "defining <code>VERSION</code>, alongside <code>modules/</code> and <code>sites/</code>) and always flags it - ".
       "Drupal 7 itself reached end of life and has no more official security coverage, regardless of patch level.</li>".
+      "<li><b>Joomla core</b> (same script): finds every install (a single stable marker across Joomla's whole ".
+      "history - <code>administrator/manifests/files/joomla.xml</code>'s own <code>&lt;version&gt;</code>), ".
+      "compares against the highest released tag on ".
+      "<a href='https://github.com/joomla/joomla-cms' target='_blank'>GitHub</a>, and always flags major branches ".
+      "below 4.x - Joomla 1.x/2.x/3.x are all end of life (3.x reached EOL 2023-10-17).</li>".
       "<li><b>Composer packages</b> (same script): reads every <code>composer.lock</code> found and checks each ".
       "installed package's version against <a href='https://packagist.org' target='_blank'>Packagist</a> - no ".
       "built-in knowledge of any specific package needed (our own framework included - it just asks Packagist ".
