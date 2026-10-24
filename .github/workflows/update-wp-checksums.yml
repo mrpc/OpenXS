@@ -1,0 +1,30 @@
+name: Update WordPress checksums bundle
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'  # weekly, Monday 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Fetch any newly released WordPress versions' checksums
+        run: python3 tools/build_wp_checksums_bundle.py
+
+      - name: Commit new files, if any
+        run: |
+          git config user.name "openxs-bot"
+          git config user.email "noreply@users.noreply.github.com"
+          git add tools/wp_checksums/
+          git diff --cached --quiet && echo "Nothing new." && exit 0
+          git commit -m "Add newly released WordPress version(s) to the checksums bundle"
+          git push origin main
