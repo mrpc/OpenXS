@@ -25,9 +25,10 @@ product.
 
 ## What it does
 
-- **Exploit detection**: [php-malware-finder](https://github.com/nbs-system/php-malware-finder)
+- **Exploit detection**: [php-malware-finder](https://github.com/mrpc/php-malware-finder)
   (YARA, LGPL-3.0) — detects obfuscated PHP, webshells, and known exploit
-  patterns.
+  patterns. Upstream (nbs-system) has had no activity since 2022, so
+  OpenXS pins and extends this fork instead.
 - **Virus scanning**: ClamAV, as a second detector alongside YARA.
 - **Known-exploit database (maldet)**: [Linux Malware Detect](https://github.com/rfxn/linux-malware-detect)
   as a third, independent detector (its own MD5/HEX/YARA signature set) -
@@ -170,7 +171,14 @@ Still on the roadmap, deliberately incremental rather than all-at-once:
 ## Credits
 
 - [php-malware-finder](https://github.com/nbs-system/php-malware-finder)
-  (nbs-system, LGPL-3.0) — the detection ruleset this builds on.
+  (nbs-system, LGPL-3.0) — the original detection ruleset this builds
+  on; see our [fork](https://github.com/mrpc/php-malware-finder), which
+  OpenXS actually pins and extends.
+- [signature-base](https://github.com/Neo23x0/signature-base) (Florian
+  Roth/Nextron Systems and contributors, Detection Rule License 1.1) —
+  the webshell detection rules vendored into our php-malware-finder
+  fork, since it's still actively maintained where upstream
+  php-malware-finder isn't.
 - [CSF](https://github.com/centminmod/configserver-scripts) (Jonathan
   Michaelson, GPLv3) — the firewall OpenXS integrates with.
 - [Webmin](https://github.com/webmin/webmin) — the management UI framework.
