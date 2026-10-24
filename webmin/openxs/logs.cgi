@@ -33,6 +33,10 @@ if ($only ne '' && $logs{$only}) {
 		# This is pmf_scan.py's own stderr - the one log where a
 		# completion percentage actually means something.
 		print "<div id='scan-progress-bar-wrap' style='display:none;margin-bottom:8px'>".
+			"<div id='scan-overall-bar-wrap' style='display:none;margin-bottom:4px'>".
+			"<div style='background:#ddd;border-radius:4px;height:10px;overflow:hidden'>".
+			"<div id='scan-overall-bar' style='background:#6b8fc2;height:100%;width:0%;transition:width 1s'></div></div>".
+			"<div id='scan-overall-label' style='font-size:11px;color:#888;margin-top:1px'></div></div>".
 			"<div style='background:#ddd;border-radius:4px;height:18px;overflow:hidden'>".
 			"<div id='scan-progress-bar' style='background:#2e7d32;height:100%;width:0%;transition:width 1s'></div></div>".
 			"<div id='scan-progress-label' style='font-size:12px;color:#666;margin-top:2px'></div></div>\n";
@@ -50,6 +54,9 @@ if ($only ne '' && $logs{$only}) {
 	var progressWrap = document.getElementById('scan-progress-bar-wrap');
 	var progressBar = document.getElementById('scan-progress-bar');
 	var progressLabel = document.getElementById('scan-progress-label');
+	var overallWrap = document.getElementById('scan-overall-bar-wrap');
+	var overallBar = document.getElementById('scan-overall-bar');
+	var overallLabel = document.getElementById('scan-overall-label');
 	var timer = null;
 	var paused = false;
 	function tickProgress() {
@@ -66,10 +73,18 @@ if ($only ne '' && $logs{$only}) {
 				// each stage as an equal slice of the whole bar instead,
 				// so it visibly fills up as stages pass even without
 				// intra-stage granularity.
-				var overallPct = ((p.stage_num - 1) + (p.pct !== undefined ? p.pct / 100 : 0.5)) / p.stage_count * 100;
-				progressBar.style.width = overallPct + '%';
+				var stagePct = ((p.stage_num - 1) + (p.pct !== undefined ? p.pct / 100 : 0.5)) / p.stage_count * 100;
+				progressBar.style.width = stagePct + '%';
 				progressLabel.textContent = 'Stage ' + p.stage_num + '/' + p.stage_count + ' (' + p.stage + ')' +
 					(p.pct !== undefined ? ': ~' + p.pct + '% done (' + p.done + ' of ' + p.total + ' files)' : '');
+				if (p.overall_pct_from_history !== undefined) {
+					overallWrap.style.display = '';
+					var hp = Math.min(99, p.overall_pct_from_history);
+					overallBar.style.width = hp + '%';
+					overallLabel.textContent = 'Overall (vs past full scans): ~' + hp + '%';
+					} else {
+					overallWrap.style.display = 'none';
+					}
 				})
 			.catch(function() {});
 		}
