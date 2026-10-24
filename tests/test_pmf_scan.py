@@ -105,9 +105,13 @@ def test_categorize_fs():
     assert pmf_scan.categorize("world-writable directory") == "fs"
 
 
-def test_categorize_yara_default():
-    assert pmf_scan.categorize("ObfuscatedPhp") == "yara"
-    assert pmf_scan.categorize("Custom rule: eval\\(") == "yara"
+def test_categorize_yara_heuristic_default():
+    assert pmf_scan.categorize("ObfuscatedPhp") == "yara_heuristic"
+    assert pmf_scan.categorize("Custom rule: eval\\(") == "yara_heuristic"
+
+
+def test_categorize_yara_exploit():
+    assert pmf_scan.categorize("Known exploit = [Fingerprint Match] [PHP Exploit [P1755]]") == "yara_exploit"
 
 
 # --- custom rules (regex + hash) --------------------------------------------

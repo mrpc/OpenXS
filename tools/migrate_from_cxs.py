@@ -43,7 +43,7 @@ import openxs_db
 # own --help text). Letters with no OpenXS equivalent are reported as
 # unsupported, never guessed at.
 QOPTION_CATEGORY = {
-    "m": "yara", "M": "yara", "h": "yara",
+    "m": "yara_exploit", "M": "yara_exploit", "h": "yara_exploit",
     "v": "virus",
     "f": "fs", "u": "fs", "S": "fs", "G": "fs", "c": "fs", "e": "fs", "x": "fs",
 }
