@@ -328,6 +328,25 @@ def _search_with_timeout(pattern, data, fname, seconds=2):
         signal.signal(signal.SIGALRM, old_handler)
 
 
+def is_probably_binary(data, sniff_bytes=8000):
+    """Same heuristic git/grep -I use to decide "binary or text": a NUL
+    byte anywhere in the first chunk. php-malware-finder's own ruleset
+    gates everything behind a global IsPhp rule that just looks for a
+    literal '<?' byte sequence anywhere in the file - a fine heuristic
+    for actual text/source files, but a 2-byte sequence is likely to
+    turn up by pure chance in any reasonably-sized binary blob (a git
+    pack file, .git/index, a compiled binary, an image), which is
+    exactly why those were false-positiving as "ObfuscatedPhp"/
+    "NonPrintableChars". Deliberately NOT a path-based exclusion (an
+    exploit can be planted as a plain-text file anywhere, including
+    inside a .git directory) - this only skips the YARA *content*
+    heuristics for content that is itself genuinely binary; ClamAV and
+    the custom MD5/SHA256/regex rules (check_custom_rules) still see
+    every file regardless, since those are meaningful on binary content
+    too."""
+    return b"\x00" in data[:sniff_bytes]
+
+
 def check_custom_rules(fname, rules):
     patterns, md5s, sha256s = rules
     if not patterns and not md5s and not sha256s:
@@ -625,22 +644,36 @@ def main():
             total += 1
             scanned_files.append(fname)
             try:
-                matches = rules.match(fname, fast=True)
-            except UnicodeEncodeError:
-                # A path with a raw non-UTF8 byte (surrogateescape'd by
-                # iter_files) can't be passed through to yara's C
-                # extension as a filepath string - but the file itself
-                # still needs scanning (a webshell doesn't stop being
-                # one for having an oddly-encoded name). Python's own
-                # open() handles a surrogateescape'd path fine, so read
-                # the bytes ourselves and match against those instead.
+                with open(fname, "rb") as f:
+                    sniff = f.read(8000)
+            except OSError:
+                sniff = b""
+            if is_probably_binary(sniff):
+                # Genuinely binary content (a NUL byte in the first
+                # chunk) - skip the YARA text-content ruleset (its
+                # IsPhp gate false-positives on binary data, see
+                # is_probably_binary()'s docstring), but still run
+                # custom_hits/ClamAV below, same as any other file.
+                matches = []
+            else:
                 try:
-                    with open(fname, "rb") as f:
-                        data = f.read()
-                    matches = rules.match(data=data, fast=True)
-                except OSError:
-                    print(f"# Skipped (unreadable, unencodable path): {fname!r}", file=sys.stderr)
-                    continue
+                    matches = rules.match(fname, fast=True)
+                except UnicodeEncodeError:
+                    # A path with a raw non-UTF8 byte (surrogateescape'd
+                    # by iter_files) can't be passed through to yara's C
+                    # extension as a filepath string - but the file
+                    # still needs scanning (a webshell doesn't stop
+                    # being one for having an oddly-encoded name).
+                    # Python's own open() handles a surrogateescape'd
+                    # path fine, so read the bytes ourselves and match
+                    # against those instead.
+                    try:
+                        with open(fname, "rb") as f:
+                            data = f.read()
+                        matches = rules.match(data=data, fast=True)
+                    except OSError:
+                        print(f"# Skipped (unreadable, unencodable path): {fname!r}", file=sys.stderr)
+                        continue
             real = [m for m in matches if m.rule != "IsWhitelisted" and m.rule != "IsPhp"]
             if real and is_unmodified_core_file(fname):
                 # Byte-for-byte matches the official checksum for this
