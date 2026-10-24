@@ -41,12 +41,20 @@ def test_search_findings_filters_by_category(tmp_path, monkeypatch):
     assert rows[0][1] == "/b.php"
 
 
-def test_search_findings_yara_excludes_other_categories(tmp_path, monkeypatch):
+def test_search_findings_yara_exploit_excludes_other_categories(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
     db.record_scan("/x", 3, [("/a.php", "Known exploit"), ("/b.php", "Eicar (ClamAV)"), ("/c.php", "x (maldet)")])
-    rows, count = db.search_findings(category="yara")
+    rows, count = db.search_findings(category="yara_exploit")
     assert count == 1
     assert rows[0][1] == "/a.php"
+
+
+def test_search_findings_yara_heuristic_excludes_exploits(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
+    db.record_scan("/x", 3, [("/a.php", "Known exploit"), ("/b.php", "ObfuscatedPhp"), ("/c.php", "x (maldet)")])
+    rows, count = db.search_findings(category="yara_heuristic")
+    assert count == 1
+    assert rows[0][1] == "/b.php"
 
 
 def test_search_findings_no_category_returns_everything(tmp_path, monkeypatch):

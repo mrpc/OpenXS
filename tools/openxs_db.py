@@ -422,8 +422,10 @@ _CATEGORY_SQL = {
     "fs": "f.rule_name IN ('SUID file', 'world-writable directory', 'symlink', 'socket', "
           "'core dump file', 'Linux binary or executable file', 'Windows binary or executable file', "
           "'hidden directory owned by nobody')",
-    "yara": "f.rule_name NOT LIKE '%(ClamAV)' AND f.rule_name NOT LIKE '%(maldet)' AND "
-            "f.rule_name NOT LIKE '%(oldversion)' AND f.rule_name NOT IN ('SUID file', "
+    "yara_exploit": "f.rule_name LIKE '%Known exploit%'",
+    "yara_heuristic": "f.rule_name NOT LIKE '%(ClamAV)' AND f.rule_name NOT LIKE '%(maldet)' AND "
+            "f.rule_name NOT LIKE '%(oldversion)' AND f.rule_name NOT LIKE '%Known exploit%' AND "
+            "f.rule_name NOT IN ('SUID file', "
             "'world-writable directory', 'symlink', 'socket', 'core dump file', "
             "'Linux binary or executable file', 'Windows binary or executable file', "
             "'hidden directory owned by nobody')",

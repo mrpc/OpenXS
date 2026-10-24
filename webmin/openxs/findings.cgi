@@ -13,7 +13,7 @@ require './openxs-lib.pl';
 print $openxs_nav;
 
 my $cat = $in{'cat'};
-$cat = "" unless ($cat =~ /^(yara|virus|maldet|oldversion|fs)$/);
+$cat = "" unless ($cat =~ /^(yara_exploit|yara_heuristic|virus|maldet|oldversion|fs)$/);
 my $search = $in{'search'};
 $search =~ s/[\r\n]//g;
 my $page = $in{'fpage'};
@@ -35,8 +35,8 @@ return "<a href='findings.cgi?$base_qs&fsort=$col&forder=$next_order'>$label$arr
 
 print &ui_subheading("Findings");
 
-my @tabs = (["", "All"], ["yara", "Exploits"], ["virus", "Virus"], ["maldet", "maldet"],
-            ["oldversion", "Old Versions"], ["fs", "Filesystem"]);
+my @tabs = (["", "All"], ["yara_exploit", "Exploits"], ["yara_heuristic", "Suspicious patterns"],
+            ["virus", "Virus"], ["maldet", "maldet"], ["oldversion", "Old Versions"], ["fs", "Filesystem"]);
 print "<p>";
 foreach my $t (@tabs) {
 	my ($val, $label) = @$t;

@@ -21,7 +21,8 @@ $cfg{'THROTTLE_LOAD'} = &one_line($in{'throttle_load'}) if (defined($in{'throttl
 $cfg{'THROTTLE_LOAD'} =~ s/[^0-9.]//g if ($cfg{'THROTTLE_LOAD'} ne '');
 my @qcats;
 push(@qcats, 'virus') if (defined($in{'qcat_virus'}) && $in{'qcat_virus'} eq '1');
-push(@qcats, 'yara') if (defined($in{'qcat_yara'}) && $in{'qcat_yara'} eq '1');
+push(@qcats, 'yara_exploit') if (defined($in{'qcat_yara_exploit'}) && $in{'qcat_yara_exploit'} eq '1');
+push(@qcats, 'yara_heuristic') if (defined($in{'qcat_yara_heuristic'}) && $in{'qcat_yara_heuristic'} eq '1');
 push(@qcats, 'maldet') if (defined($in{'qcat_maldet'}) && $in{'qcat_maldet'} eq '1');
 push(@qcats, 'fs') if (defined($in{'qcat_fs'}) && $in{'qcat_fs'} eq '1');
 $cfg{'QUARANTINE_CATEGORIES'} = join(',', @qcats);

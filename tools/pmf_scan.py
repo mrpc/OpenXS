@@ -150,7 +150,17 @@ def categorize(rule_name):
     """cxs quarantines only a conservative default (Viruses + Known
     Exploits) 'to avoid otherwise breaking web sites' - filesystem
     indicators (SUID/symlinks/binaries) are much more likely to be a
-    legitimate part of the server, so they get their own category."""
+    legitimate part of the server, so they get their own category.
+
+    The generic YARA heuristics (ObfuscatedPhp, DodgyPhp, DodgyStrings,
+    NonPrintableChars, ...) are split out from the high-confidence
+    "Known exploit" fingerprint matches into their own category: they
+    rely on php-malware-finder's hash-based CMS whitelist to suppress
+    hits on legitimate core files, and that whitelist is frozen at
+    whatever WordPress/Drupal/etc. version it was last generated
+    against - a site that has since updated its CMS core falls out of
+    it and would otherwise get real, unmodified files auto-quarantined.
+    """
     if rule_name.endswith("(ClamAV)"):
         return "virus"
     if rule_name.endswith("(maldet)"):
@@ -159,7 +169,9 @@ def categorize(rule_name):
         return "oldversion"
     if rule_name in FS_RULES:
         return "fs"
-    return "yara"
+    if "Known exploit" in rule_name:
+        return "yara_exploit"
+    return "yara_heuristic"
 
 def load_custom_rules(path):
     """cxs's rule/xtra file: extra regexes to flag, or 'md5:<hash>'/
@@ -596,7 +608,7 @@ def main():
                 # finding's path can override both whether quarantine is
                 # on at all and which categories, via path_overrides.
                 global_enabled = os.environ.get("OPENXS_QUARANTINE_ENABLED", "0")
-                global_cats = os.environ.get("OPENXS_QUARANTINE_CATEGORIES", "virus,yara,maldet")
+                global_cats = os.environ.get("OPENXS_QUARANTINE_CATEGORIES", "virus,yara_exploit,maldet")
                 quarantined = 0
                 for fid, fpath, rule_name, _ in openxs_db.findings_for_scan(scan_id):
                     q_enabled = effective_setting(fpath, path_overrides, "quarantine_enabled", global_enabled)

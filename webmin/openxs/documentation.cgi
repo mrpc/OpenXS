@@ -49,7 +49,7 @@ ACCOUNTS_DIR=/home                 # one subdirectory per account, used when SCA
 ACCOUNTS_SUBPATH=public_html       # web root per account; blank = whole account home dir
 SCHEDULE=17 2 * * *                # cron syntax; blank = scheduled scan disabled
 QUARANTINE_ENABLED=0               # move flagged files to quarantine
-QUARANTINE_CATEGORIES=virus,yara,maldet   # which categories to quarantine: virus, yara, maldet, fs
+QUARANTINE_CATEGORIES=virus,yara_exploit,maldet   # which categories to quarantine: virus, yara, maldet, fs
 FAST_PHP_ONLY=0                    # 1 = only scan *.php (faster, misses disguised payloads)
 CHANGED_HOURS=                     # blank = no time filter; N = only files changed in the last N hours
 THROTTLE_LOAD=                     # blank = disabled; pause scanning if load average exceeds this
@@ -141,8 +141,10 @@ print "<p>Opt-in (<code>QUARANTINE_ENABLED</code>), applies to manual/scheduled/
       "- the real-time upload hook already blocks the request outright, there's nothing left to move. ".
       "Quarantined files are chmod 0000'd and moved to <code>/var/lib/openxs/quarantine/</code>; restore ".
       "and permanent delete are both available from the Quarantine view. By default only the <code>virus</code> ".
-      "and <code>yara</code> categories are quarantined (not <code>fs</code> - filesystem indicators like ".
-      "SUID files or symlinks are much more likely to be a legitimate part of the server).</p>";
+      "and <code>yara_exploit</code> categories are quarantined (not <code>fs</code> - filesystem indicators like ".
+      "SUID files or symlinks are much more likely to be a legitimate part of the server; and not ".
+      "<code>yara_heuristic</code> - those generic patterns rely on a hash-based CMS whitelist that goes ".
+      "stale as sites update their core files, so they're flagged for manual review instead).</p>";
 
 print &ui_subheading("Command-line tools (tools/)");
 print "<ul>".

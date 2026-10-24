@@ -45,7 +45,10 @@ print &ui_table_row("Quarantine", &ui_checkbox("quarantine_enabled", "1",
 my %qcats = map { $_ => 1 } split(/,/, $cfg{'QUARANTINE_CATEGORIES'});
 print &ui_table_row("...which categories to quarantine",
 	&ui_checkbox("qcat_virus", "1", "Viruses (ClamAV)", $qcats{'virus'}) . "<br>" .
-	&ui_checkbox("qcat_yara", "1", "Known exploits (YARA + custom rules)", $qcats{'yara'}) . "<br>" .
+	&ui_checkbox("qcat_yara_exploit", "1", "Known exploits (YARA fingerprint/custom rules - high confidence)", $qcats{'yara_exploit'}) . "<br>" .
+	&ui_checkbox("qcat_yara_heuristic", "1", "Suspicious code patterns (YARA heuristics - <b>not recommended</b>: ".
+		"relies on a hash-based CMS whitelist that goes stale as sites update, so an unmodified but newer ".
+		"core file can be flagged)", $qcats{'yara_heuristic'}) . "<br>" .
 	&ui_checkbox("qcat_maldet", "1", "Known exploits (maldet - MD5/HEX/YARA)", $qcats{'maldet'}) . "<br>" .
 	&ui_checkbox("qcat_fs", "1", "Filesystem indicators (SUID/symlinks/binaries - <b>not recommended</b>: ".
 		"these are often legitimate parts of the server)", $qcats{'fs'}));

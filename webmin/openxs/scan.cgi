@@ -53,7 +53,7 @@ else {
 	$ENV{'OPENXS_CHANGED_HOURS'} = $cfg{'CHANGED_HOURS'} || '';
 	$ENV{'OPENXS_THROTTLE_LOAD'} = $cfg{'THROTTLE_LOAD'} || '';
 	$ENV{'OPENXS_QUIET'} = ($cfg{'QUIET'} || '0') eq '1' ? '1' : '0';
-	$ENV{'OPENXS_QUARANTINE_CATEGORIES'} = $cfg{'QUARANTINE_CATEGORIES'} || 'virus,yara,maldet';
+	$ENV{'OPENXS_QUARANTINE_CATEGORIES'} = $cfg{'QUARANTINE_CATEGORIES'} || 'virus,yara_exploit,maldet';
 	$ENV{'OPENXS_FAST_PHP_ONLY'} = ($cfg{'FAST_PHP_ONLY'} || '0') eq '1' ? '1' : '0';
 	my $out = `python3 /opt/php-malware-finder/pmf_scan.py scan $ruleset $filelist 2>&1`;
 	unlink($filelist);
