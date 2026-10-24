@@ -117,3 +117,71 @@ def test_finding_by_id_returns_row(tmp_path, monkeypatch):
 def test_finding_by_id_returns_none_for_missing_id(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
     assert db.finding_by_id(999999) is None
+
+
+def test_search_findings_resolved_true_only_quarantined(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
+    monkeypatch.setattr(db, "QUARANTINE_DIR", str(tmp_path / "quarantine"))
+    f = tmp_path / "a.php"
+    f.write_text("x")
+    db.record_scan("/x", 2, [(str(f), "Known exploit"), ("/b.php", "Known exploit")])
+    fid = db.search_findings(search="a.php")[0][0][0]
+    db.quarantine_file(fid)
+    rows, count = db.search_findings(resolved=True)
+    assert count == 1
+    assert rows[0][1] == str(f)
+
+
+def test_search_findings_resolved_true_includes_active_permission_fix(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
+    d = tmp_path / "wtest"
+    d.mkdir()
+    import os
+    os.chmod(d, 0o777)
+    db.record_scan("/x", 2, [(str(d), "world-writable directory"), ("/b.php", "Known exploit")])
+    fid = db.search_findings(search="wtest")[0][0][0]
+    db.fix_world_writable_permission(fid)
+    rows, count = db.search_findings(resolved=True)
+    assert count == 1
+    assert rows[0][1] == str(d)
+
+
+def test_search_findings_resolved_false_excludes_quarantined_and_fixed(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
+    monkeypatch.setattr(db, "QUARANTINE_DIR", str(tmp_path / "quarantine"))
+    f = tmp_path / "a.php"
+    f.write_text("x")
+    db.record_scan("/x", 2, [(str(f), "Known exploit"), ("/b.php", "Known exploit")])
+    fid = db.search_findings(search="a.php")[0][0][0]
+    db.quarantine_file(fid)
+    rows, count = db.search_findings(resolved=False)
+    assert count == 1
+    assert rows[0][1] == "/b.php"
+
+
+def test_search_findings_resolved_restored_fix_counts_as_unresolved_again(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
+    d = tmp_path / "wtest"
+    d.mkdir()
+    import os
+    os.chmod(d, 0o777)
+    db.record_scan("/x", 1, [(str(d), "world-writable directory")])
+    fid = db.search_findings(search="wtest")[0][0][0]
+    db.fix_world_writable_permission(fid)
+    db.restore_permission(fid)
+    rows, count = db.search_findings(resolved=False)
+    assert count == 1
+    rows2, count2 = db.search_findings(resolved=True)
+    assert count2 == 0
+
+
+def test_search_findings_resolved_none_returns_everything(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
+    monkeypatch.setattr(db, "QUARANTINE_DIR", str(tmp_path / "quarantine"))
+    f = tmp_path / "a.php"
+    f.write_text("x")
+    db.record_scan("/x", 2, [(str(f), "Known exploit"), ("/b.php", "Known exploit")])
+    fid = db.search_findings(search="a.php")[0][0][0]
+    db.quarantine_file(fid)
+    rows, count = db.search_findings()
+    assert count == 2

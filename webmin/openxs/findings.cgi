@@ -14,6 +14,8 @@ print $openxs_nav;
 
 my $cat = $in{'cat'};
 $cat = "" unless ($cat =~ /^(yara_exploit|yara_heuristic|virus|maldet|oldversion|fs)$/);
+my $resolved = $in{'resolved'};
+$resolved = "" unless ($resolved =~ /^(0|1)$/);
 my $search = $in{'search'};
 $search =~ s/[\r\n]//g;
 my $page = $in{'fpage'};
@@ -58,25 +60,44 @@ print "<p>";
 foreach my $t (@tabs) {
 	my ($val, $label) = @$t;
 	my $style = ($val eq $cat) ? "font-weight:bold;text-decoration:underline" : "";
-	print "<a href='findings.cgi?cat=$val' style='margin-right:10px;$style'>$label</a>";
+	print "<a href='findings.cgi?cat=$val&resolved=$resolved' style='margin-right:10px;$style'>$label</a>";
+	}
+print "</p>";
+
+# "Resolved" = actually acted on - quarantined/deleted, or has an active
+# permission fix (a directory can't be quarantined the way a file can).
+# Lets an admin hide what's already been dealt with and see only what's
+# left, instead of re-scanning the same already-handled findings
+# mentally on every visit (found a real need for this after fixing
+# thousands of world-writable-directory findings by hand on 2026-10-25 -
+# they'd otherwise keep cluttering this page forever, same shape as the
+# problem new_finding_ids()/the email alert tiering already solved for
+# repeat generic-heuristic noise).
+my @resolved_opts = (["", "All"], ["0", "Unresolved only"], ["1", "Resolved only"]);
+print "<p>";
+foreach my $r (@resolved_opts) {
+	my ($val, $label) = @$r;
+	my $style = ($val eq $resolved) ? "font-weight:bold;text-decoration:underline" : "";
+	print "<a href='findings.cgi?cat=$cat&resolved=$val' style='margin-right:10px;$style'>$label</a>";
 	}
 print "</p>";
 
 print &ui_form_start("findings.cgi", "get") .
-	&ui_hidden("cat", $cat) .
+	&ui_hidden("cat", $cat) . &ui_hidden("resolved", $resolved) .
 	"<label>Search filename: " . &ui_textbox("search", $search, 40) . "</label> " .
 	&ui_submit("Search", "go") .
-	(($search ne "") ? " <a href='findings.cgi?cat=$cat'>&laquo; Clear</a>" : "") .
+	(($search ne "") ? " <a href='findings.cgi?cat=$cat&resolved=$resolved'>&laquo; Clear</a>" : "") .
 	&ui_form_end();
 
 my $search_arg = $search eq "" ? "None" : "'" . ($search =~ s/'/\\'/gr) . "'";
 my $cat_arg = $cat eq "" ? "None" : "'$cat'";
+my $resolved_arg = $resolved eq "" ? "None" : ($resolved eq "1" ? "True" : "False");
 my $out = `python3 -c "
 import sys, os
 sys.path.insert(0, '$pmf_dir')
 import openxs_db
 import pmf_scan
-rows, total = openxs_db.search_findings(category=$cat_arg, search=$search_arg, limit=$page_size, offset=$offset, sort='$sort', order='$order')
+rows, total = openxs_db.search_findings(category=$cat_arg, search=$search_arg, limit=$page_size, offset=$offset, sort='$sort', order='$order', resolved=$resolved_arg)
 print('TOTAL\\t' + str(total))
 for fid, f, r, q, size, ts, scan_path in rows:
     user = openxs_db.derive_user(f) or ''
@@ -98,13 +119,13 @@ if (@all_lines && $all_lines[0] =~ /^TOTAL\t(\d+)$/) {
 	}
 
 if (!@all_lines) {
-	print "<p>No findings" . ($cat ne "" || $search ne "" ? " match this filter" : " recorded yet") . ".</p>\n";
+	print "<p>No findings" . ($cat ne "" || $resolved ne "" || $search ne "" ? " match this filter" : " recorded yet") . ".</p>\n";
 	}
 else {
 	print "<p>$total finding(s) - showing " . ($offset + 1) . "-" . ($offset + scalar(@all_lines)) . "</p>\n";
 	print &ui_form_start("bulk_action.cgi", "post");
 	print &ui_hidden("cat", $cat) . &ui_hidden("search", $search) . &ui_hidden("fpage", $page);
-	my $base_qs = "cat=$cat&search=$search";
+	my $base_qs = "cat=$cat&resolved=$resolved&search=$search";
 	print &ui_columns_start(["", &findings_sort_header($sort, $order, $base_qs, "date", "Date"), "User", "Source",
 		&findings_sort_header($sort, $order, $base_qs, "path", "File"),
 		&findings_sort_header($sort, $order, $base_qs, "rule", "Rule"),
@@ -156,7 +177,7 @@ else {
 	print &ui_form_end();
 	print &openxs_flush_mini_forms();
 	print "<p>";
-	my $qs = "cat=$cat&search=$search";
+	my $qs = "cat=$cat&resolved=$resolved&search=$search";
 	print "<a href='findings.cgi?$qs&fpage=" . ($page - 1) . "'>&laquo; Previous</a> " if ($page > 0);
 	print "<a href='findings.cgi?$qs&fpage=" . ($page + 1) . "'>Next &raquo;</a>" if ($offset + $page_size < $total);
 	print "</p>\n";
