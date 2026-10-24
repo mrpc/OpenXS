@@ -364,6 +364,57 @@ def is_unmodified_wp_plugin_file(fname):
     return wp_plugin_checksums.is_unmodified_core_file(fname, plugin_root, checksums)
 
 
+WP_PLUGIN_LANG_FILE_RE = re.compile(r'^(?P<slug>.+)-(?P<locale>[a-z]{2,3}(?:_[A-Z]{2})?(?:_[a-z0-9]+)?)\.l10n\.php$')
+
+
+def find_wp_plugin_lang_file_for(fname):
+    """If fname is a WordPress plugin translation file under the single,
+    shared wp-content/languages/plugins/ directory (every plugin's
+    translations land there together, not nested under the plugin's own
+    folder - why find_wp_plugin_root_for() never covers these), returns
+    (wp_root, slug, locale). None otherwise."""
+    if "/wp-content/languages/plugins/" not in fname:
+        return None
+    m = WP_PLUGIN_LANG_FILE_RE.match(os.path.basename(fname))
+    if not m:
+        return None
+    platform, wp_root = find_platform_root_for(fname)
+    if not platform or platform["name"] != "wordpress":
+        return None
+    return (wp_root, m.group("slug"), m.group("locale"))
+
+
+def is_unmodified_wp_plugin_lang_file(fname):
+    """True if fname is a wordpress.org plugin's own official translation
+    file for its exact installed version/locale - generalizes
+    is_unmodified_wp_plugin_file() to the one case it structurally can't
+    reach (translations are versioned and distributed completely
+    separately from the plugin's own code, see wp_plugin_lang_checksums.py).
+    Non-ASCII translated text (Greek, etc.) trips the generic
+    NonPrintableChars/DodgyStrings heuristics just as easily as
+    obfuscated code does."""
+    found = find_wp_plugin_lang_file_for(fname)
+    if not found:
+        return False
+    wp_root, slug, locale = found
+    try:
+        import version_scan
+        import wp_plugin_lang_checksums
+    except ImportError:
+        return False
+    version = None
+    for s, v in version_scan.find_wp_plugins(wp_root):
+        if s == slug:
+            version = v
+            break
+    if not version:
+        return False
+    checksums = wp_plugin_lang_checksums.fetch_checksums(slug, version, locale)
+    if not checksums:
+        return False
+    return wp_plugin_lang_checksums.is_unmodified_core_file(fname, checksums)
+
+
 def categorize(rule_name):
     """cxs quarantines only a conservative default (Viruses + Known
     Exploits) 'to avoid otherwise breaking web sites' - filesystem
@@ -811,15 +862,16 @@ def main():
                         continue
             real = [m for m in matches if m.rule != "IsWhitelisted" and m.rule != "IsPhp"
                     and paranoia_level_for(m.rule) <= paranoia_level]
-            if real and (is_unmodified_core_file(fname) or is_unmodified_wp_plugin_file(fname)):
+            if real and (is_unmodified_core_file(fname) or is_unmodified_wp_plugin_file(fname)
+                         or is_unmodified_wp_plugin_lang_file(fname)):
                 # Byte-for-byte matches the official checksum for this
-                # exact version (core platform, or - far more often in
-                # practice - a wordpress.org-hosted plugin) - whatever
-                # rule just matched is a false positive, not something a
-                # webshell could be hiding behind. See
-                # is_unmodified_wordpress_core_file()'s docstring for
-                # why php-malware-finder's own bundled whitelist doesn't
-                # already catch this.
+                # exact version (core platform, a wordpress.org-hosted
+                # plugin, or that plugin's own official translation
+                # file) - whatever rule just matched is a false
+                # positive, not something a webshell could be hiding
+                # behind. See is_unmodified_wordpress_core_file()'s
+                # docstring for why php-malware-finder's own bundled
+                # whitelist doesn't already catch this.
                 real = []
             custom_hits = check_custom_rules(fname, custom_rules)
             # Scan inside zip/tar archives too (cxs's --options Z) - a

@@ -39,6 +39,21 @@ Release from that section's text.
   others were all wordpress.org-hosted, confirmed end-to-end against
   real flagged files) - a commercial/non-wp.org plugin (e.g. RevSlider)
   isn't covered and needs its own fix.
+- A wordpress.org plugin's own TRANSLATION files (`wp_plugin_lang_checksums.py`):
+  a plugin's own release zip never contains these at all (confirmed by
+  hand) - they're versioned completely separately via
+  api.wordpress.org/translations/plugins/1.0/ and land in one shared
+  directory (`wp-content/languages/plugins/<slug>-<locale>.l10n.php`,
+  every plugin's translations together, not nested under the plugin's
+  own folder), which is why `wp_plugin_checksums.py` alone never
+  covered these. Non-ASCII translated text (Greek, etc.) trips the
+  generic NonPrintableChars/DodgyStrings heuristics just as easily as
+  obfuscated code does, found live 2026-10-24 recurring across many
+  unrelated accounts. Partial coverage by nature, not a bug - WordPress
+  translations get revised independently of the plugin version (unlike
+  code, which never changes once released), so a site's local file can
+  legitimately be an earlier-but-still-official revision than whatever
+  the API currently serves.
 - Roundcube Webmail and phpMyAdmin: suppress false positives on
   unmodified core files via self-built checksums bundles (same shape as
   Revive - neither project publishes an official per-file checksums

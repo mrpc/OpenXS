@@ -459,6 +459,61 @@ def test_is_unmodified_wp_plugin_file_false_for_commercial_plugin(tmp_path, monk
     assert not pmf_scan.is_unmodified_wp_plugin_file(str(target))
 
 
+def test_find_wp_plugin_lang_file_for_parses_slug_and_locale(tmp_path):
+    pmf_scan._PLATFORM_ROOT_CACHE.clear()
+    wp_root = tmp_path / "public_html"
+    (wp_root / "wp-includes").mkdir(parents=True)
+    (wp_root / "wp-includes" / "version.php").write_text("<?php $wp_version = '6.0';")
+    lang_dir = wp_root / "wp-content" / "languages" / "plugins"
+    lang_dir.mkdir(parents=True)
+    target = lang_dir / "jetpack-el.l10n.php"
+    target.write_text("x")
+    assert pmf_scan.find_wp_plugin_lang_file_for(str(target)) == (str(wp_root), "jetpack", "el")
+
+
+def test_find_wp_plugin_lang_file_for_handles_hyphenated_slug(tmp_path):
+    pmf_scan._PLATFORM_ROOT_CACHE.clear()
+    wp_root = tmp_path / "public_html"
+    (wp_root / "wp-includes").mkdir(parents=True)
+    (wp_root / "wp-includes" / "version.php").write_text("<?php $wp_version = '6.0';")
+    lang_dir = wp_root / "wp-content" / "languages" / "plugins"
+    lang_dir.mkdir(parents=True)
+    target = lang_dir / "loco-translate-en_GB.l10n.php"
+    target.write_text("x")
+    assert pmf_scan.find_wp_plugin_lang_file_for(str(target)) == (str(wp_root), "loco-translate", "en_GB")
+
+
+def test_find_wp_plugin_lang_file_for_none_outside_languages_dir(tmp_path):
+    pmf_scan._PLATFORM_ROOT_CACHE.clear()
+    wp_root = tmp_path / "public_html"
+    (wp_root / "wp-includes").mkdir(parents=True)
+    (wp_root / "wp-includes" / "version.php").write_text("<?php $wp_version = '6.0';")
+    plugin_dir = wp_root / "wp-content" / "plugins" / "jetpack"
+    plugin_dir.mkdir(parents=True)
+    target = plugin_dir / "jetpack-el.l10n.php"
+    target.write_text("x")
+    assert pmf_scan.find_wp_plugin_lang_file_for(str(target)) is None
+
+
+def test_is_unmodified_wp_plugin_lang_file_matches(tmp_path, monkeypatch):
+    pmf_scan._PLATFORM_ROOT_CACHE.clear()
+    wp_root = tmp_path / "public_html"
+    (wp_root / "wp-includes").mkdir(parents=True)
+    (wp_root / "wp-includes" / "version.php").write_text("<?php $wp_version = '6.0';")
+    plugin_dir = wp_root / "wp-content" / "plugins" / "jetpack"
+    plugin_dir.mkdir(parents=True)
+    (plugin_dir / "readme.txt").write_text("Stable tag: 16.3.1\n")
+    lang_dir = wp_root / "wp-content" / "languages" / "plugins"
+    lang_dir.mkdir(parents=True)
+    target = lang_dir / "jetpack-el.l10n.php"
+    target.write_bytes(b"stock content")
+
+    import wp_plugin_lang_checksums
+    monkeypatch.setattr(wp_plugin_lang_checksums, "fetch_checksums",
+                         lambda slug, version, locale: {"jetpack-el.l10n.php": __import__("hashlib").sha256(b"stock content").hexdigest()})
+    assert pmf_scan.is_unmodified_wp_plugin_lang_file(str(target))
+
+
 def test_find_platform_root_for_detects_drupal(tmp_path):
     pmf_scan._PLATFORM_ROOT_CACHE.clear()
     drupal_root = tmp_path / "public_html"
