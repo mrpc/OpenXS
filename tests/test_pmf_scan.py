@@ -345,28 +345,55 @@ def test_file_hashes_read_is_bounded_even_if_size_check_is_stale(tmp_path):
     assert md5 == hashlib.md5(b"y" * 400).hexdigest()
 
 
-# --- WordPress core checksum false-positive suppression --------------------
+# --- Platform core checksum false-positive suppression ---------------------
+# Shared registry (_PLATFORMS) + one root-finding walk for every platform,
+# so a new platform never means a second independent directory traversal.
 
-def test_find_wp_root_for_finds_ancestor_with_version_php(tmp_path):
-    pmf_scan._WP_ROOT_CACHE.clear()
+def test_find_platform_root_for_detects_wordpress(tmp_path):
+    pmf_scan._PLATFORM_ROOT_CACHE.clear()
     wp_root = tmp_path / "public_html"
     (wp_root / "wp-includes").mkdir(parents=True)
     (wp_root / "wp-includes" / "version.php").write_text("<?php $wp_version = '6.0';")
     target = wp_root / "wp-includes" / "comment.php"
     target.write_text("x")
-    assert pmf_scan.find_wp_root_for(str(target)) == str(wp_root)
+    platform, root = pmf_scan.find_platform_root_for(str(target))
+    assert platform["name"] == "wordpress"
+    assert root == str(wp_root)
 
 
-def test_find_wp_root_for_no_wordpress_returns_none(tmp_path):
-    pmf_scan._WP_ROOT_CACHE.clear()
+def test_find_platform_root_for_detects_drupal(tmp_path):
+    pmf_scan._PLATFORM_ROOT_CACHE.clear()
+    drupal_root = tmp_path / "public_html"
+    (drupal_root / "includes").mkdir(parents=True)
+    (drupal_root / "modules").mkdir()
+    (drupal_root / "sites").mkdir()
+    (drupal_root / "includes" / "bootstrap.inc").write_text("<?php define('VERSION', '7.32');")
+    target = drupal_root / "includes" / "bootstrap.inc"
+    platform, root = pmf_scan.find_platform_root_for(str(target))
+    assert platform["name"] == "drupal7"
+    assert root == str(drupal_root)
+
+
+def test_find_platform_root_for_requires_drupal_modules_and_sites_dirs(tmp_path):
+    # bootstrap.inc alone is too generic a filename to key off safely
+    pmf_scan._PLATFORM_ROOT_CACHE.clear()
+    root = tmp_path / "public_html"
+    (root / "includes").mkdir(parents=True)
+    (root / "includes" / "bootstrap.inc").write_text("<?php")
+    target = root / "includes" / "bootstrap.inc"
+    assert pmf_scan.find_platform_root_for(str(target)) == (None, None)
+
+
+def test_find_platform_root_for_no_platform_returns_none(tmp_path):
+    pmf_scan._PLATFORM_ROOT_CACHE.clear()
     target = tmp_path / "some" / "random" / "file.php"
     target.parent.mkdir(parents=True)
     target.write_text("x")
-    assert pmf_scan.find_wp_root_for(str(target)) is None
+    assert pmf_scan.find_platform_root_for(str(target)) == (None, None)
 
 
-def test_is_unmodified_wordpress_core_file_true_for_matching_checksum(tmp_path, monkeypatch):
-    pmf_scan._WP_ROOT_CACHE.clear()
+def test_is_unmodified_core_file_true_for_matching_wordpress_checksum(tmp_path, monkeypatch):
+    pmf_scan._PLATFORM_ROOT_CACHE.clear()
     wp_root = tmp_path / "public_html"
     (wp_root / "wp-includes").mkdir(parents=True)
     (wp_root / "wp-includes" / "version.php").write_text("$wp_version = '6.0';")
@@ -377,11 +404,11 @@ def test_is_unmodified_wordpress_core_file_true_for_matching_checksum(tmp_path, 
     monkeypatch.setattr(wp_core_checksums, "fetch_checksums",
                          lambda version, **kw: {"wp-includes/comment.php": hashlib.md5(b"stock content").hexdigest()})
 
-    assert pmf_scan.is_unmodified_wordpress_core_file(str(f))
+    assert pmf_scan.is_unmodified_core_file(str(f))
 
 
-def test_is_unmodified_wordpress_core_file_false_when_modified(tmp_path, monkeypatch):
-    pmf_scan._WP_ROOT_CACHE.clear()
+def test_is_unmodified_core_file_false_when_wordpress_file_modified(tmp_path, monkeypatch):
+    pmf_scan._PLATFORM_ROOT_CACHE.clear()
     wp_root = tmp_path / "public_html"
     (wp_root / "wp-includes").mkdir(parents=True)
     (wp_root / "wp-includes" / "version.php").write_text("$wp_version = '6.0';")
@@ -392,40 +419,11 @@ def test_is_unmodified_wordpress_core_file_false_when_modified(tmp_path, monkeyp
     monkeypatch.setattr(wp_core_checksums, "fetch_checksums",
                          lambda version, **kw: {"wp-includes/comment.php": hashlib.md5(b"stock content").hexdigest()})
 
-    assert not pmf_scan.is_unmodified_wordpress_core_file(str(f))
+    assert not pmf_scan.is_unmodified_core_file(str(f))
 
 
-def test_is_unmodified_wordpress_core_file_false_outside_wordpress(tmp_path):
-    pmf_scan._WP_ROOT_CACHE.clear()
-    f = tmp_path / "random.php"
-    f.write_text("x")
-    assert not pmf_scan.is_unmodified_wordpress_core_file(str(f))
-
-
-# --- Drupal core checksum false-positive suppression ------------------------
-
-def test_find_drupal_root_for_finds_ancestor(tmp_path):
-    pmf_scan._DRUPAL_ROOT_CACHE.clear()
-    drupal_root = tmp_path / "public_html"
-    (drupal_root / "includes").mkdir(parents=True)
-    (drupal_root / "modules").mkdir()
-    (drupal_root / "sites").mkdir()
-    (drupal_root / "includes" / "bootstrap.inc").write_text("<?php define('VERSION', '7.32');")
-    target = drupal_root / "includes" / "bootstrap.inc"
-    assert pmf_scan.find_drupal_root_for(str(target)) == str(drupal_root)
-
-
-def test_find_drupal_root_for_requires_modules_and_sites(tmp_path):
-    pmf_scan._DRUPAL_ROOT_CACHE.clear()
-    root = tmp_path / "public_html"
-    (root / "includes").mkdir(parents=True)
-    (root / "includes" / "bootstrap.inc").write_text("<?php")
-    target = root / "includes" / "bootstrap.inc"
-    assert pmf_scan.find_drupal_root_for(str(target)) is None
-
-
-def test_is_unmodified_drupal_core_file_true_for_matching_checksum(tmp_path, monkeypatch):
-    pmf_scan._DRUPAL_ROOT_CACHE.clear()
+def test_is_unmodified_core_file_true_for_matching_drupal_checksum(tmp_path, monkeypatch):
+    pmf_scan._PLATFORM_ROOT_CACHE.clear()
     drupal_root = tmp_path / "public_html"
     (drupal_root / "includes").mkdir(parents=True)
     (drupal_root / "modules").mkdir()
@@ -437,11 +435,35 @@ def test_is_unmodified_drupal_core_file_true_for_matching_checksum(tmp_path, mon
     monkeypatch.setattr(drupal_core_checksums, "fetch_checksums",
                          lambda version: {"includes/bootstrap.inc": hashlib.sha256(f.read_bytes()).hexdigest()})
 
-    assert pmf_scan.is_unmodified_drupal_core_file(str(f))
+    assert pmf_scan.is_unmodified_core_file(str(f))
 
 
-def test_is_unmodified_drupal_core_file_false_outside_drupal(tmp_path):
-    pmf_scan._DRUPAL_ROOT_CACHE.clear()
+def test_is_unmodified_core_file_false_outside_any_known_platform(tmp_path):
+    pmf_scan._PLATFORM_ROOT_CACHE.clear()
     f = tmp_path / "random.php"
     f.write_text("x")
-    assert not pmf_scan.is_unmodified_drupal_core_file(str(f))
+    assert not pmf_scan.is_unmodified_core_file(str(f))
+
+
+def test_find_platform_root_for_single_walk_serves_both_platforms(tmp_path):
+    # Once a directory's result is cached, a file under a DIFFERENT
+    # platform's root in the same tmp tree must still resolve correctly -
+    # proves the shared cache doesn't mix up platforms.
+    pmf_scan._PLATFORM_ROOT_CACHE.clear()
+    wp_root = tmp_path / "wp"
+    (wp_root / "wp-includes").mkdir(parents=True)
+    (wp_root / "wp-includes" / "version.php").write_text("$wp_version = '6.0';")
+    drupal_root = tmp_path / "drupal"
+    (drupal_root / "includes").mkdir(parents=True)
+    (drupal_root / "modules").mkdir()
+    (drupal_root / "sites").mkdir()
+    (drupal_root / "includes" / "bootstrap.inc").write_text("define('VERSION', '7.32');")
+
+    wp_file = wp_root / "wp-includes" / "comment.php"
+    wp_file.write_text("x")
+    drupal_file = drupal_root / "includes" / "bootstrap.inc"
+
+    wp_platform, wp_found_root = pmf_scan.find_platform_root_for(str(wp_file))
+    drupal_platform, drupal_found_root = pmf_scan.find_platform_root_for(str(drupal_file))
+    assert (wp_platform["name"], wp_found_root) == ("wordpress", str(wp_root))
+    assert (drupal_platform["name"], drupal_found_root) == ("drupal7", str(drupal_root))
