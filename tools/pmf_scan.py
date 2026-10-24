@@ -146,124 +146,101 @@ def log_quarantine(original_path, quarantine_path, category, rule_name):
         pass
 
 
-_WP_ROOT_CACHE = {}
+# Registry of known platforms whose unmodified core files can be
+# verified against an official (or officially-derived) checksum, to
+# suppress a YARA false positive the same way regardless of platform.
+# Adding a platform means adding one entry here, not a whole separate
+# cache/directory-walk/is_unmodified_*_file function - find_platform_root_for()
+# below does a single shared upward walk checking every platform's
+# marker at each directory level, so a new platform costs O(1) more
+# marker checks per level, never a second independent traversal of the
+# same site's directory tree.
+_PLATFORMS = [
+    {
+        "name": "wordpress",
+        "marker": lambda d: os.path.isfile(os.path.join(d, "wp-includes", "version.php")),
+        "version_relpath": os.path.join("wp-includes", "version.php"),
+        "version_re_attr": "WP_VERSION_RE",
+        "checksums_module": "wp_core_checksums",
+    },
+    {
+        "name": "drupal7",
+        # bootstrap.inc alone is too generic a filename to key off safely
+        "marker": lambda d: (os.path.isfile(os.path.join(d, "includes", "bootstrap.inc"))
+                              and os.path.isdir(os.path.join(d, "modules"))
+                              and os.path.isdir(os.path.join(d, "sites"))),
+        "version_relpath": os.path.join("includes", "bootstrap.inc"),
+        "version_re_attr": "DRUPAL_VERSION_RE",
+        "checksums_module": "drupal_core_checksums",
+    },
+]
+
+_PLATFORM_ROOT_CACHE = {}
 
 
-def find_wp_root_for(fname):
-    """Nearest ancestor directory of fname that looks like a WordPress
-    root (has wp-includes/version.php), or None. Memoized per directory
-    since many flagged files in one scan share the same WP install."""
+def find_platform_root_for(fname):
+    """Nearest ancestor directory of fname that matches one of
+    _PLATFORMS' markers. Returns (platform_dict, root) or (None, None).
+    Memoized per directory - many flagged files in one scan share the
+    same install, and every platform's marker is checked in the same
+    walk rather than one walk per platform."""
     d = os.path.dirname(fname)
     checked = []
     while d and d not in ("/", ""):
-        if d in _WP_ROOT_CACHE:
-            result = _WP_ROOT_CACHE[d]
+        if d in _PLATFORM_ROOT_CACHE:
+            result = _PLATFORM_ROOT_CACHE[d]
             for c in checked:
-                _WP_ROOT_CACHE[c] = result
+                _PLATFORM_ROOT_CACHE[c] = result
             return result
         checked.append(d)
-        if os.path.isfile(os.path.join(d, "wp-includes", "version.php")):
-            for c in checked:
-                _WP_ROOT_CACHE[c] = d
-            return d
+        for platform in _PLATFORMS:
+            if platform["marker"](d):
+                result = (platform, d)
+                for c in checked:
+                    _PLATFORM_ROOT_CACHE[c] = result
+                return result
         parent = os.path.dirname(d)
         if parent == d:
             break
         d = parent
     for c in checked:
-        _WP_ROOT_CACHE[c] = None
-    return None
+        _PLATFORM_ROOT_CACHE[c] = (None, None)
+    return (None, None)
 
 
-def is_unmodified_wordpress_core_file(fname):
-    """True if fname sits under a detected WordPress install and matches
-    that exact version's official checksum from wordpress.org - i.e. a
-    YARA hit on it (of any category, even a "Known exploit" fingerprint
-    match) is a false positive: it's provably stock code, byte for byte,
-    not something a webshell could be hiding behind. Supplements
-    php-malware-finder's bundled wordpress.yar whitelist, which only
-    recognizes whatever version it was last generated against (frozen
-    2018) and otherwise flags a site's own legitimate, up-to-date core
-    files once it falls behind. Silently does nothing (returns False) if
-    WordPress isn't installed here or the server has no outbound
-    internet access to reach the checksums API."""
-    wp_root = find_wp_root_for(fname)
-    if not wp_root:
+def is_unmodified_core_file(fname):
+    """True if fname sits under a detected platform install (WordPress,
+    Drupal 7, ...) and matches that exact version's official (or
+    officially-derived) checksum - i.e. a YARA hit on it (of any
+    category, even a "Known exploit" fingerprint match) is a false
+    positive: it's provably stock code, byte for byte, not something a
+    webshell could be hiding behind. Supplements php-malware-finder's
+    bundled whitelist.yar, which only recognizes whatever versions it
+    was last generated against (frozen 2018) and otherwise flags a
+    site's own legitimate, up-to-date core files once they fall behind.
+    Silently does nothing (returns False) if no known platform is
+    installed here, or its checksums can't be found (no outbound
+    internet and not in the bundle)."""
+    platform, root = find_platform_root_for(fname)
+    if not platform:
         return False
     try:
         import version_scan
-        import wp_core_checksums
+        checksums_module = __import__(platform["checksums_module"])
+        version_re = getattr(version_scan, platform["version_re_attr"])
     except ImportError:
         return False
     try:
-        with open(os.path.join(wp_root, "wp-includes", "version.php"), errors="replace") as f:
-            m = version_scan.WP_VERSION_RE.search(f.read())
+        with open(os.path.join(root, platform["version_relpath"]), errors="replace") as f:
+            m = version_re.search(f.read())
     except OSError:
         return False
     if not m:
         return False
-    checksums = wp_core_checksums.fetch_checksums(m.group(1))
+    checksums = checksums_module.fetch_checksums(m.group(1))
     if not checksums:
         return False
-    return wp_core_checksums.is_unmodified_core_file(fname, wp_root, checksums)
-
-
-_DRUPAL_ROOT_CACHE = {}
-
-
-def find_drupal_root_for(fname):
-    """Nearest ancestor directory of fname that looks like a Drupal 7
-    root (has includes/bootstrap.inc alongside a modules/ and sites/
-    directory - bootstrap.inc alone is too generic a name), or None.
-    Memoized per directory, same reasoning as find_wp_root_for."""
-    d = os.path.dirname(fname)
-    checked = []
-    while d and d not in ("/", ""):
-        if d in _DRUPAL_ROOT_CACHE:
-            result = _DRUPAL_ROOT_CACHE[d]
-            for c in checked:
-                _DRUPAL_ROOT_CACHE[c] = result
-            return result
-        checked.append(d)
-        if (os.path.isfile(os.path.join(d, "includes", "bootstrap.inc"))
-                and os.path.isdir(os.path.join(d, "modules"))
-                and os.path.isdir(os.path.join(d, "sites"))):
-            for c in checked:
-                _DRUPAL_ROOT_CACHE[c] = d
-            return d
-        parent = os.path.dirname(d)
-        if parent == d:
-            break
-        d = parent
-    for c in checked:
-        _DRUPAL_ROOT_CACHE[c] = None
-    return None
-
-
-def is_unmodified_drupal_core_file(fname):
-    """Same idea as is_unmodified_wordpress_core_file(), for Drupal 7 -
-    see that function's docstring for the general rationale. Checksums
-    are computed by us (tools/build_drupal_checksums_bundle.py), not
-    fetched from an official API - drupal.org doesn't publish one."""
-    drupal_root = find_drupal_root_for(fname)
-    if not drupal_root:
-        return False
-    try:
-        import version_scan
-        import drupal_core_checksums
-    except ImportError:
-        return False
-    try:
-        with open(os.path.join(drupal_root, "includes", "bootstrap.inc"), errors="replace") as f:
-            m = version_scan.DRUPAL_VERSION_RE.search(f.read())
-    except OSError:
-        return False
-    if not m:
-        return False
-    checksums = drupal_core_checksums.fetch_checksums(m.group(1))
-    if not checksums:
-        return False
-    return drupal_core_checksums.is_unmodified_core_file(fname, drupal_root, checksums)
+    return checksums_module.is_unmodified_core_file(fname, root, checksums)
 
 
 def categorize(rule_name):
@@ -639,7 +616,7 @@ def main():
                 print(f"# Skipped (unencodable path): {fname!r}", file=sys.stderr)
                 continue
             real = [m for m in matches if m.rule != "IsWhitelisted" and m.rule != "IsPhp"]
-            if real and (is_unmodified_wordpress_core_file(fname) or is_unmodified_drupal_core_file(fname)):
+            if real and is_unmodified_core_file(fname):
                 # Byte-for-byte matches the official checksum for this
                 # exact version - whatever rule just matched is a false
                 # positive, not something a webshell could be hiding
