@@ -102,7 +102,7 @@ if ! grep -q "Misc or" "$PMF_DIR/whitelist.yar"; then
 fi
 
 echo "==> Our own tools..."
-cp "$HERE"/tools/*.py "$HERE"/tools/*.sh "$PMF_DIR/"
+cp "$HERE"/tools/*.py "$HERE"/tools/*.sh "$HERE"/tools/default_ignore "$PMF_DIR/"
 chmod +x "$PMF_DIR"/*.py "$PMF_DIR"/*.sh
 cp -r "$HERE"/tools/openxs-rules "$PMF_DIR/"
 cp -r "$HERE"/tools/wp_checksums "$PMF_DIR/"
