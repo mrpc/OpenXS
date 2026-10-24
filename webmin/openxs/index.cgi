@@ -127,9 +127,14 @@ if ($openxs_src ne '' && -d "$openxs_src/.git") {
 			&mini_form("self_update.cgi", &ui_submit("Check for updates", "check"))));
 	}
 
+my $clamav_apparmor_issue = $clamav_ok && &openxs_clamav_apparmor_issue();
 print &ui_table_row("ClamAV (virus scanning, 2nd detector)",
-	&row_value($clamav_ok ? &status_cell($clamav_running, "Installed, running", "Installed, not running")
-	                      : "<i style='color:#888'>Not installed - ran without it (optional, degrades gracefully)</i>",
+	&row_value(($clamav_ok ? &status_cell($clamav_running, "Installed, running", "Installed, not running")
+	                      : "<i style='color:#888'>Not installed - ran without it (optional, degrades gracefully)</i>") .
+		($clamav_apparmor_issue ? "<br><span style='font-size:12px;color:#b38f00'>&#9888; AppArmor is denying ".
+			"some file lookups (<code>dmesg | grep 'clamd.*disconnected path'</code>) - add ".
+			"<code>flags=(attach_disconnected)</code> to <code>/etc/apparmor.d/usr.sbin.clamd</code> ".
+			"and reload with <code>apparmor_parser -r</code>.</span>" : ""),
 		&mini_form("install_clamav.cgi",
 			&ui_submit($clamav_ok ? "Re-apply recommended config" : "Install", "install"))));
 
