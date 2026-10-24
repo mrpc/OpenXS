@@ -19,7 +19,7 @@ return { pid => $pid + 0, rss_mb => sprintf("%.0f", $rss_kb / 1024) + 0, cpu => 
 	etimes => $etimes + 0 };
 }
 
-my @SCAN_STAGES = ('scan', 'clamav');
+my @SCAN_STAGES = ('scan', 'clamav', 'maldet', 'fs');
 
 sub scan_progress_json
 {
