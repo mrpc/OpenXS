@@ -1,0 +1,30 @@
+name: Update Revive Adserver checksums bundle
+
+on:
+  schedule:
+    - cron: '40 6 * * 1'  # weekly, Monday 06:40 UTC (offset from the WordPress/Drupal jobs)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Fetch any newly tagged Revive Adserver versions' checksums
+        run: python3 tools/build_revive_checksums_bundle.py
+
+      - name: Commit new files, if any
+        run: |
+          git config user.name "openxs-bot"
+          git config user.email "noreply@users.noreply.github.com"
+          git add tools/revive_checksums/
+          git diff --cached --quiet && echo "Nothing new." && exit 0
+          git commit -m "Add newly tagged Revive Adserver version(s) to the checksums bundle"
+          git push origin main
