@@ -467,3 +467,24 @@ def test_find_platform_root_for_single_walk_serves_both_platforms(tmp_path):
     drupal_platform, drupal_found_root = pmf_scan.find_platform_root_for(str(drupal_file))
     assert (wp_platform["name"], wp_found_root) == ("wordpress", str(wp_root))
     assert (drupal_platform["name"], drupal_found_root) == ("drupal7", str(drupal_root))
+
+
+# --- is_probably_binary --------------------------------------------------
+
+def test_is_probably_binary_true_for_nul_byte():
+    assert pmf_scan.is_probably_binary(b"\x00\x01\x02some binary junk")
+
+
+def test_is_probably_binary_false_for_plain_php():
+    assert not pmf_scan.is_probably_binary(b"<?php echo 'hello'; ?>")
+
+
+def test_is_probably_binary_only_checks_the_sniffed_prefix():
+    # A NUL byte well past the sniff window shouldn't count - this is a
+    # cheap heuristic over a small prefix, not a full-file scan.
+    data = b"a" * 10000 + b"\x00"
+    assert not pmf_scan.is_probably_binary(data, sniff_bytes=8000)
+
+
+def test_is_probably_binary_empty_data():
+    assert not pmf_scan.is_probably_binary(b"")

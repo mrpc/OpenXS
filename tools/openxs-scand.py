@@ -97,9 +97,22 @@ class ScanHandler(socketserver.BaseRequestHandler):
             self.request.sendall(b"[]\n" if all_mode else b"1\n")
             return
 
-        with _rules_lock:
-            rules = _rules
-        matches = rules.match(path, fast=True)
+        try:
+            with open(path, "rb") as f:
+                sniff = f.read(8000)
+        except OSError:
+            sniff = b""
+        if pmf_scan.is_probably_binary(sniff):
+            # See pmf_scan.is_probably_binary()'s docstring - the YARA
+            # ruleset's IsPhp gate false-positives on binary content
+            # (a real-world case: .git/index and pack files flagged as
+            # "ObfuscatedPhp" through this same daemon, via the watch
+            # daemon's ALL queries).
+            matches = []
+        else:
+            with _rules_lock:
+                rules = _rules
+            matches = rules.match(path, fast=True)
 
         if all_mode:
             self.request.sendall((json.dumps([m.rule for m in matches]) + "\n").encode())
