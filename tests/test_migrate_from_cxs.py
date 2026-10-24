@@ -34,13 +34,13 @@ def test_parse_cron_line_extracts_recognized_flags():
 
 def test_translate_settings_assumes_cxs_default_qoptions_when_quarantine_set_without_it():
     conf, warnings = mig.translate_settings({"quarantine": "/home/quarantine"})
-    assert set(conf["QUARANTINE_CATEGORIES"].split(",")) == {"yara", "virus"}
+    assert set(conf["QUARANTINE_CATEGORIES"].split(",")) == {"yara_exploit", "virus"}
     assert any("assumed cxs's own documented default" in w for w in warnings)
 
 
 def test_translate_settings_maps_qoptions_to_categories():
     conf, warnings = mig.translate_settings({"qoptions": "Mv", "allusers": True, "www": True})
-    assert set(conf["QUARANTINE_CATEGORIES"].split(",")) == {"yara", "virus"}
+    assert set(conf["QUARANTINE_CATEGORIES"].split(",")) == {"yara_exploit", "virus"}
     assert conf["SCAN_MODE"] == "accounts"
     assert conf["ACCOUNTS_SUBPATH"] == "public_html"
 
