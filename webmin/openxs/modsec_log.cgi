@@ -12,6 +12,10 @@ print $openxs_nav;
 my $cache_age = &openxs_modsec_cache_age();
 my $age_note = defined($cache_age) ? "updated " . int($cache_age / 60) . "m ago" : "live (no cache yet)";
 print &ui_subheading("mod_security blocks - grouped by host/path/rule <small>($age_note)</small>");
+if (!&openxs_modsecurity_active()) {
+	print "<p style='color:#8a5a1f'><b>mod_security is currently disabled</b> on this server - this is ".
+		"historical data from before it was disabled, it won't gain new entries until it's re-enabled.</p>\n";
+	}
 print "<p>A repeated block on the SAME host+path is worth a closer look - either a real false " .
 	"positive (exclude it in <a href='settings.cgi'>Settings</a>), or an underlying issue " .
 	"ModSecurity is correctly catching (this is how a real information-leak bug on a live site " .

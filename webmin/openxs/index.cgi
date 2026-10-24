@@ -168,12 +168,17 @@ print &ui_table_row("mod_security (real-time upload blocking)",
 		($modsec_overrides ne '' ? "<br><span style='font-size:12px;color:#8a5a1f'>Per-host override: " .
 			&html_escape($modsec_overrides) . " (<a href='edit_file.cgi?f=modsec_mode'>edit &raquo;</a>)</span>" : ""),
 		($modsec_ok && $modsec_hook_ok)
-			? ($modsec_active
-				? "<a href='modsec_log.cgi'>View recent blocks &raquo;</a> " .
-					&mini_form("disable_modsecurity.cgi", &ui_submit("Disable", "disable", 0,
+			# "View recent blocks" stays available either way - disabling
+			# the module stops it recording NEW blocks, but the history
+			# already on disk (cache + DB) is still worth being able to
+			# see, not hidden away along with the toggle.
+			? "<a href='modsec_log.cgi'>View recent blocks &raquo;</a> " .
+				($modsec_active
+					? &mini_form("disable_modsecurity.cgi", &ui_submit("Disable", "disable", 0,
 						"onclick=\"return confirm('Disable mod_security entirely on this server? ".
 						"(reversible - Install re-enables it)')\""))
-				: &mini_form("install_modsecurity.cgi", &ui_submit("Re-enable", "install")))
+					: "<i style='color:#888;font-size:12px'>(showing history from before it was disabled)</i> " .
+						&mini_form("install_modsecurity.cgi", &ui_submit("Re-enable", "install")))
 			: &mini_form("install_modsecurity.cgi", &ui_submit("Install", "install"))));
 
 if ($csf_ok && &openxs_csf_old()) {
