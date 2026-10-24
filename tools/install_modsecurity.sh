@@ -21,6 +21,20 @@ sed -i \
     -e 's|^#SecUploadFileMode 0600|SecUploadFileMode 0600|' \
     /etc/modsecurity/modsecurity.conf
 
+# A dedicated include point loaded AFTER the CRS rule files
+# (/usr/share/modsecurity-crs/*.load, included a few lines above this in
+# security2.conf) - SecRuleUpdateTargetById (openxs_modsec_rule_exclusions.py)
+# targets an already-defined rule ID, so it has to run after CRS defines
+# it; the existing /etc/modsecurity/*.conf include loads BEFORE CRS and
+# silently no-ops such a directive (confirmed by hand on example.com's
+# incident, 2026-10-24 - apachectl configtest passes either way, only an
+# actual request shows whether it took effect).
+mkdir -p /etc/modsecurity/after-crs
+if ! grep -q 'after-crs' /etc/apache2/mods-enabled/security2.conf; then
+    sed -i '/IncludeOptional \/usr\/share\/modsecurity-crs\/\*.load/a\\tIncludeOptional /etc/modsecurity/after-crs/*.conf' \
+        /etc/apache2/mods-enabled/security2.conf
+fi
+
 cat > "$MODSEC_RULE" <<'EOF'
 SecRule FILES_TMPNAMES "@inspectFile /opt/php-malware-finder/inspectfile.sh" \
   "id:9000001,phase:2,t:none,log,deny,status:403,msg:'openxs-scan detected malicious upload [id \"9000001\"]'"
@@ -41,6 +55,10 @@ else
     cp "$(dirname "$0")/modsec-rules/php2shell.conf" /etc/modsecurity/openxs-php2shell.conf
     echo "Wrote /etc/modsecurity/openxs-php2shell.conf (at least one unprotected PHP version found)"
 fi
+
+python3 "$(dirname "$0")/openxs_modsec_mode.py" > /dev/null
+python3 "$(dirname "$0")/openxs_modsec_rule_exclusions.py" > /dev/null
+python3 "$(dirname "$0")/openxs_modsec_exclusions.py" > /dev/null
 
 apachectl configtest
 systemctl restart apache2 2>/dev/null || service apache2 restart

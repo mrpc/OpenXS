@@ -23,14 +23,20 @@ else {
 			print $fh $content;
 			close($fh);
 			print "<p style='color:green'>Saved $path.</p>\n";
-			if ($key eq 'modsec_exclusions') {
+			my %modsec_regen = (
+				'modsec_exclusions' => ['openxs_modsec_exclusions.py', '/etc/modsecurity/openxs-exclusions.conf'],
+				'modsec_mode' => ['openxs_modsec_mode.py', '/etc/modsecurity/openxs-mode.conf'],
+				'modsec_rule_exclusions' => ['openxs_modsec_rule_exclusions.py', '/etc/modsecurity/after-crs/openxs-rule-exclusions.conf'],
+				);
+			if ($modsec_regen{$key}) {
 				# This file is just the source list - the actual Apache
 				# config it controls has to be regenerated and Apache
 				# reloaded for a change here to take effect.
-				my $out = `python3 $pmf_dir/openxs_modsec_exclusions.py 2>&1`;
+				my ($script, $generated) = @{$modsec_regen{$key}};
+				my $out = `python3 $pmf_dir/$script 2>&1`;
 				system("apache2ctl -t 2>/dev/null && (systemctl reload apache2 2>/dev/null || service apache2 reload 2>/dev/null)");
 				print "<pre style='background:#1e1e1e;color:#e8e8e8;padding:8px'>" . &html_escape($out) . "</pre>";
-				print "<p style='color:green'>Regenerated /etc/modsecurity/openxs-exclusions.conf and reloaded Apache.</p>\n";
+				print "<p style='color:green'>Regenerated " . &html_escape($generated) . " and reloaded Apache.</p>\n";
 				}
 			}
 		}

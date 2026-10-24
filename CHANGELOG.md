@@ -57,12 +57,43 @@ Release from that section's text.
   hardcoded scan memory ceiling.
 - Weekly GitHub Action keeping the WordPress checksums bundle current
   with new releases automatically.
+- Dashboard: live scan-completion percentage, stage indicator
+  (scanning vs ClamAV post-processing), and a progress bar in the live
+  scanlog view, all fed by `pmf_scan.py`'s own progress file. Resource
+  widgets (scan daemon/watch daemon/manual scan) now link through to
+  their own live log view.
+- `version_scan.py`: WordPress plugin/theme outdated-version checks
+  (wordpress.org's plugin/theme info API) and Joomla core version
+  detection/EOL-branch flagging (1.x/2.x/3.x) - closes the real gap
+  that most shared-hosting WordPress exposure is an outdated plugin,
+  not an outdated core or a Composer-managed dependency.
+- `openxs_collector.py`: one periodic cron entry for lightweight
+  bookkeeping jobs (mod_security block-count history, the blocks-view
+  cache) instead of a separate `/etc/cron.d` file per feature.
+- mod_security detection-only mode (`/etc/openxs/modsec_mode`, one
+  `<hostname> <mode>` per line) and precise rule exclusions
+  (`/etc/openxs/modsec_rule_exclusions`, one `<rule id> <variable>
+  [path]` per line via `SecRuleUpdateTargetById`) - a confirmed false
+  positive gets a surgical fix (one rule, one variable) instead of
+  `openxs_modsec_exclusions.py`'s blunter "disable everything for this
+  path", found live on a real incident (CRS 930120 false-positiving on
+  Google OAuth's `scope` parameter).
+- `MIGRATION.md`: step-by-step cxs migration guide (comparison table +
+  the actual `migrate_from_cxs.py` subcommands in order), not just the
+  README's "why" explanation.
 
 ### Changed
 - `pmf_scan.py`'s per-file platform-checksum checks (WordPress,
   Drupal, ...) unified into one shared registry/directory-walk instead
   of one independent walk per platform - adding a future platform no
   longer means a second full traversal per flagged file.
+- A file whose path can't be encoded as UTF-8 (a non-UTF8 filename,
+  e.g. Greek text from an older encoding) is now actually scanned via
+  its raw bytes instead of being skipped and merely logged - the
+  earlier "fix" only stopped the crash, it never scanned those files.
+- mod_security's "grouped by host/path/rule" view reads from a 5-minute
+  cron-refreshed cache instead of re-grepping every Apache error log on
+  the box on every page view.
 
 ## [v0.1.2] - 2026-10-24
 
