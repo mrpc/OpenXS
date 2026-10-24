@@ -3,6 +3,21 @@
 # Alert-only (no quarantine/auto-delete) - email sent only if real hits are found.
 set -euo pipefail
 
+# No mutex existed until this was caught by hand (2026-10-25): a manual
+# scan run from the Webmin UI or by hand can run for hours on a busy
+# server, and the daily cron trigger (/etc/cron.d/openxs-scan) doesn't
+# know or care that one is already in flight - two pmf_scan.py processes
+# racing on the same scan_results.txt/filelist.txt/scan.log, doubled
+# disk I/O on an already-contended server, and confused DB writes would
+# all follow. Non-blocking: a second invocation exits immediately
+# (not an error, not alerted on) rather than queuing for hours behind
+# the first.
+exec 200>/var/lock/openxs-scheduled-scan.lock
+if ! flock -n 200; then
+    echo "Another run_scheduled_scan.sh is already running - exiting without starting a second one."
+    exit 0
+fi
+
 CONFIG=/etc/openxs/openxs.conf
 EMAIL="root@localhost"
 SCAN_PATH="/var/www"
