@@ -89,6 +89,7 @@ else {
 		&findings_sort_header($sort, $order, $base_qs, "path", "File"),
 		&findings_sort_header($sort, $order, $base_qs, "rule", "Rule"),
 		&findings_sort_header($sort, $order, $base_qs, "size", "Size"), "Status"]);
+	my $ignored_paths = { map { $_ => 1 } (-e '/etc/openxs/ignore' ? @{ &read_file_lines('/etc/openxs/ignore', 1) } : ()) };
 	foreach my $row (@all_lines) {
 			my ($fid, $f, $r, $q, $size, $ts, $user, $source, $gone) = split(/\t/, $row);
 			my $date = $ts ne '' && $ts ne 'None' ? &make_date($ts, 1) : "<i>unknown</i>";
@@ -97,9 +98,23 @@ else {
 				"border-radius:3px;text-decoration:none;white-space:nowrap";
 			my $view_btn = "<a href='view_file.cgi?id=$fid' style='$btn_style;background:#eef3fa;color:#2b5a8c;border:1px solid #c3d6ea'>View</a>";
 			my $logs_btn = "<a href='finding_logs.cgi?id=$fid' style='$btn_style;background:#fdf3e7;color:#8a5a1f;border:1px solid #edd6b3'>Who hit this?</a>";
+			my $is_oldversion = $r =~ /\(oldversion\)$/;
+			my $fp_btn;
+			if (!$is_oldversion && $ignored_paths->{$f}) {
+				$fp_btn = "<span style='$btn_style;background:#eef7ee;color:#2e7d32;border:1px solid #c3e0c3'>&#10003; Ignored</span>";
+				}
+			else {
+				my $fp_url = "mark_false_positive.cgi?source=" . ($is_oldversion ? 'oldversion' : 'finding') .
+					"&path=" . &urlize($f) . "&detail=" . &urlize($r);
+				my $confirm_msg = $is_oldversion
+					? 'Mark as false positive? (recorded for review - no automatic suppression exists for version-check findings)'
+					: "Mark as false positive and add '$f' to the ignore file? (future scans will skip this exact path)";
+				$fp_btn = "<a href='$fp_url' style='$btn_style;background:#fdeef0;color:#9a3b4a;border:1px solid #edc3cc' ".
+					"onclick=\"return confirm('" . $confirm_msg . "')\">Mark false positive</a>";
+				}
 			my $links = "<div style='margin-top:3px'>" .
 				($gone eq '1' ? "<span style='$btn_style;background:#f0f0f0;color:#888;border:1px solid #ddd'>file gone</span> " : "$view_btn ") .
-				$logs_btn . "</div>";
+				$logs_btn . " " . $fp_btn . "</div>";
 			my $status = ($gone eq '1' && $q eq '')
 				? "<i style='color:#888'>File gone</i>"
 				: &openxs_quarantine_action_links($fid, $q, undef);
