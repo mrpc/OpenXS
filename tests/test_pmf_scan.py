@@ -391,6 +391,74 @@ def test_find_platform_root_for_detects_wordpress(tmp_path):
     assert root == str(wp_root)
 
 
+def test_find_wp_plugin_root_for_detects_plugin_slug(tmp_path):
+    pmf_scan._PLATFORM_ROOT_CACHE.clear()
+    wp_root = tmp_path / "public_html"
+    (wp_root / "wp-includes").mkdir(parents=True)
+    (wp_root / "wp-includes" / "version.php").write_text("<?php $wp_version = '6.0';")
+    plugin_dir = wp_root / "wp-content" / "plugins" / "wordfence"
+    plugin_dir.mkdir(parents=True)
+    target = plugin_dir / "wordfence.php"
+    target.write_text("x")
+    found = pmf_scan.find_wp_plugin_root_for(str(target))
+    assert found == (str(wp_root), "wordfence", str(plugin_dir))
+
+
+def test_find_wp_plugin_root_for_none_outside_plugins_dir(tmp_path):
+    pmf_scan._PLATFORM_ROOT_CACHE.clear()
+    wp_root = tmp_path / "public_html"
+    (wp_root / "wp-includes").mkdir(parents=True)
+    (wp_root / "wp-includes" / "version.php").write_text("<?php $wp_version = '6.0';")
+    target = wp_root / "wp-includes" / "comment.php"
+    target.write_text("x")
+    assert pmf_scan.find_wp_plugin_root_for(str(target)) is None
+
+
+def test_find_wp_plugin_root_for_none_on_non_wordpress_platform(tmp_path):
+    pmf_scan._PLATFORM_ROOT_CACHE.clear()
+    revive_root = tmp_path / "adserver"
+    revive_root.mkdir(parents=True)
+    (revive_root / "constants.php").write_text("<?php define('VERSION', '6.0.8');")
+    (revive_root / "adview.php").write_text("<?php // delivery script")
+    target = revive_root / "www" / "delivery" / "cl.php"
+    target.parent.mkdir(parents=True)
+    target.write_text("x")
+    assert pmf_scan.find_wp_plugin_root_for(str(target)) is None
+
+
+def test_is_unmodified_wp_plugin_file_matches(tmp_path, monkeypatch):
+    pmf_scan._PLATFORM_ROOT_CACHE.clear()
+    wp_root = tmp_path / "public_html"
+    (wp_root / "wp-includes").mkdir(parents=True)
+    (wp_root / "wp-includes" / "version.php").write_text("<?php $wp_version = '6.0';")
+    plugin_dir = wp_root / "wp-content" / "plugins" / "wordfence"
+    plugin_dir.mkdir(parents=True)
+    (plugin_dir / "readme.txt").write_text("Stable tag: 7.11.6\n")
+    target = plugin_dir / "wordfence.php"
+    target.write_bytes(b"stock content")
+
+    import wp_plugin_checksums
+    monkeypatch.setattr(wp_plugin_checksums, "fetch_checksums",
+                         lambda slug, version: {"wordfence.php": __import__("hashlib").sha256(b"stock content").hexdigest()})
+    assert pmf_scan.is_unmodified_wp_plugin_file(str(target))
+
+
+def test_is_unmodified_wp_plugin_file_false_for_commercial_plugin(tmp_path, monkeypatch):
+    pmf_scan._PLATFORM_ROOT_CACHE.clear()
+    wp_root = tmp_path / "public_html"
+    (wp_root / "wp-includes").mkdir(parents=True)
+    (wp_root / "wp-includes" / "version.php").write_text("<?php $wp_version = '6.0';")
+    plugin_dir = wp_root / "wp-content" / "plugins" / "revslider"
+    plugin_dir.mkdir(parents=True)
+    (plugin_dir / "readme.txt").write_text("Stable tag: 6.6.5\n")
+    target = plugin_dir / "revslider.php"
+    target.write_bytes(b"stock content")
+
+    import wp_plugin_checksums
+    monkeypatch.setattr(wp_plugin_checksums, "fetch_checksums", lambda slug, version: None)
+    assert not pmf_scan.is_unmodified_wp_plugin_file(str(target))
+
+
 def test_find_platform_root_for_detects_drupal(tmp_path):
     pmf_scan._PLATFORM_ROOT_CACHE.clear()
     drupal_root = tmp_path / "public_html"
