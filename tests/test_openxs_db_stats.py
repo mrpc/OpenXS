@@ -120,12 +120,14 @@ def test_daily_stats_filled_oldest_first_and_includes_today_last(tmp_path, monke
     rows = db.daily_stats_filled(7)
     dates = [r[0] for r in rows]
     assert dates == sorted(dates)
-    # daily_stats_filled() uses datetime.date.today() (local time, since
-    # that's what a local admin means by "today" on the dashboard) - this
-    # must compare against the same clock, not time.gmtime(), or the two
-    # disagree for a few hours around local midnight in any timezone
-    # ahead of UTC.
-    assert dates[-1] == datetime.date.today().isoformat()
+    # UTC, matching record_scan()'s own day bucketing (time.gmtime) -
+    # datetime.date.today() (local time) silently mismatched the
+    # UTC-keyed data for a few hours around local midnight in any
+    # timezone ahead of UTC, caught live 2026-10-25. Not changed to
+    # local time at the write side (record_scan, 2+ years of existing
+    # historical data already bucketed by UTC day) - matching read and
+    # write conventions is the safer fix than introducing a new one.
+    assert dates[-1] == datetime.datetime.now(datetime.timezone.utc).date().isoformat()
 
 
 def test_record_modsec_count_is_upsert_not_increment(tmp_path, monkeypatch):
