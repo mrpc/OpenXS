@@ -345,11 +345,21 @@ print "<p><a href='$back_url' style='display:inline-block;padding:6px 14px;backg
 exit;
 }
 
+# Pure Perl, no fork+exec of an external tail(1) - under heavy system load
+# (e.g. a scan running concurrently) the backtick form was observed to
+# intermittently return truncated output, presumably a fork/exec hiccup.
 sub openxs_tail
 {
 my ($file, $n) = @_;
 $n ||= 40;
-return -e $file ? `tail -n $n '$file' 2>&1` : "(no such file: $file)";
+return "(no such file: $file)" if (!-e $file);
+open(my $fh, '<', $file) or return "(could not open $file: $!)";
+my @lines = <$fh>;
+close($fh);
+# ponytail: reads the whole file into memory - fine for these logs (a
+# few MB at most); switch to a seek-from-end approach if one ever grows large.
+my @last = @lines > $n ? @lines[-$n .. -1] : @lines;
+return join('', @last);
 }
 
 # Parses openxs_modsec_log.py's tab-separated CLI output into row hashes -
