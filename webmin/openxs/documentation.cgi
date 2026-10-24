@@ -103,7 +103,11 @@ print "<p>Two independent, read-only checks run with the daily scheduled scan (n
       "<li><b>Revive Adserver</b> (same script): finds every install (a <code>constants.php</code> defining ".
       "<code>VERSION</code>, alongside <code>adview.php</code>), compares against the highest released tag on ".
       "<a href='https://github.com/revive-adserver/revive-adserver' target='_blank'>GitHub</a>. The actively-".
-      "maintained fork of the old OpenX Adserver - don't confuse the two.</li>".
+      "maintained fork of the old OpenX Adserver - don't confuse the two. Its delivery scripts ".
+      "(<code>www/delivery/*.php</code>) are legitimately minified/obfuscated-looking by design, a real ".
+      "false-positive source found in production - <code>pmf_scan.py</code> suppresses a YARA hit on an exact, ".
+      "unmodified core file the same way it does for WordPress/Drupal (checksums against the real tagged ".
+      "GitHub archive, since Revive has no uploaded release assets or per-file checksums API).</li>".
       "<li><b>Drupal core</b> (same script): finds every Drupal 7 install (<code>includes/bootstrap.inc</code> ".
       "defining <code>VERSION</code>, alongside <code>modules/</code> and <code>sites/</code>) and always flags it - ".
       "Drupal 7 itself reached end of life and has no more official security coverage, regardless of patch level.</li>".

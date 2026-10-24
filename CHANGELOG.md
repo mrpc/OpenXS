@@ -81,6 +81,12 @@ Release from that section's text.
 - `MIGRATION.md`: step-by-step cxs migration guide (comparison table +
   the actual `migrate_from_cxs.py` subcommands in order), not just the
   README's "why" explanation.
+- Revive Adserver core-file checksum suppression (`revive_core_checksums.py`,
+  bundled against every tagged GitHub release) - its delivery scripts
+  (`www/delivery/*.php`) are legitimately minified/obfuscated-looking by
+  design, a real false-positive source found in production
+  (`ObfuscatedPhp`/`DodgyPhp` on `cl.php`, `ajs.php`, `al.php`, etc.),
+  same fix shape as WordPress/Drupal core.
 - "Mark false positive" on findings (adds the file to `/etc/openxs/ignore`
   automatically) and on mod_security blocks (same effect as its existing
   quick-exclude buttons) - both also write to a new
