@@ -97,6 +97,12 @@ print &ui_table_row("Watch daemon memory limit",
 	"MB <i>safety backstop - if watchd's own memory ever exceeds this (a runaway custom rule, a future bug, " .
 	"anything), it exits on its own and systemd restarts it, instead of growing unchecked until the kernel's " .
 	"OOM killer picks some unrelated process instead. Normal usage is a few tens of MB.</i>");
+print &ui_table_row("Scheduled scan memory limit",
+	&ui_textbox("vmrss_max_mb", $cfg{'VMRSS_MAX_MB'}, 8) .
+	"MB <i>the scan aborts (rather than getting OOM-killed) if its own memory passes this - mainly driven by " .
+	"how many files it has to track for the end-of-run ClamAV pass. A site with tens of millions of files " .
+	"(or that can't exclude large non-web-facing directories via the ignore file) may need this raised; " .
+	"check the server's free RAM first.</i>");
 print &ui_table_end();
 print &ui_submit("Save", "save");
 print &ui_form_end();
