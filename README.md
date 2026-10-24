@@ -3,6 +3,8 @@
 [![CI](https://github.com/mrpc/OpenXS/actions/workflows/ci.yml/badge.svg)](https://github.com/mrpc/OpenXS/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/mrpc/OpenXS/actions/workflows/codeql.yml/badge.svg)](https://github.com/mrpc/OpenXS/actions/workflows/codeql.yml)
 
+See [CHANGELOG.md](CHANGELOG.md) for what changed in each release.
+
 An open-source exploit/malware scanner and firewall-integration layer for
 Linux web hosting servers — built as a drop-in replacement for
 [cxs (ConfigServer eXploit Scanner)](https://configserver.com/), which was
