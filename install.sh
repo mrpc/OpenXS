@@ -20,7 +20,7 @@ set -euo pipefail
 # the upstream diff. To use our fork's latest commit instead of the pinned
 # one, override with the branch name: PMF_COMMIT=master sudo -E ./install.sh
 PMF_FORK=https://github.com/mrpc/php-malware-finder.git
-PMF_COMMIT="${PMF_COMMIT:-b8698eb605cc06bc0585902d7fb7f4943113cc5d}"
+PMF_COMMIT="${PMF_COMMIT:-ab4d762}"
 
 WITH_MODSECURITY=0
 WITH_CSF_HOOK=0
@@ -88,6 +88,7 @@ echo "==> Our own tools..."
 cp "$HERE"/tools/*.py "$HERE"/tools/*.sh "$PMF_DIR/"
 chmod +x "$PMF_DIR"/*.py "$PMF_DIR"/*.sh
 cp -r "$HERE"/tools/openxs-rules "$PMF_DIR/"
+cp -r "$HERE"/tools/wp_checksums "$PMF_DIR/"
 
 echo "==> ClamAV (2nd detector)..."
 bash "$PMF_DIR/install_clamav.sh"
