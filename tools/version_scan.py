@@ -31,6 +31,11 @@ REVIVE_VERSION_RE = re.compile(r"""define\s*\(\s*['"]VERSION['"]\s*,\s*['"]([^'"
 REVIVE_TAGS_URL = "https://api.github.com/repos/revive-adserver/revive-adserver/tags?per_page=30"
 DRUPAL_VERSION_RE = re.compile(r"""define\s*\(\s*['"]VERSION['"]\s*,\s*['"](7\.[^'"]+)['"]\s*\)""")
 DRUPAL_RELEASE_HISTORY_URL = "https://updates.drupal.org/release-history/drupal/7.x"
+# Only digits/dots captured (not [^'"]+) - the real value has a trailing
+# space inside the quotes (define('RCMAIL_VERSION', '1.3.1 ');, confirmed
+# by hand on a real install), which [^'"]+ would otherwise capture too.
+ROUNDCUBE_VERSION_RE = re.compile(r"""define\s*\(\s*['"]RCMAIL_VERSION['"]\s*,\s*['"]([\d.]+)""")
+PHPMYADMIN_VERSION_RE = re.compile(r'"version"\s*:\s*"([\d.]+)"')
 JOOMLA_MANIFEST_RELPATH = os.path.join("administrator", "manifests", "files", "joomla.xml")
 JOOMLA_VERSION_RE = re.compile(r"<version>([^<]+)</version>")
 JOOMLA_TAGS_URL = "https://api.github.com/repos/joomla/joomla-cms/tags?per_page=100"
