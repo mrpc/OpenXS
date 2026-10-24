@@ -74,10 +74,20 @@ else
     # Pinned to a specific commit (not a branch - deliberately, see the
     # comment on PMF_COMMIT above), so the clone is in detached-HEAD
     # state: plain 'git pull' fails there ("You are not currently on a
-    # branch"). Re-fetch and check out whatever $PMF_COMMIT currently
-    # is instead - a no-op if already there, moves forward if a newer
-    # OpenXS release bumped the pin.
-    (cd "$PMF_DIR" && git fetch -q origin "$PMF_COMMIT" && git checkout -q FETCH_HEAD)
+    # branch"). Re-fetch whatever $PMF_COMMIT currently is - a no-op if
+    # already there, moves forward if a newer OpenXS release bumped the
+    # pin. A plain 'git checkout FETCH_HEAD' would write files to their
+    # real paths in the commit's tree (top-level README.md/debian/ AND
+    # a php-malware-finder/ subdirectory) - but PMF_DIR's working tree
+    # only ever held that subdirectory's own contents, flattened up a
+    # level, ever since the very first install below did the same move.
+    # 'git archive | tar --strip-components' extracts just that
+    # subdirectory's files to their flattened paths instead, matching
+    # what's actually on disk; HEAD is moved separately so git log and
+    # the dashboard's commit display stay accurate.
+    (cd "$PMF_DIR" && git fetch -q origin "$PMF_COMMIT" \
+        && git archive FETCH_HEAD -- php-malware-finder | tar -x --strip-components=1 \
+        && git update-ref HEAD FETCH_HEAD)
 fi
 # Upstream bug: IsWhitelisted doesn't reference its own Custom rule (idempotent fix)
 if ! grep -q "Misc or" "$PMF_DIR/whitelist.yar"; then
