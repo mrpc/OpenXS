@@ -13,7 +13,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # the branch name instead of a SHA, e.g.:
 #   docker build --build-arg PMF_COMMIT=master --build-arg CSF_COMMIT=main .
 ARG PMF_FORK=https://github.com/mrpc/php-malware-finder.git
-ARG PMF_COMMIT=ab4d762
+ARG PMF_COMMIT=ab4d7622714c6bdfc992339a5e6925207b5071b8
 ARG CSF_FORK=https://github.com/mrpc/openxs-csf.git
 ARG CSF_COMMIT=4793f7c2e6f705eb4244a9fcd3f4cd202c726085
 
