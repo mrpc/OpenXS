@@ -43,6 +43,31 @@ for date, blocks in openxs_db.modsec_daily_stats_filled($days):
 		}
 	}
 
+my $fout = `python3 -c "
+import sys
+sys.path.insert(0, '$pmf_dir')
+import openxs_db
+for date, count in openxs_db.false_positive_daily_stats_filled($days):
+    print(date + '\\t' + str(count))
+"`;
+my %fp_by_date;
+foreach my $line (split(/\n/, $fout)) {
+	my ($date, $count) = split(/\t/, $line);
+	$fp_by_date{$date} = $count if (defined($date));
+	}
+my $sout = `python3 -c "
+import sys
+sys.path.insert(0, '$pmf_dir')
+import openxs_db
+for source, count in openxs_db.false_positive_counts_by_source().items():
+    print(source + '\\t' + str(count))
+"`;
+my @fp_by_source;
+foreach my $line (split(/\n/, $sout)) {
+	my ($source, $count) = split(/\t/, $line);
+	push(@fp_by_source, "$source: $count") if (defined($source));
+	}
+
 print &ui_subheading("Daily statistics (last $days days)");
 print &ui_form_start("stats.cgi", "get") .
 	"<label>Show last " . &ui_select("days", $days, [["7", "7 days"], ["30", "30 days"], ["90", "90 days"], ["365", "365 days"]]) . "</label> " .
@@ -67,9 +92,16 @@ print &ui_form_start("stats.cgi", "get") .
 		print "<p><a href='modsec_log.cgi'>View grouped by host/path/rule &raquo;</a></p>\n";
 		}
 
+	my @fp_values = map { $fp_by_date{$_} || 0 } @dates;
+	print &ui_subheading("False positives marked per day");
+	print &openxs_bar_chart(\@dates, \@fp_values, '#9a3b4a');
+	print "<p>" . (@fp_by_source ? "By source (all time): " . join(', ', @fp_by_source) . ". " : "") .
+		"<a href='false_positive_export.cgi'>Export as Markdown &raquo;</a></p>\n";
+
 	print &ui_subheading("Table");
 	my @headers = ("Date", "Scans", "Files scanned", "Hits", "Quarantined", "Avg duration (s)");
 	push(@headers, "mod_security blocks") if ($modsec_available);
+	push(@headers, "False positives marked");
 	print &ui_columns_start(\@headers);
 	foreach my $r (reverse @parsed) {
 		my ($date, $scan_count, $files_scanned, $hits, $quarantined, $avg_duration) = @$r;
@@ -79,6 +111,8 @@ print &ui_form_start("stats.cgi", "get") .
 			my $mb = $modsec_by_date{$date} || 0;
 			push(@cells, $mb > 0 ? "<b style='color:#8a5a1f'>$mb</b>" : "0");
 			}
+		my $fp = $fp_by_date{$date} || 0;
+		push(@cells, $fp > 0 ? "<b style='color:#9a3b4a'>$fp</b>" : "0");
 		print &ui_columns_row(\@cells);
 		}
 	print &ui_columns_end();
