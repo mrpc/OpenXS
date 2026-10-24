@@ -47,6 +47,9 @@ if (defined($in{'vmrss_max_mb'}) && $in{'vmrss_max_mb'} ne "") {
 	$v =~ s/[^0-9]//g;
 	$cfg{'VMRSS_MAX_MB'} = $v if ($v ne "");
 	}
+if (defined($in{'yara_paranoia_level'}) && $in{'yara_paranoia_level'} =~ /^[12]$/) {
+	$cfg{'YARA_PARANOIA_LEVEL'} = $in{'yara_paranoia_level'};
+	}
 $cfg{'VERSION_SCAN_ENABLED'} = (defined($in{'version_scan_enabled'}) && $in{'version_scan_enabled'} eq '1') ? '1' : '0';
 $cfg{'APT_SECURITY_ENABLED'} = (defined($in{'apt_security_enabled'}) && $in{'apt_security_enabled'} eq '1') ? '1' : '0';
 $cfg{'SCAN_MAILBOXES'} = (defined($in{'scan_mailboxes'}) && $in{'scan_mailboxes'} eq '1') ? '1' : '0';

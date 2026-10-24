@@ -50,6 +50,8 @@ MAX_RSS_KB = int(float(os.environ.get("OPENXS_SCAND_MAX_RSS_MB", "1024") or "102
 
 _rules_lock = threading.Lock()
 _rules = None
+_paranoia_level = 1
+CONFIG = "/etc/openxs/openxs.conf"
 
 
 def log(msg):
@@ -62,12 +64,30 @@ def log(msg):
         pass
 
 
+def load_paranoia_level():
+    # Same plain KEY=value parsing as run_scheduled_scan.sh - not
+    # source-d, so a crafted config value can't run as code here either.
+    level = 1
+    if os.path.isfile(CONFIG):
+        with open(CONFIG) as f:
+            for line in f:
+                key, _, value = line.strip().partition("=")
+                if key == "YARA_PARANOIA_LEVEL" and value:
+                    try:
+                        level = int(value)
+                    except ValueError:
+                        pass
+    return level
+
+
 def load_rules():
-    global _rules
+    global _rules, _paranoia_level
     compiled = pmf_scan.compile_ruleset(RULESET)
+    level = load_paranoia_level()
     with _rules_lock:
         _rules = compiled
-    log(f"ruleset loaded from {RULESET}")
+        _paranoia_level = level
+    log(f"ruleset loaded from {RULESET} (paranoia level {level})")
 
 
 def handle_sighup(signum, frame):
@@ -112,7 +132,9 @@ class ScanHandler(socketserver.BaseRequestHandler):
         else:
             with _rules_lock:
                 rules = _rules
-            matches = rules.match(path, fast=True)
+                level = _paranoia_level
+            matches = [m for m in rules.match(path, fast=True)
+                       if pmf_scan.paranoia_level_for(m.rule) <= level]
 
         if all_mode:
             self.request.sendall((json.dumps([m.rule for m in matches]) + "\n").encode())

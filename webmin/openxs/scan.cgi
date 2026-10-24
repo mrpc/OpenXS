@@ -55,6 +55,7 @@ else {
 	$ENV{'OPENXS_QUIET'} = ($cfg{'QUIET'} || '0') eq '1' ? '1' : '0';
 	$ENV{'OPENXS_QUARANTINE_CATEGORIES'} = $cfg{'QUARANTINE_CATEGORIES'} || 'virus,yara_exploit,maldet';
 	$ENV{'OPENXS_FAST_PHP_ONLY'} = ($cfg{'FAST_PHP_ONLY'} || '0') eq '1' ? '1' : '0';
+	$ENV{'OPENXS_YARA_PARANOIA_LEVEL'} = $cfg{'YARA_PARANOIA_LEVEL'} || '1';
 	my $out = `python3 /opt/php-malware-finder/pmf_scan.py scan $ruleset $filelist 2>&1`;
 	unlink($filelist);
 	print "<pre style='background:#1e1e1e;color:#e8e8e8;padding:8px;max-height:400px;overflow:auto'>";
