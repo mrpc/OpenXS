@@ -497,7 +497,15 @@ def main():
                 break
             total += 1
             scanned_files.append(fname)
-            matches = rules.match(fname, fast=True)
+            try:
+                matches = rules.match(fname, fast=True)
+            except UnicodeEncodeError:
+                # A path with a raw non-UTF8 byte (surrogateescape'd by
+                # iter_files) can't be passed through to yara's C
+                # extension - skip this one file rather than crash the
+                # whole scan over it.
+                print(f"# Skipped (unencodable path): {fname!r}", file=sys.stderr)
+                continue
             real = [m for m in matches if m.rule != "IsWhitelisted" and m.rule != "IsPhp"]
             custom_hits = check_custom_rules(fname, custom_rules)
             # Scan inside zip/tar archives too (cxs's --options Z) - a
