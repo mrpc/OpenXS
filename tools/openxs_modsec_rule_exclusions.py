@@ -1,14 +1,34 @@
 #!/usr/bin/env python3
 """Regenerates /etc/modsecurity/after-crs/openxs-rule-exclusions.conf
 from the plain rule-exclusion list at /etc/openxs/modsec_rule_exclusions
-(one "<rule_id> <variable> [path_prefix]" per line, blank lines and '#'
-comments ignored) - for a real false positive narrowed down to one
-specific CRS rule matching on one specific request variable (e.g. CRS
-930120 false-positiving on Google OAuth's literal "profile" scope
-string, or CRS 941310 misfiring on multi-byte UTF-8 text in a non-
-English site), instead of openxs_modsec_exclusions.py's blunter
-"disable everything for this path" or openxs_modsec_mode.py's
-"disable everything for this host".
+(one "<rule_id> <variable>" per line, blank lines and '#' comments
+ignored) - for a real false positive narrowed down to one specific CRS
+rule matching on one specific request variable (e.g. CRS 930120 false-
+positiving on Google OAuth's literal "profile" scope string, or CRS
+941310 misfiring on multi-byte UTF-8 text in a non-English site),
+instead of openxs_modsec_exclusions.py's blunter "disable everything
+for this path" or openxs_modsec_mode.py's "disable everything for this
+host".
+
+Server-wide only - there is no working way to scope this to one path.
+Confirmed by hand on a real incident (geekdom.gr, 2026-10-24): neither
+<LocationMatch>, <If "%{REQUEST_URI} == ...">, a matching SecRule's own
+ctl:ruleRemoveById action, nor a mod_rewrite-set environment variable
+checked via <If env(...)> made any difference to a rule-removal/
+target-update directive's effect - apachectl configtest passes with
+all of them, but a live end-to-end request shows the rule still firing
+every time. SecRuleEngine itself DOES correctly respond to per-request scoping -
+confirmed both via <If "%{HTTP_HOST} == ...">} (openxs_modsec_mode.py's
+whole mechanism) and via <LocationMatch> (openxs_modsec_exclusions.py's
+whole mechanism, re-confirmed the same day against a real path on a
+real server) - so this isn't "conditionals don't work at all" on this
+stack. Rule-ID-based directives (SecRuleUpdateTargetById,
+SecRuleRemoveById, ctl:ruleRemoveById) specifically just don't compose
+with any per-request conditional, full stop. If a false positive
+genuinely needs path-level (not just rule-level) scoping,
+openxs_modsec_mode.py's host-level toggle or
+openxs_modsec_exclusions.py's path-based full disable are the only
+mechanisms that actually work.
 
 Generates SecRuleUpdateTargetById, which must run AFTER the target
 rule is actually defined - this writes to
@@ -17,12 +37,9 @@ up with its own IncludeOptional placed right after the CRS rules
 (/usr/share/modsecurity-crs/*.load) in security2.conf, specifically for
 this. Writing an update for a rule ID before it's loaded (e.g. a typo'd
 ID that matches no rule, or the plain /etc/modsecurity/*.conf path
-that loads before CRS) silently does nothing - confirmed by hand on
-example.com's mod_security incident, 2026-10-24: config test passes
-either way, only an actual end-to-end request shows whether it took
-effect."""
+that loads before CRS) silently does nothing either - same "configtest
+passes, only a live request tells the truth" trap."""
 import os
-import re
 
 EXCLUSIONS_FILE = "/etc/openxs/modsec_rule_exclusions"
 OUTPUT_DIR = "/etc/modsecurity/after-crs"
@@ -30,7 +47,7 @@ OUTPUT_FILE = os.path.join(OUTPUT_DIR, "openxs-rule-exclusions.conf")
 
 
 def read_exclusions():
-    """Returns a list of (rule_id, variable, path_prefix_or_None)."""
+    """Returns a list of (rule_id, variable)."""
     if not os.path.isfile(EXCLUSIONS_FILE):
         return []
     entries = []
@@ -39,12 +56,10 @@ def read_exclusions():
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
-            parts = line.split(None, 2)
-            if len(parts) < 2 or not parts[0].isdigit():
+            parts = line.split()
+            if len(parts) != 2 or not parts[0].isdigit():
                 continue
-            rule_id, variable = parts[0], parts[1]
-            path = parts[2] if len(parts) > 2 else None
-            entries.append((rule_id, variable, path))
+            entries.append((parts[0], parts[1]))
     return entries
 
 
@@ -56,13 +71,8 @@ def regenerate():
         "# it gets overwritten.",
         "",
     ]
-    for rule_id, variable, path in entries:
-        directive = f'SecRuleUpdateTargetById {rule_id} "!{variable}"'
-        if path:
-            escaped = re.escape(path)
-            lines.append(f'<LocationMatch "^{escaped}">\n\t{directive}\n</LocationMatch>\n')
-        else:
-            lines.append(directive)
+    for rule_id, variable in entries:
+        lines.append(f'SecRuleUpdateTargetById {rule_id} "!{variable}"')
     os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
     with open(OUTPUT_FILE, "w") as f:
         f.write("\n".join(lines) + "\n")
@@ -71,4 +81,4 @@ def regenerate():
 
 if __name__ == "__main__":
     entries = regenerate()
-    print("\n".join(f"{r} {v}" + (f" {p}" if p else "") for r, v, p in entries) or "(no rule exclusions configured)")
+    print("\n".join(f"{r} {v}" for r, v in entries) or "(no rule exclusions configured)")
