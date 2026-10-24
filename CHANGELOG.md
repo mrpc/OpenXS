@@ -217,6 +217,16 @@ Release from that section's text.
 - The scan progress bar fell back to 0% width on every stage without a
   per-file percentage (clamav/maldet/fs), looking identically empty
   whether 1/4 or fully done through the pipeline.
+- "symlink" dominated the fs (filesystem-hygiene) findings (9897 of
+  12526 on one server) with no way to tell a routine panel/OS
+  convention from something actually worth a look - Virtualmin's own
+  per-domain Apache log symlinks, the PHP-version-selector symlink, and
+  (the biggest chunk) relative symlinks within the same account (e.g. a
+  mimetype icon pack's "notavailable.png" fallback for filetypes
+  without their own icon) are no longer flagged. A symlink pointing
+  OUTSIDE its own account (another account's home directory, /etc/,
+  anywhere unexpected) - the pattern that actually matters - still is,
+  always checked by where it actually points, never by name alone.
 
 ## [v0.1.2] - 2026-10-24
 
