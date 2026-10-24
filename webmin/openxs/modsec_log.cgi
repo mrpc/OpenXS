@@ -25,12 +25,13 @@ if (!@rows) {
 	print "<p>(no ModSecurity blocks found in any log on this server)</p>\n";
 	}
 else {
-	print &ui_columns_start(["Count", "Host", "Path", "Rule", "First seen", "Last seen"]);
+	print &ui_columns_start(["Count", "Host", "Path", "Rule", "First seen", "Last seen", "Quick exclude"]);
 	foreach my $r (@rows) {
 		print &ui_columns_row([
 			$r->{'count'}, &html_escape($r->{'host'}), &html_escape($r->{'uri'}),
 			&openxs_modsec_rule_link($r->{'rule_id'}),
 			&html_escape($r->{'first'}), &html_escape($r->{'last'}),
+			&openxs_modsec_quick_exclude_links($r->{'rule_id'}, $r->{'uri'}),
 			]);
 		}
 	print &ui_columns_end();

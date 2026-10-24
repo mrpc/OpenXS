@@ -102,6 +102,16 @@ sub openxs_modsecurity_installed
 return -e '/etc/modsecurity/modsecurity.conf' ? 1 : 0;
 }
 
+sub openxs_modsecurity_active
+{
+# a2dismod (disable_modsecurity.cgi) removes mods-enabled/security2.conf
+# (normally a symlink to mods-available/) without touching any actual
+# config - openxs_modsecurity_installed() alone would still say "yes"
+# after that, since it only checks the config file exists, not whether
+# the Apache module is actually loaded.
+return -e '/etc/apache2/mods-enabled/security2.conf' ? 1 : 0;
+}
+
 sub openxs_modsecurity_hook_installed
 {
 return -e $modsec_rule ? 1 : 0;
@@ -509,6 +519,23 @@ sub openxs_modsec_rule_link
 my ($rule_id) = @_;
 return "<a href='https://github.com/coreruleset/coreruleset/search?q=" . &html_escape($rule_id) .
 	"' target='_blank' rel='noopener'>rule $rule_id</a>";
+}
+
+sub openxs_modsec_quick_exclude_links
+{
+# One-click "exclude rule" / "exclude path" per mod_security blocks
+# row - see modsec_quick_exclude.cgi. Confirm first, since both are
+# real security-config changes (reversible via Settings, but not
+# something a stray click should do silently).
+my ($rule_id, $uri) = @_;
+my $btn_style = "display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;font-size:11px;".
+	"border-radius:3px;text-decoration:none;white-space:nowrap";
+my $rule_url = "modsec_quick_exclude.cgi?action=rule&rule_id=" . &urlize($rule_id);
+my $path_url = "modsec_quick_exclude.cgi?action=path&uri=" . &urlize($uri);
+return "<a href='$rule_url' style='$btn_style;background:#fdf3e7;color:#8a5a1f;border:1px solid #edd6b3' ".
+	"onclick=\"return confirm('Exclude rule $rule_id (ARGS) across the whole server?')\">Exclude rule</a> " .
+	"<a href='$path_url' style='$btn_style;background:#eef3fa;color:#2b5a8c;border:1px solid #c3d6ea' ".
+	"onclick=\"return confirm('Exclude path \\'" . &html_escape($uri) . "\\' - disables ALL mod_security checks for it?')\">Exclude path</a>";
 }
 
 # Kill-switch, checked once here (every .cgi requires this file first) so

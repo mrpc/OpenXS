@@ -113,10 +113,11 @@ else {
 			$n =~ s/[^0-9]//g;
 			$n = 100 if ($n eq '' || $n < 1);
 			my $last = $#rows > $n - 1 ? $n - 1 : $#rows;
-			print &ui_columns_start(["Count", "Host", "Path", "Rule"]);
+			print &ui_columns_start(["Count", "Host", "Path", "Rule", "Quick exclude"]);
 			foreach my $r (@rows[0 .. $last]) {
 				print &ui_columns_row([$r->{'count'}, &html_escape($r->{'host'}), &html_escape($r->{'uri'}),
-					&openxs_modsec_rule_link($r->{'rule_id'})]);
+					&openxs_modsec_rule_link($r->{'rule_id'}),
+					&openxs_modsec_quick_exclude_links($r->{'rule_id'}, $r->{'uri'})]);
 				}
 			print &ui_columns_end();
 			print "<p><a href='logs.cgi?lines=" . ($n * 5) . "'>Show more mod_security rows (last $n shown)</a></p>\n";
