@@ -161,3 +161,32 @@ def test_magic_kind_plain_file_returns_none(tmp_path):
 
 def test_magic_kind_missing_file_returns_none():
     assert fs_scan.magic_kind("/no/such/file") is None
+
+
+def test_known_cpanel_migration_leftover_symlink_not_flagged(tmp_path):
+    # Dangling by nature - there's no cPanel install on this server for
+    # the target to ever resolve to - unlike the Virtualmin/PHP
+    # patterns above, which point to real, existing files.
+    scan_root = tmp_path / "site"
+    styled_dir = scan_root / "var" / "cpanel" / "styled"
+    styled_dir.mkdir(parents=True)
+    link = styled_dir / "current_style"
+    link.symlink_to("/usr/local/cpanel/base/frontend/paper_lantern/styled/retro")
+    findings = findings_dict(scan_root)
+    assert str(link) not in findings
+
+
+def test_similarly_named_current_style_symlink_elsewhere_is_still_flagged(tmp_path):
+    # Same basename, but not pointing under /usr/local/cpanel/ - the
+    # name alone must never be enough to suppress a finding.
+    outside = tmp_path.parent / f"outside-target-{tmp_path.name}.txt"
+    outside.write_text("x")
+    try:
+        scan_root = tmp_path / "site"
+        scan_root.mkdir()
+        link = scan_root / "current_style"
+        link.symlink_to(outside)
+        findings = findings_dict(scan_root)
+        assert findings.get(str(link)) == "symlink"
+    finally:
+        outside.unlink()

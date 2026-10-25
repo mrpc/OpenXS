@@ -274,6 +274,17 @@ Release from that section's text.
   OUTSIDE its own account (another account's home directory, /etc/,
   anywhere unexpected) - the pattern that actually matters - still is,
   always checked by where it actually points, never by name alone.
+  A cPanel-to-Virtualmin account migration's leftover theme symlink
+  (var/cpanel/styled/current_style -> /usr/local/cpanel/...) is also
+  no longer flagged - dangling by nature on a server with no cPanel
+  install at all, so nothing can ever appear at that target for it to
+  resolve to.
+- The Findings page showed "File gone" (hiding the Quarantine/View
+  actions) for a "symlink" finding whose symlink itself still existed
+  but whose TARGET didn't (a dangling symlink) - os.path.exists()
+  follows the link and checks the target, not the symlink file itself;
+  switched to os.path.lexists(), found live via the cPanel-migration-
+  leftover symlinks above.
 
 ## [v0.1.2] - 2026-10-24
 
