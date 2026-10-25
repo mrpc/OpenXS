@@ -166,7 +166,7 @@ else {
 				? &openxs_permission_action_links($fid, $perm_fix_new_mode)
 				: ($gone eq '1' && $q eq '')
 					? "<i style='color:#888'>File gone</i>"
-					: &openxs_quarantine_action_links($fid, $q, undef);
+					: &openxs_quarantine_action_links($fid, $q, undef, $r);
 			print &ui_columns_row([
 				&ui_checkbox("id", $fid, "", 0),
 				$date, &html_escape($user), &html_escape($source),

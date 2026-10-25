@@ -414,7 +414,7 @@ return &openxs_mini_form("quarantine.cgi", $action, $fid, $label, $scan_id, $tag
 
 sub openxs_quarantine_action_links
 {
-my ($fid, $qpath, $scan_id) = @_;
+my ($fid, $qpath, $scan_id, $rule) = @_;
 if ($qpath eq "__deleted__") {
 	return "<i>Deleted</i>";
 	}
@@ -425,7 +425,14 @@ elsif ($qpath ne "") {
 	       	"onclick=\"return confirm('Permanently delete this file?')\"");
 	}
 else {
-	return &openxs_quarantine_action_form("quarantine", $fid, "Quarantine now", $scan_id);
+	# "Quarantine" implies a threat was neutralized - wrong framing for
+	# a symlink finding, which is usually a harmless (if stale) path
+	# pointing somewhere unexpected rather than malicious content; the
+	# action is the same move-aside-and-track (quarantine_file()
+	# handles a symlink itself - its target is never touched), just
+	# worded for what it actually is here.
+	my $label = ($rule eq 'symlink') ? "Remove symlink" : "Quarantine now";
+	return &openxs_quarantine_action_form("quarantine", $fid, $label, $scan_id);
 	}
 }
 

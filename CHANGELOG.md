@@ -285,6 +285,32 @@ Release from that section's text.
   follows the link and checks the target, not the symlink file itself;
   switched to os.path.lexists(), found live via the cPanel-migration-
   leftover symlinks above.
+- The Findings page briefly showed "No findings recorded yet." for
+  every real finding after the fix above shipped - its own fix
+  comment's escaped quotes (`\"symlink\"`, `\"File gone\"`) satisfied
+  Perl's own string parsing but landed unescaped in the shell command
+  that runs the embedded Python, breaking its quoting mid-loop; Python
+  then only received a truncated script, printed the total count
+  (before the loop) and crashed silently on the rest - backticks only
+  capture stdout, not stderr, so this had no visible error at all.
+  Found live by reproducing against a copy of the real production
+  database with a headless browser rather than trusting the backend
+  query alone (which returned correct rows when run directly - the bug
+  was purely in how the CGI assembled its own shell command). Fixed by
+  rewording the comment without embedded quote characters; same trap
+  any future comment inside one of these backtick-wrapped Python
+  blocks needs to avoid.
+- `quarantine_file()`/`restore_file()` had the same exists()-vs-
+  symlink gap as the display bug above, plus a sharper one: chmod()
+  follows a symlink, so quarantining one whose target DOES exist
+  somewhere would have locked down that unrelated target file, not the
+  symlink being acted on. Switched both to os.path.lexists() and skip
+  the chmod step for a symlink entirely (nothing of its own to lock
+  down). The "Quarantine now" button is now labeled "Remove symlink"
+  for symlink findings specifically - "Quarantine" implies a
+  neutralized threat, the wrong framing for what's usually just a
+  stale or unexpected path (asked after the cPanel-leftover symlinks
+  above surfaced this as a real, if rare, user-facing action).
 
 ## [v0.1.2] - 2026-10-24
 
