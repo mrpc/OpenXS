@@ -104,15 +104,13 @@ for fid, f, r, q, size, ts, scan_path in rows:
     source = openxs_db.derive_source(scan_path)
     # Same path view_file.cgi would read - a quarantined file is gone
     # from its original location by design, so check the quarantine
-    # copy for those; only flag it \"gone\" if neither copy exists.
-    # lexists, not exists: a \"symlink\" finding is the symlink file
-    # ITSELF, not whatever it points to - exists() follows the link and
-    # reports False for a merely-dangling (but still present) symlink,
-    # wrongly showing \"File gone\" and hiding the Quarantine/View
-    # actions for a file that's still right there (found live
-    # 2026-10-25: a cPanel-to-Virtualmin migration leftover symlink,
-    # harmless since its target doesn't exist on this server at all,
-    # but still a real file worth being able to act on if needed).
+    # copy for those; only flag it gone if neither copy exists.
+    # lexists, not exists: a symlink finding is the symlink file
+    # itself, not whatever it points to - exists() follows the link
+    # and wrongly reports gone for a merely-dangling (but still
+    # present) symlink, hiding the Quarantine/View actions for a file
+    # that's still right there (e.g. a cPanel-to-Virtualmin migration
+    # leftover symlink, found live 2026-10-25).
     check_path = q if (q and q not in ('', '__deleted__')) else f
     gone = int(not os.path.lexists(check_path))
     category = pmf_scan.categorize(r)
