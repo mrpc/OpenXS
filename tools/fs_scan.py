@@ -24,6 +24,11 @@ KNOWN_BENIGN_SYMLINK_TARGETS = [
     (re.compile(r'^(access|error)_log$'), re.compile(r'^/var/log/virtualmin/')),
     # cPanel/Virtualmin's PHP-version-selector symlink.
     (re.compile(r'^php\d*$'), re.compile(r'^/(usr/)?bin/php[\d.]*$')),
+    # A cPanel-to-Virtualmin account migration's leftover theme symlink -
+    # dangling (this server has no cPanel installed at all, so the
+    # target genuinely doesn't exist), harmless: nothing can ever appear
+    # at that target path here for the link to resolve to.
+    (re.compile(r'^current_style$'), re.compile(r'^/usr/local/cpanel/')),
 ]
 
 
