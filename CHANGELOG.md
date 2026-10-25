@@ -19,6 +19,8 @@ Release from that section's text.
 
 ## [Unreleased]
 
+## [v0.2.0] - 2026-10-25
+
 ### Signatures
 - Drupal 7: detect installs, flag as unsupported (Drupal 7 is end of
   life), suppress false positives on unmodified core files via a
