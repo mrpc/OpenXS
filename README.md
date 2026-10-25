@@ -170,6 +170,18 @@ Still on the roadmap, deliberately incremental rather than all-at-once:
   and against the actual CSF version (v14.24, pre-GPLv3) still running on
   most of our own servers — the CSF-hook installer has only been verified
   against the v15.00 GPLv3 release so far.
+- WordPress database-content scanning: a real 2+ year compromise on
+  mrpc.pramnos.net (found 2026-10-25) lived entirely in `wp_posts` as a
+  published "WPCode"/Insert Headers and Footers snippet — a full
+  remote-control backdoor (cookie-gated admin-user creation, C2-proxied
+  content injection for logged-out visitors) that never touched the
+  filesystem at all, so no amount of YARA/ClamAV/maldet coverage could
+  ever have caught it; OpenXS only scans files on disk. Needs a
+  DB-aware check (any WordPress install found during a scan, look at
+  its own `wp_posts`/`wp_options` for published WPCode/IHAF/similar
+  header-footer-injection snippets, flag suspicious ones the same way
+  a file-based finding is flagged) — a structurally new category of
+  check, not an extension of the existing file-scanning path.
 
 ## Credits
 
