@@ -354,7 +354,11 @@ def quarantine_file(finding_id):
     if existing_q:
         conn.close()
         return existing_q
-    if not os.path.exists(file_path):
+    # lexists, not exists: a "symlink" finding is the link itself, not
+    # whatever it points to - exists() follows the link and reports
+    # False (nothing to quarantine) for a merely-dangling symlink that
+    # is still very much there to move.
+    if not os.path.lexists(file_path):
         conn.close()
         return None
 
@@ -362,7 +366,11 @@ def quarantine_file(finding_id):
     safe_name = file_path.replace("/", "_").lstrip("_")
     q_path = os.path.join(QUARANTINE_DIR, f"{finding_id}_{safe_name}")
     os.rename(file_path, q_path)
-    os.chmod(q_path, 0o000)
+    # chmod() follows symlinks - for one pointing elsewhere, 0o000 would
+    # land on its TARGET (some unrelated file), not the link; skip it
+    # for a symlink, there's nothing of its own to lock down.
+    if not os.path.islink(q_path):
+        os.chmod(q_path, 0o000)
 
     conn.execute("UPDATE findings SET quarantine_path = ? WHERE id = ?", (q_path, finding_id))
     _bump_daily_stat(conn, time.strftime("%Y-%m-%d", time.gmtime()), quarantined=1)
@@ -381,10 +389,11 @@ def restore_file(finding_id):
         conn.close()
         return False
     file_path, q_path = row
-    if not os.path.exists(q_path):
+    if not os.path.lexists(q_path):
         conn.close()
         return False
-    os.chmod(q_path, 0o644)
+    if not os.path.islink(q_path):
+        os.chmod(q_path, 0o644)
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     os.rename(q_path, file_path)
     conn.execute("UPDATE findings SET quarantine_path = NULL WHERE id = ?", (finding_id,))

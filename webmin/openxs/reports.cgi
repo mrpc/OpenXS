@@ -25,7 +25,7 @@ sub quarantine_action_links
 my ($fid, $qpath, $rule, $perm_fix_new_mode) = @_;
 return ($rule eq 'world-writable directory')
 	? &openxs_permission_action_links($fid, $perm_fix_new_mode)
-	: &openxs_quarantine_action_links($fid, $qpath, $scan_id);
+	: &openxs_quarantine_action_links($fid, $qpath, $scan_id, $rule);
 }
 
 sub quarantine_sort_header
