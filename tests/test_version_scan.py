@@ -161,27 +161,66 @@ def test_record_findings_writes_unknown_core_files(tmp_path, monkeypatch):
     assert by_path[leftover_path].endswith("(oldversion)")
 
 
-def test_check_wordpress_database_off_by_default(monkeypatch):
+class FakeDbScanRules:
+    pass
+
+
+def test_compile_db_scan_rules_off_by_default(monkeypatch):
     monkeypatch.delenv("OPENXS_DB_SCAN_ENABLED", raising=False)
-    assert vs.check_wordpress_database([("/wp", "6.4.2", "6.4.2", False)]) == []
+    assert vs.compile_db_scan_rules() is None
 
 
-def test_check_wordpress_database_runs_when_enabled(tmp_path, monkeypatch):
+def test_compile_db_scan_rules_compiles_when_enabled(monkeypatch):
     monkeypatch.setenv("OPENXS_DB_SCAN_ENABLED", "1")
-    wp_root = make_wp_install(tmp_path, "site1", "6.4.2")
-
-    class FakeRules:
-        pass
-
     import pmf_scan
+    monkeypatch.setattr(pmf_scan, "compile_ruleset", lambda path: FakeDbScanRules())
+    assert isinstance(vs.compile_db_scan_rules(), FakeDbScanRules)
+
+
+def test_check_wordpress_database_noop_without_rules():
+    assert vs.check_wordpress_database([("/wp", "6.4.2", "6.4.2", False)], None) == []
+
+
+def test_check_wordpress_database_runs_with_rules(tmp_path, monkeypatch):
+    wp_root = make_wp_install(tmp_path, "site1", "6.4.2")
     import wp_db_scan
-    monkeypatch.setattr(pmf_scan, "compile_ruleset", lambda path: FakeRules())
     monkeypatch.setattr(wp_db_scan, "scan_wp_database",
                         lambda root, rules: [("wp_posts.post_content (post ID 1)", "DangerousPhp")])
 
     wp_results = [(str(wp_root), "6.4.2", "6.4.2", False)]
-    results = vs.check_wordpress_database(wp_results)
+    results = vs.check_wordpress_database(wp_results, FakeDbScanRules())
     assert results == [(str(wp_root), "wp_posts.post_content (post ID 1)", "DangerousPhp")]
+
+
+def test_check_joomla_database_noop_without_rules(tmp_path):
+    assert vs.check_joomla_database(str(tmp_path), None) == []
+
+
+def test_check_joomla_database_finds_mambo_style_install(tmp_path, monkeypatch):
+    joomla_root = tmp_path / "site1"
+    (joomla_root / "administrator").mkdir(parents=True)
+    (joomla_root / "configuration.php").write_text(
+        "<?php\n$mosConfig_host = 'localhost';\n$mosConfig_user = 'u';\n"
+        "$mosConfig_password = 'p';\n$mosConfig_db = 'd';\n"
+    )
+    import joomla_db_scan
+    monkeypatch.setattr(joomla_db_scan, "scan_joomla_database",
+                        lambda root, rules: [("jos_content.fulltext (article ID 1)", "DangerousPhp")])
+    results = vs.check_joomla_database(str(tmp_path), FakeDbScanRules())
+    assert results == [(str(joomla_root), "jos_content.fulltext (article ID 1)", "DangerousPhp")]
+
+
+def test_check_drupal_database_noop_without_rules():
+    assert vs.check_drupal_database([("/drupal", "7.32", "7.103", True, True)], None) == []
+
+
+def test_check_drupal_database_runs_with_rules(monkeypatch):
+    import drupal_db_scan
+    monkeypatch.setattr(drupal_db_scan, "scan_drupal_database",
+                        lambda root, rules: [("field_data_body.body_value (entity ID 1)", "DangerousPhp")])
+    drupal_results = [("/drupal", "7.32", "7.103", True, True)]
+    results = vs.check_drupal_database(drupal_results, FakeDbScanRules())
+    assert results == [("/drupal", "field_data_body.body_value (entity ID 1)", "DangerousPhp")]
 
 
 def test_record_findings_writes_db_hits_tagged_database(tmp_path, monkeypatch):

@@ -65,19 +65,23 @@ product.
 - **Quarantine**: optional, opt-in — moves flagged files out of the
   webroot on scan (not on the real-time hook, which already blocks the
   request), with restore/delete from the UI.
-- **WordPress database content scan**: scans
-  `wp_posts`/`wp_comments` for malicious content injected directly into
-  the database — a real 2+ year compromise found on a site in our own
+- **Database content scan**: scans WordPress (`wp_posts`/`wp_comments`),
+  Joomla/Mambo (`#__content`/`#__modules` — column names adapt to
+  whatever the installed version actually has, from classic Mambo/
+  Joomla 1.0 through current) and Drupal 7 (`field_data_body`/
+  `block_custom`) for malicious content injected directly into the
+  database — a real 2+ year compromise found on a site in our own
   fleet (2026-10-25) lived entirely in `wp_posts` as a published
   "WPCode"/Insert Headers and Footers snippet (cookie-gated admin-user
   creation, C2-proxied content injection for logged-out visitors) and
   never touched the filesystem at all, so no amount of YARA/ClamAV
   coverage could ever have caught it. Reuses the exact same compiled
   YARA ruleset the file scan already uses, matched against raw DB
-  content instead of a file. Connects using the site's own `wp-config.php`
-  DB credentials, or Webmin's own stored MySQL root login when
-  available (one credential per server instead of one per site) — every
-  query is a read-only `SELECT`. Idea and approach informed by studying
+  content instead of a file. Connects using each site's own DB
+  credentials (`wp-config.php`/`configuration.php`/`settings.php`), or
+  Webmin's own stored MySQL root login when available (one credential
+  per server instead of one per site) — every query is a read-only
+  `SELECT`. Idea and approach informed by studying
   Wordfence's own (GPLv3) database-scan code.
 - **Repair (restore to pristine)**: one-click action from the findings
   browser for a modified, named Composer package or Drupal 7 core file —

@@ -247,27 +247,82 @@ def check_wordpress_unknown_files(wp_results):
 DB_SCAN_RULESET = os.environ.get("OPENXS_RULESET", "/opt/php-malware-finder/php.yar")
 
 
-def check_wordpress_database(wp_results):
-    """(wp_root, label, rule_name) for every suspicious hit found in any
-    detected WordPress install's own database - see
-    wp_db_scan.scan_wp_database()'s docstring. Gated by
-    OPENXS_DB_SCAN_ENABLED (on by default, same as the version check
-    itself) - a complete no-op (not even a yara import) when turned
-    off. Reuses check_wordpress()'s own install list rather than
-    walking for WordPress a second time."""
+def compile_db_scan_rules():
+    """The compiled YARA ruleset shared by every database-content check
+    below (WordPress/Joomla/Drupal), or None if OPENXS_DB_SCAN_ENABLED
+    is off or the ruleset can't be compiled - computed once here rather
+    than separately by each check, which would otherwise each pay the
+    same compile cost (not free) for identical content."""
     if os.environ.get("OPENXS_DB_SCAN_ENABLED") != "1":
-        return []
+        return None
     try:
         import pmf_scan
-        import wp_db_scan
-        rules = pmf_scan.compile_ruleset(DB_SCAN_RULESET)
+        return pmf_scan.compile_ruleset(DB_SCAN_RULESET)
     except Exception as e:
         print(f"# (database scan skipped: {e})", file=sys.stderr)
+        return None
+
+
+def check_wordpress_database(wp_results, rules):
+    """(wp_root, label, rule_name) for every suspicious hit found in any
+    detected WordPress install's own database - see
+    wp_db_scan.scan_wp_database()'s docstring. rules: compile_db_scan_rules()'s
+    result - None (disabled, or couldn't compile) is a no-op. Reuses
+    check_wordpress()'s own install list rather than walking for
+    WordPress a second time."""
+    if rules is None:
         return []
+    import wp_db_scan
     results = []
     for wp_root, _installed, _latest, _outdated in wp_results:
         for label, rule in wp_db_scan.scan_wp_database(wp_root, rules):
             results.append((wp_root, label, rule))
+    return results
+
+
+def find_joomla_db_scan_roots(root):
+    """Yields every directory that looks like a Joomla/Mambo install
+    root (has both administrator/ and a parseable configuration.php) -
+    independent of find_joomla_installs()'s own version detection,
+    which only recognizes 1.6+'s administrator/manifests/files/
+    joomla.xml manifest and so never finds anything older (classic
+    Mambo/Joomla 1.0, found live on a real site in our fleet - see
+    joomla_db_scan.py's docstring)."""
+    import joomla_db_scan
+    for dirpath, dirnames, filenames in os.walk(root):
+        if "configuration.php" in filenames and os.path.isdir(os.path.join(dirpath, "administrator")):
+            if joomla_db_scan.parse_joomla_config(dirpath):
+                yield dirpath
+            dirnames[:] = [d for d in dirnames if d != "administrator"]
+
+
+def check_joomla_database(root, rules):
+    """(joomla_root, label, rule_name) for every suspicious hit - see
+    joomla_db_scan.py's docstring. rules: compile_db_scan_rules()'s
+    result. Uses find_joomla_db_scan_roots() (not check_joomla()'s own
+    list - see that function's docstring on why)."""
+    if rules is None:
+        return []
+    import joomla_db_scan
+    results = []
+    for joomla_root in find_joomla_db_scan_roots(root):
+        for label, rule in joomla_db_scan.scan_joomla_database(joomla_root, rules):
+            results.append((joomla_root, label, rule))
+    return results
+
+
+def check_drupal_database(drupal_results, rules):
+    """(drupal_root, label, rule_name) for every suspicious hit - see
+    drupal_db_scan.py's docstring. rules: compile_db_scan_rules()'s
+    result. Reuses check_drupal()'s own install list (no detection gap
+    there, unlike Joomla)."""
+    if rules is None:
+        return []
+    import drupal_db_scan
+    results = []
+    for drupal_root, _installed, _latest, _outdated, _branch_unsupported in drupal_results:
+        for label, rule in drupal_db_scan.scan_drupal_database(drupal_root, rules):
+            results.append((drupal_root, label, rule))
     return results
 
 
@@ -467,7 +522,8 @@ def check_composer(root):
 
 def record_findings(root, wp_results, revive_results, drupal_results, joomla_results,
                      wp_plugin_results, wp_theme_results, composer_results,
-                     wp_unknown_file_results=(), wp_db_results=()):
+                     wp_unknown_file_results=(), wp_db_results=(),
+                     joomla_db_results=(), drupal_db_results=()):
     """Records OUTDATED hits into OpenXS's own scan-history db (rule_name
     tagged "(oldversion)", same suffix-based convention pmf_scan.py's
     categorize() already uses for "(ClamAV)"/"(maldet)") - so they show
@@ -515,11 +571,16 @@ def record_findings(root, wp_results, revive_results, drupal_results, joomla_res
     # only special-cases the (oldversion)/(ClamAV)/(maldet) suffixes).
     findings += [(f"{wp_root} ({label})", f"{rule} (database)")
                  for wp_root, label, rule in wp_db_results]
+    findings += [(f"{joomla_root} ({label})", f"{rule} (database)")
+                 for joomla_root, label, rule in joomla_db_results]
+    findings += [(f"{drupal_root} ({label})", f"{rule} (database)")
+                 for drupal_root, label, rule in drupal_db_results]
     if not findings:
         return
     total = (len(wp_results) + len(revive_results) + len(drupal_results) + len(joomla_results)
              + len(wp_plugin_results) + len(wp_theme_results) + len(composer_results)
-             + len(wp_unknown_file_results) + len(wp_db_results))
+             + len(wp_unknown_file_results) + len(wp_db_results)
+             + len(joomla_db_results) + len(drupal_db_results))
     try:
         import openxs_db
         openxs_db.record_scan(root, total, findings)
@@ -541,7 +602,10 @@ def main():
     wp_theme_results = check_wp_themes(wp_results)
     composer_results = check_composer(root)
     wp_unknown_file_results = check_wordpress_unknown_files(wp_results)
-    wp_db_results = check_wordpress_database(wp_results)
+    db_scan_rules = compile_db_scan_rules()
+    wp_db_results = check_wordpress_database(wp_results, db_scan_rules)
+    joomla_db_results = check_joomla_database(root, db_scan_rules)
+    drupal_db_results = check_drupal_database(drupal_results, db_scan_rules)
 
     wp_outdated = sum(1 for _, _, _, outdated in wp_results if outdated)
     revive_outdated = sum(1 for _, _, _, outdated in revive_results if outdated)
@@ -606,17 +670,26 @@ def main():
         tag = "OLD-LEFTOVER" if is_old_leftover else "UNKNOWN"
         print(f"{tag}\t{wp_root}\t{os.path.relpath(abs_path, wp_root)}")
 
-    print(f"# WordPress database content: {len(wp_db_results)} suspicious hit(s) "
-          f"(OPENXS_DB_SCAN_ENABLED={os.environ.get('OPENXS_DB_SCAN_ENABLED', '0')})")
+    db_scan_status = f"(OPENXS_DB_SCAN_ENABLED={os.environ.get('OPENXS_DB_SCAN_ENABLED', '0')})"
+    print(f"# WordPress database content: {len(wp_db_results)} suspicious hit(s) {db_scan_status}")
     for wp_root, label, rule in wp_db_results:
         print(f"HIT\t{wp_root}\t{label}\t{rule}")
 
+    print(f"# Joomla/Mambo database content: {len(joomla_db_results)} suspicious hit(s) {db_scan_status}")
+    for joomla_root, label, rule in joomla_db_results:
+        print(f"HIT\t{joomla_root}\t{label}\t{rule}")
+
+    print(f"# Drupal database content: {len(drupal_db_results)} suspicious hit(s) {db_scan_status}")
+    for drupal_root, label, rule in drupal_db_results:
+        print(f"HIT\t{drupal_root}\t{label}\t{rule}")
+
     record_findings(root, wp_results, revive_results, drupal_results, joomla_results,
                      wp_plugin_results, wp_theme_results, composer_results,
-                     wp_unknown_file_results, wp_db_results)
+                     wp_unknown_file_results, wp_db_results,
+                     joomla_db_results, drupal_db_results)
     sys.exit(1 if (wp_outdated or revive_outdated or drupal_unsupported or joomla_flagged
                    or wp_plugin_outdated or wp_theme_outdated or composer_outdated
-                   or wp_unknown_files or wp_db_results) else 0)
+                   or wp_unknown_files or wp_db_results or joomla_db_results or drupal_db_results) else 0)
 
 
 if __name__ == "__main__":
