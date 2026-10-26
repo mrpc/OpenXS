@@ -173,9 +173,17 @@ else {
 				$fp_btn = "<a href='$fp_url' style='$btn_style;background:#fdeef0;color:#9a3b4a;border:1px solid #edc3cc' ".
 					"onclick=\"return confirm('" . $confirm_msg . "')\">Mark false positive</a>";
 				}
+			# Only offered where a "modified known package/core file"
+			# finding could plausibly apply (restore_pristine.py tries
+			# Composer packages and Drupal 7 core, not yet WordPress
+			# core/plugins or the other platforms) - never for a file
+			# that's already gone or already quarantined, same guard
+			# repair_file() itself enforces.
+			my $repair_btn = ($gone ne '1' && $q eq '' && ($category eq 'yara_heuristic' || $category eq 'yara_exploit'))
+				? &openxs_repair_action_form($fid, undef) : "";
 			my $links = "<div style='margin-top:3px'>" .
 				($gone eq '1' ? "<span style='$btn_style;background:#f0f0f0;color:#888;border:1px solid #ddd'>file gone</span> " : "$view_btn ") .
-				$logs_btn . " " . $fp_btn . "</div>";
+				$logs_btn . " " . $fp_btn . " " . $repair_btn . "</div>";
 			my $status = ($r eq 'world-writable directory')
 				? &openxs_permission_action_links($fid, $perm_fix_new_mode)
 				: ($gone eq '1' && $q eq '')

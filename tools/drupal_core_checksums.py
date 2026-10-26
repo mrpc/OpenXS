@@ -68,6 +68,35 @@ def compute_checksums_from_tarball(version, timeout=30):
     return checksums or None
 
 
+def fetch_file_content(version, rel_path, timeout=30):
+    """The real, pristine bytes of one file from this Drupal version's
+    own release tarball - used only by the manual "restore to pristine
+    version" action (restore_pristine.py), not by anything in the
+    regular scan path (which only ever needs the hash, via
+    fetch_checksums() above). Downloads the tarball fresh every call -
+    this doesn't happen often enough to be worth caching a whole
+    tarball's content on disk the way fetch_checksums() caches hashes.
+    None if the download fails or rel_path isn't in this release."""
+    url = TARBALL_URL.format(version=version)
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            data = resp.read()
+    except Exception:
+        return None
+    prefix = f"drupal-{version}/"
+    try:
+        import io
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
+            try:
+                member = tar.getmember(prefix + rel_path)
+            except KeyError:
+                return None
+            fh = tar.extractfile(member)
+            return fh.read() if fh else None
+    except tarfile.TarError:
+        return None
+
+
 def fetch_checksums(version):
     """{relative_path: sha256} for this exact Drupal 7.x version, bundle
     first (no network), falling back to downloading+hashing the real

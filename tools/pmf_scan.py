@@ -281,6 +281,26 @@ def find_platform_root_for(fname):
     return (None, None)
 
 
+def detect_platform_version(platform, root):
+    """The installed version string for this already-detected platform
+    root (per find_platform_root_for()'s own platform dict), or None if
+    its version file is unreadable or doesn't match the expected
+    pattern. Pulled out of is_unmodified_core_file() so
+    restore_pristine.py can reuse the exact same detection instead of
+    re-implementing it."""
+    try:
+        import version_scan
+        version_re = getattr(version_scan, platform["version_re_attr"])
+    except ImportError:
+        return None
+    try:
+        with open(os.path.join(root, platform["version_relpath"]), errors="replace") as f:
+            m = version_re.search(f.read())
+    except OSError:
+        return None
+    return m.group(1) if m else None
+
+
 def is_unmodified_core_file(fname):
     """True if fname sits under a detected platform install (WordPress,
     Drupal 7, ...) and matches that exact version's official (or
@@ -298,19 +318,13 @@ def is_unmodified_core_file(fname):
     if not platform:
         return False
     try:
-        import version_scan
         checksums_module = __import__(platform["checksums_module"])
-        version_re = getattr(version_scan, platform["version_re_attr"])
     except ImportError:
         return False
-    try:
-        with open(os.path.join(root, platform["version_relpath"]), errors="replace") as f:
-            m = version_re.search(f.read())
-    except OSError:
+    version = detect_platform_version(platform, root)
+    if not version:
         return False
-    if not m:
-        return False
-    checksums = checksums_module.fetch_checksums(m.group(1))
+    checksums = checksums_module.fetch_checksums(version)
     if not checksums:
         return False
     return checksums_module.is_unmodified_core_file(fname, root, checksums)

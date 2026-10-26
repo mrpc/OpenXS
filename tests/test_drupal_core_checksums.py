@@ -44,6 +44,43 @@ def test_compute_checksums_from_tarball_returns_none_on_download_failure(monkeyp
     assert dcc.compute_checksums_from_tarball("7.32") is None
 
 
+def test_fetch_file_content_returns_the_real_bytes(monkeypatch):
+    tarball_bytes = _make_tarball_bytes("7.32", {"index.php": "<?php // stock"})
+
+    class FakeResp:
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def read(self):
+            return tarball_bytes
+
+    monkeypatch.setattr(dcc.urllib.request, "urlopen", lambda url, timeout=30: FakeResp())
+    assert dcc.fetch_file_content("7.32", "index.php") == b"<?php // stock"
+
+
+def test_fetch_file_content_none_for_missing_path(monkeypatch):
+    tarball_bytes = _make_tarball_bytes("7.32", {"index.php": "<?php // stock"})
+
+    class FakeResp:
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def read(self):
+            return tarball_bytes
+
+    monkeypatch.setattr(dcc.urllib.request, "urlopen", lambda url, timeout=30: FakeResp())
+    assert dcc.fetch_file_content("7.32", "does/not/exist.php") is None
+
+
+def test_fetch_file_content_none_on_download_failure(monkeypatch):
+    def fail(url, timeout=30):
+        raise OSError("unreachable")
+    monkeypatch.setattr(dcc.urllib.request, "urlopen", fail)
+    assert dcc.fetch_file_content("7.32", "index.php") is None
+
+
 def test_bundled_checksums_used_first(tmp_path, monkeypatch):
     monkeypatch.setattr(dcc, "BUNDLED_DIR", str(tmp_path))
     with gzip.open(tmp_path / "7.32.json.gz", "wt") as f:

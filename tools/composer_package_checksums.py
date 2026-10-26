@@ -142,6 +142,40 @@ def compute_checksums_from_zip(name, version, timeout=30, dist_url=None):
     return checksums or None
 
 
+def fetch_file_content(name, version, rel_path, dist_url=None, timeout=30):
+    """The real, pristine bytes of one file from this package version's
+    own release archive - used only by the manual "restore to pristine
+    version" action (restore_pristine.py), not by anything in the
+    regular scan path (which only ever needs the hash, via
+    fetch_checksums() above). Downloads the archive fresh every call -
+    this doesn't happen often enough to be worth caching a whole
+    archive's content on disk the way fetch_checksums() caches hashes.
+    None if the download fails or rel_path isn't in this release."""
+    dist_url = dist_url or _find_dist_url(name, version, timeout=timeout)
+    if not dist_url:
+        return None
+    req = urllib.request.Request(dist_url)
+    if GITHUB_TOKEN and "api.github.com" in dist_url:
+        req.add_header("Authorization", f"Bearer {GITHUB_TOKEN}")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = resp.read()
+    except Exception:
+        return None
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            names = [n for n in zf.namelist() if not n.endswith("/")]
+            if not names:
+                return None
+            prefix = names[0].split("/", 1)[0] + "/"
+            try:
+                return zf.read(prefix + rel_path)
+            except KeyError:
+                return None
+    except zipfile.BadZipFile:
+        return None
+
+
 def fetch_checksums(name, version, dist_url=None, cache_key=None):
     """{relative_path: sha256} for this exact "vendor/package" version,
     disk cache first, falling back to the real release archive (via

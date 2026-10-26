@@ -71,6 +71,28 @@ def test_compute_checksums_from_zip_returns_none_on_download_failure(monkeypatch
     assert cpc.compute_checksums_from_zip("symfony/var-exporter", "v8.1.9") is None
 
 
+def test_fetch_file_content_returns_the_real_bytes(monkeypatch):
+    dist_url = "https://api.github.com/repos/symfony/var-exporter/zipball/abc123"
+    zip_bytes = _make_zip_bytes("symfony-var-exporter-abc123", {"Hydrator.php": "<?php // stock"})
+    monkeypatch.setattr(cpc.urllib.request, "urlopen", lambda req, timeout=30: FakeResp(zip_bytes))
+    content = cpc.fetch_file_content("symfony/var-exporter", "v7.4.18", "Hydrator.php", dist_url=dist_url)
+    assert content == b"<?php // stock"
+
+
+def test_fetch_file_content_none_for_missing_path(monkeypatch):
+    dist_url = "https://api.github.com/repos/symfony/var-exporter/zipball/abc123"
+    zip_bytes = _make_zip_bytes("symfony-var-exporter-abc123", {"Hydrator.php": "<?php // stock"})
+    monkeypatch.setattr(cpc.urllib.request, "urlopen", lambda req, timeout=30: FakeResp(zip_bytes))
+    content = cpc.fetch_file_content("symfony/var-exporter", "v7.4.18", "does/not/exist.php", dist_url=dist_url)
+    assert content is None
+
+
+def test_fetch_file_content_none_when_dist_url_unresolvable(monkeypatch):
+    monkeypatch.setattr(cpc, "_find_dist_url", lambda name, version, timeout=10: None)
+    content = cpc.fetch_file_content("acme/private-package", "1.0.0", "x.php")
+    assert content is None
+
+
 def test_fetch_checksums_caches_to_disk(tmp_path, monkeypatch):
     monkeypatch.setattr(cpc, "CACHE_DIR", str(tmp_path))
     dist_url = "https://api.github.com/repos/acme/thing/zipball/def456"

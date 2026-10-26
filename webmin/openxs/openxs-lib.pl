@@ -412,6 +412,14 @@ my ($action, $fid, $label, $scan_id, $tags) = @_;
 return &openxs_mini_form("quarantine.cgi", $action, $fid, $label, $scan_id, $tags);
 }
 
+sub openxs_repair_action_form
+{
+my ($fid, $scan_id) = @_;
+return &openxs_mini_form("repair.cgi", "repair", $fid, "Attempt repair", $scan_id,
+	"onclick=\"return confirm('Replace this file with its official pristine version? "
+	. "The current content is backed up to quarantine first, so this can be undone from there.')\"");
+}
+
 sub openxs_quarantine_action_links
 {
 my ($fid, $qpath, $scan_id, $rule) = @_;
