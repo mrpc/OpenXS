@@ -19,6 +19,22 @@ Release from that section's text.
 
 ## [Unreleased]
 
+### Fixed
+- `install_modsecurity.sh` hardcoded ModSecurity's `SecRequestBodyLimit`/
+  `SecRequestBodyNoFilesLimit` to its own stock recommended defaults
+  (12.5MB/128KB) - raising a site's own PHP `upload_max_filesize`/
+  `post_max_size` past that point kept failing uploads with no obvious
+  cause, since ModSecurity's cap sat nowhere an admin configuring PHP
+  limits would think to check. New `tools/modsec_body_limit.py` derives
+  both from this server's own actual PHP configuration instead: every
+  web-facing php.ini (fpm/apache2/cgi, every installed version) AND
+  every FPM pool's own `php_value[...]`/`php_admin_value[...]`
+  overrides, which win over their version's php.ini for that one site -
+  confirmed live (2026-10-26) that at least one Virtualmin-managed pool
+  on prodserver overrides its php.ini's default by two orders of magnitude
+  (2048M). Never goes below ModSecurity's own stock defaults even when
+  no PHP config is found.
+
 ## [v0.2.0] - 2026-10-25
 
 ### Signatures

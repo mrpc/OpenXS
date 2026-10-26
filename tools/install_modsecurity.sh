@@ -15,11 +15,23 @@ cp -n /etc/modsecurity/modsecurity.conf-recommended /etc/modsecurity/modsecurity
 sed -i 's/SecRuleEngine DetectionOnly/SecRuleEngine On/' /etc/modsecurity/modsecurity.conf
 mkdir -p /opt/modsecurity/var/upload
 chown www-data:www-data /opt/modsecurity/var/upload
+
+# Sized from this server's own PHP upload_max_filesize/post_max_size
+# (tools/modsec_body_limit.py), not a fixed number - found live
+# 2026-10-25: raising a site's PHP upload limit kept failing silently
+# because ModSecurity's own stock body-size cap was still lower, and
+# nothing pointed at ModSecurity as the actual ceiling. A hardcoded
+# replacement value just moves the same bug to a different threshold
+# the next time a PHP limit is raised past it.
+read -r BODY_LIMIT NO_FILES_LIMIT < <(python3 "$(dirname "$0")/modsec_body_limit.py")
 sed -i \
     -e 's|^#SecUploadDir /opt/modsecurity/var/upload/|SecUploadDir /opt/modsecurity/var/upload/|' \
     -e 's|^#SecUploadKeepFiles RelevantOnly|SecUploadKeepFiles On|' \
     -e 's|^#SecUploadFileMode 0600|SecUploadFileMode 0600|' \
+    -e "s|^SecRequestBodyLimit .*|SecRequestBodyLimit $BODY_LIMIT|" \
+    -e "s|^SecRequestBodyNoFilesLimit .*|SecRequestBodyNoFilesLimit $NO_FILES_LIMIT|" \
     /etc/modsecurity/modsecurity.conf
+echo "SecRequestBodyLimit=$BODY_LIMIT SecRequestBodyNoFilesLimit=$NO_FILES_LIMIT (derived from PHP's own configured limits)"
 
 # A dedicated include point loaded AFTER the CRS rule files
 # (/usr/share/modsecurity-crs/*.load, included a few lines above this in
