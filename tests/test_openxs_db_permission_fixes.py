@@ -132,7 +132,10 @@ def test_resolved_matches_by_path_not_finding_id_across_duplicate_scans(tmp_path
     assert sorted(db.unresolved_world_writable_finding_ids()) == sorted([fid1, fid2])
     db.fix_world_writable_permission(fid1)  # fix via fid1 only
 
-    # Both rows now count as resolved - fid2 was never individually fixed.
+    # Both rows are individually resolved (fid2 was never fixed itself,
+    # just matched by path) - but search_findings() now also dedupes to
+    # one row per (file_path, rule_name), so only the latest (fid2) shows.
     assert db.unresolved_world_writable_finding_ids() == []
     rows, count = db.search_findings(resolved=True)
-    assert count == 2
+    assert count == 1
+    assert rows[0][0] == fid2

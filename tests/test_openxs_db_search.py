@@ -33,6 +33,29 @@ def test_derive_source_default_scan():
     assert db.derive_source("/var/www") == "Scan"
 
 
+def test_search_findings_dedupes_repeat_hits_to_the_latest(tmp_path, monkeypatch):
+    # Found live 2026-10-26: a frequently-rewritten doc file kept
+    # re-triggering the same rule on every edit via the real-time watch
+    # hook, flooding the list with dozens of rows for the same thing.
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
+    db.record_scan("/x", 1, [("/a.md", "DodgyStrings")])
+    db.record_scan("/x", 1, [("/a.md", "DodgyStrings")])
+    scan3 = db.record_scan("/x", 1, [("/a.md", "DodgyStrings")])
+    rows, count = db.search_findings()
+    assert count == 1
+    fid3 = db.findings_for_scan(scan3)[0][0]
+    assert rows[0][0] == fid3
+
+
+def test_search_findings_dedup_is_per_file_and_rule(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
+    db.record_scan("/x", 1, [("/a.php", "ObfuscatedPhp")])
+    db.record_scan("/x", 1, [("/a.php", "DodgyStrings")])  # different rule, same file
+    db.record_scan("/x", 1, [("/b.php", "ObfuscatedPhp")])  # different file, same rule
+    rows, count = db.search_findings()
+    assert count == 3
+
+
 def test_search_findings_filters_by_category(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
     db.record_scan("/x", 3, [("/a.php", "Known exploit"), ("/b.php", "Eicar (ClamAV)"), ("/c.php", "Outdated WordPress core: 5.0 (latest: 6.4.2) (oldversion)")])

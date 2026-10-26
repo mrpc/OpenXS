@@ -53,6 +53,9 @@ CREATE TABLE IF NOT EXISTS daily_stats (
 -- against ~0.1ms for the old, index-backed "ORDER BY f.id" alone.
 CREATE INDEX IF NOT EXISTS idx_findings_scan_id ON findings(scan_id);
 CREATE INDEX IF NOT EXISTS idx_findings_quarantine_path ON findings(quarantine_path);
+-- Backs _LATEST_PER_FINDING_SQL's "MAX(id) GROUP BY file_path, rule_name" -
+-- the findings browser's own display-dedup, run on every page view.
+CREATE INDEX IF NOT EXISTS idx_findings_path_rule ON findings(file_path, rule_name);
 CREATE INDEX IF NOT EXISTS idx_scans_started_at ON scans(started_at);
 -- mod_security block counts, recorded daily by cron (openxs_modsec_record.py)
 -- rather than read live from Apache's error logs on every Stats page view -
@@ -733,23 +736,36 @@ _RESOLVED_SQL = (
 # noticed it was a problem.
 
 
+_LATEST_PER_FINDING_SQL = "f.id IN (SELECT MAX(id) FROM findings GROUP BY file_path, rule_name)"
+# Same unchanged file/rule combination gets its own new row on every
+# scan that still sees it (scheduled, or the real-time watch hook on
+# every edit of a frequently-rewritten file) - without this, the list
+# just grows forever with the exact same already-known hit instead of
+# showing it once. "Who hit this?" (finding_logs.cgi) already exists
+# for the full per-occurrence history, so this is a display-only
+# dedup: the findings TABLE still gets a fresh row per occurrence
+# (scans.hits/daily_stats stay an honest observed-hits count), only
+# this browser collapses to the latest.
+
+
 def search_findings(category=None, search=None, limit=50, offset=0, sort="date", order="desc", resolved=None):
     """Unified findings browser query (cxs's own tabbed All/Exploits/
-    Virus/Old Versions/... view, which this mirrors) - every finding
-    ever recorded, not just quarantined ones, with its scan's date and
-    path for derive_user()/derive_source(). category: one of
-    _CATEGORY_SQL's keys, or None for everything. search: substring
-    match against the file path, case-insensitive. sort/order: same
-    FINDING_SORT_COLUMNS as quarantined_files() - plain id order isn't
-    date order for a bulk historical import. resolved: True/False to
-    filter by whether the finding has actually been acted on (quarantined/
-    deleted, or has an active permission fix - a directory can't be
-    quarantined the way a file can), None for no filter - lets an admin
-    hide what's already been dealt with and see only what's left, or the
-    reverse, instead of re-scanning the same already-handled findings
-    mentally on every visit."""
+    Virus/Old Versions/... view, which this mirrors) - the latest
+    occurrence of every distinct (file_path, rule_name) ever recorded,
+    not just quarantined ones (see _LATEST_PER_FINDING_SQL), with its
+    scan's date and path for derive_user()/derive_source(). category:
+    one of _CATEGORY_SQL's keys, or None for everything. search:
+    substring match against the file path, case-insensitive. sort/
+    order: same FINDING_SORT_COLUMNS as quarantined_files() - plain id
+    order isn't date order for a bulk historical import. resolved:
+    True/False to filter by whether the finding has actually been
+    acted on (quarantined/deleted, or has an active permission fix - a
+    directory can't be quarantined the way a file can), None for no
+    filter - lets an admin hide what's already been dealt with and see
+    only what's left, or the reverse, instead of re-scanning the same
+    already-handled findings mentally on every visit."""
     conn = _connect()
-    where = []
+    where = [_LATEST_PER_FINDING_SQL]
     params = []
     if category and category in _CATEGORY_SQL:
         where.append(_CATEGORY_SQL[category])
@@ -760,7 +776,7 @@ def search_findings(category=None, search=None, limit=50, offset=0, sort="date",
         where.append(_RESOLVED_SQL)
     elif resolved is False:
         where.append(f"NOT {_RESOLVED_SQL}")
-    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+    where_sql = "WHERE " + " AND ".join(where)
     sort_col = FINDING_SORT_COLUMNS.get(sort, FINDING_SORT_COLUMNS["date"])
     sort_dir = "ASC" if order == "asc" else "DESC"
     query = (
