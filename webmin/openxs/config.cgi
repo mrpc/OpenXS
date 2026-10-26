@@ -59,6 +59,7 @@ foreach my $k ('composer_trust_min_age_days', 'composer_trust_min_downloads',
 		}
 	}
 $cfg{'VERSION_SCAN_ENABLED'} = (defined($in{'version_scan_enabled'}) && $in{'version_scan_enabled'} eq '1') ? '1' : '0';
+$cfg{'DB_SCAN_ENABLED'} = (defined($in{'db_scan_enabled'}) && $in{'db_scan_enabled'} eq '1') ? '1' : '0';
 $cfg{'APT_SECURITY_ENABLED'} = (defined($in{'apt_security_enabled'}) && $in{'apt_security_enabled'} eq '1') ? '1' : '0';
 $cfg{'SCAN_MAILBOXES'} = (defined($in{'scan_mailboxes'}) && $in{'scan_mailboxes'} eq '1') ? '1' : '0';
 $cfg{'MAILBOX_RECENT_HOURS'} = &one_line($in{'mailbox_recent_hours'}) if (defined($in{'mailbox_recent_hours'}));

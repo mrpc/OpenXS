@@ -161,6 +161,41 @@ def test_record_findings_writes_unknown_core_files(tmp_path, monkeypatch):
     assert by_path[leftover_path].endswith("(oldversion)")
 
 
+def test_check_wordpress_database_off_by_default(monkeypatch):
+    monkeypatch.delenv("OPENXS_DB_SCAN_ENABLED", raising=False)
+    assert vs.check_wordpress_database([("/wp", "6.4.2", "6.4.2", False)]) == []
+
+
+def test_check_wordpress_database_runs_when_enabled(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENXS_DB_SCAN_ENABLED", "1")
+    wp_root = make_wp_install(tmp_path, "site1", "6.4.2")
+
+    class FakeRules:
+        pass
+
+    import pmf_scan
+    import wp_db_scan
+    monkeypatch.setattr(pmf_scan, "compile_ruleset", lambda path: FakeRules())
+    monkeypatch.setattr(wp_db_scan, "scan_wp_database",
+                        lambda root, rules: [("wp_posts.post_content (post ID 1)", "DangerousPhp")])
+
+    wp_results = [(str(wp_root), "6.4.2", "6.4.2", False)]
+    results = vs.check_wordpress_database(wp_results)
+    assert results == [(str(wp_root), "wp_posts.post_content (post ID 1)", "DangerousPhp")]
+
+
+def test_record_findings_writes_db_hits_tagged_database(tmp_path, monkeypatch):
+    import openxs_db as db
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
+    wp_db_results = [(str(tmp_path / "wp"), "wp_posts.post_content (post ID 1)", "DangerousPhp")]
+    vs.record_findings(str(tmp_path), [], [], [], [], [], [], [], [], wp_db_results)
+    scans = db.recent_scans(limit=1)
+    findings = db.findings_for_scan(scans[0][0])
+    assert len(findings) == 1
+    assert findings[0][2] == "DangerousPhp (database)"
+    assert "wp_posts.post_content (post ID 1)" in findings[0][1]
+
+
 def test_record_findings_writes_outdated_hits_tagged_oldversion(tmp_path, monkeypatch):
     import openxs_db as db
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))

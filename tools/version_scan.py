@@ -244,6 +244,34 @@ def check_wordpress_unknown_files(wp_results):
     return results
 
 
+DB_SCAN_RULESET = os.environ.get("OPENXS_RULESET", "/opt/php-malware-finder/php.yar")
+
+
+def check_wordpress_database(wp_results):
+    """(wp_root, label, rule_name) for every suspicious hit found in any
+    detected WordPress install's own database - see
+    wp_db_scan.scan_wp_database()'s docstring. Off by default
+    (OPENXS_DB_SCAN_ENABLED) and a complete no-op (not even a yara
+    import) unless explicitly turned on - reading a site's own DB
+    credentials and connecting to its live database is a bigger step
+    than anything file-scanning-only does. Reuses check_wordpress()'s
+    own install list rather than walking for WordPress a second time."""
+    if os.environ.get("OPENXS_DB_SCAN_ENABLED") != "1":
+        return []
+    try:
+        import pmf_scan
+        import wp_db_scan
+        rules = pmf_scan.compile_ruleset(DB_SCAN_RULESET)
+    except Exception as e:
+        print(f"# (database scan skipped: {e})", file=sys.stderr)
+        return []
+    results = []
+    for wp_root, _installed, _latest, _outdated in wp_results:
+        for label, rule in wp_db_scan.scan_wp_database(wp_root, rules):
+            results.append((wp_root, label, rule))
+    return results
+
+
 def find_wp_plugins(wp_root):
     """Yields (slug, installed_version) for every plugin under a
     WordPress install's wp-content/plugins/ - reads readme.txt's "Stable
@@ -440,7 +468,7 @@ def check_composer(root):
 
 def record_findings(root, wp_results, revive_results, drupal_results, joomla_results,
                      wp_plugin_results, wp_theme_results, composer_results,
-                     wp_unknown_file_results=()):
+                     wp_unknown_file_results=(), wp_db_results=()):
     """Records OUTDATED hits into OpenXS's own scan-history db (rule_name
     tagged "(oldversion)", same suffix-based convention pmf_scan.py's
     categorize() already uses for "(ClamAV)"/"(maldet)") - so they show
@@ -480,11 +508,19 @@ def record_findings(root, wp_results, revive_results, drupal_results, joomla_res
                  for wp_root, abs_path, is_old_leftover in wp_unknown_file_results if is_old_leftover]
     findings += [(abs_path, f"Unknown file in WordPress core: {os.path.relpath(abs_path, wp_root)}")
                  for wp_root, abs_path, is_old_leftover in wp_unknown_file_results if not is_old_leftover]
+    # Not a file-based finding at all (see wp_db_scan.py's docstring) -
+    # "(database)" tagged so it's visibly distinct in the findings
+    # browser, same suffix-tagging convention as everything else here,
+    # though it still falls into the generic yara_heuristic/yara_exploit
+    # category bucket by whatever rule actually matched (categorize()
+    # only special-cases the (oldversion)/(ClamAV)/(maldet) suffixes).
+    findings += [(f"{wp_root} ({label})", f"{rule} (database)")
+                 for wp_root, label, rule in wp_db_results]
     if not findings:
         return
     total = (len(wp_results) + len(revive_results) + len(drupal_results) + len(joomla_results)
              + len(wp_plugin_results) + len(wp_theme_results) + len(composer_results)
-             + len(wp_unknown_file_results))
+             + len(wp_unknown_file_results) + len(wp_db_results))
     try:
         import openxs_db
         openxs_db.record_scan(root, total, findings)
@@ -506,6 +542,7 @@ def main():
     wp_theme_results = check_wp_themes(wp_results)
     composer_results = check_composer(root)
     wp_unknown_file_results = check_wordpress_unknown_files(wp_results)
+    wp_db_results = check_wordpress_database(wp_results)
 
     wp_outdated = sum(1 for _, _, _, outdated in wp_results if outdated)
     revive_outdated = sum(1 for _, _, _, outdated in revive_results if outdated)
@@ -570,12 +607,17 @@ def main():
         tag = "OLD-LEFTOVER" if is_old_leftover else "UNKNOWN"
         print(f"{tag}\t{wp_root}\t{os.path.relpath(abs_path, wp_root)}")
 
+    print(f"# WordPress database content: {len(wp_db_results)} suspicious hit(s) "
+          f"(OPENXS_DB_SCAN_ENABLED={os.environ.get('OPENXS_DB_SCAN_ENABLED', '0')})")
+    for wp_root, label, rule in wp_db_results:
+        print(f"HIT\t{wp_root}\t{label}\t{rule}")
+
     record_findings(root, wp_results, revive_results, drupal_results, joomla_results,
                      wp_plugin_results, wp_theme_results, composer_results,
-                     wp_unknown_file_results)
+                     wp_unknown_file_results, wp_db_results)
     sys.exit(1 if (wp_outdated or revive_outdated or drupal_unsupported or joomla_flagged
                    or wp_plugin_outdated or wp_theme_outdated or composer_outdated
-                   or wp_unknown_files) else 0)
+                   or wp_unknown_files or wp_db_results) else 0)
 
 
 if __name__ == "__main__":

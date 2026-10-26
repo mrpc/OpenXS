@@ -65,6 +65,20 @@ product.
 - **Quarantine**: optional, opt-in — moves flagged files out of the
   webroot on scan (not on the real-time hook, which already blocks the
   request), with restore/delete from the UI.
+- **WordPress database content scan** (opt-in, off by default): scans
+  `wp_posts`/`wp_comments` for malicious content injected directly into
+  the database — a real 2+ year compromise found on a site in our own
+  fleet (2026-10-25) lived entirely in `wp_posts` as a published
+  "WPCode"/Insert Headers and Footers snippet (cookie-gated admin-user
+  creation, C2-proxied content injection for logged-out visitors) and
+  never touched the filesystem at all, so no amount of YARA/ClamAV
+  coverage could ever have caught it. Reuses the exact same compiled
+  YARA ruleset the file scan already uses, matched against raw DB
+  content instead of a file. Connects using the site's own `wp-config.php`
+  DB credentials, or Webmin's own stored MySQL root login when
+  available (one credential per server instead of one per site) — every
+  query is a read-only `SELECT`. Idea and approach informed by studying
+  Wordfence's own (GPLv3) database-scan code.
 - **Repair (restore to pristine)**: one-click action from the findings
   browser for a modified, named Composer package or Drupal 7 core file —
   backs the current content up to quarantine first, then writes back the
@@ -212,18 +226,10 @@ Still on the roadmap, deliberately incremental rather than all-at-once:
   and against the actual CSF version (v14.24, pre-GPLv3) still running on
   most of our own servers — the CSF-hook installer has only been verified
   against the v15.00 GPLv3 release so far.
-- WordPress database-content scanning: a real 2+ year compromise on
-  mrpc.pramnos.net (found 2026-10-25) lived entirely in `wp_posts` as a
-  published "WPCode"/Insert Headers and Footers snippet — a full
-  remote-control backdoor (cookie-gated admin-user creation, C2-proxied
-  content injection for logged-out visitors) that never touched the
-  filesystem at all, so no amount of YARA/ClamAV/maldet coverage could
-  ever have caught it; OpenXS only scans files on disk. Needs a
-  DB-aware check (any WordPress install found during a scan, look at
-  its own `wp_posts`/`wp_options` for published WPCode/IHAF/similar
-  header-footer-injection snippets, flag suspicious ones the same way
-  a file-based finding is flagged) — a structurally new category of
-  check, not an extension of the existing file-scanning path.
+- WordPress database-content scan coverage beyond `wp_posts`/
+  `wp_comments` (see "What it does" below) — `wp_options` and
+  `wp_postmeta`/`wp_usermeta` deliberately deferred until the current,
+  narrower scope has been run against the real fleet.
 
 ## Credits
 

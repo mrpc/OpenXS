@@ -33,6 +33,7 @@ QUARANTINE_CATEGORIES="virus,yara_exploit,maldet"
 SCAN_MAILBOXES="0"
 MAILBOX_RECENT_HOURS=""
 VERSION_SCAN_ENABLED="1"
+DB_SCAN_ENABLED="0"
 APT_SECURITY_ENABLED="1"
 VMRSS_MAX_MB="2000"
 YARA_PARANOIA_LEVEL="1"
@@ -61,6 +62,7 @@ if [ -f "$CONFIG" ]; then
             SCAN_MAILBOXES) SCAN_MAILBOXES="$value" ;;
             MAILBOX_RECENT_HOURS) MAILBOX_RECENT_HOURS="$value" ;;
             VERSION_SCAN_ENABLED) VERSION_SCAN_ENABLED="$value" ;;
+            DB_SCAN_ENABLED) DB_SCAN_ENABLED="$value" ;;
             APT_SECURITY_ENABLED) APT_SECURITY_ENABLED="$value" ;;
             VMRSS_MAX_MB) VMRSS_MAX_MB="$value" ;;
             YARA_PARANOIA_LEVEL) YARA_PARANOIA_LEVEL="$value" ;;
@@ -139,10 +141,13 @@ fim_count=$(echo "$fim_output" | grep -c '^CHANGED\|^REMOVED\|^ADDED' || true)
 # sversionscan-equivalent - see version_scan.py's own docstring).
 version_output=""
 version_count=0
+db_hit_count=0
 if [ "$VERSION_SCAN_ENABLED" = "1" ]; then
+    export OPENXS_DB_SCAN_ENABLED="$DB_SCAN_ENABLED"
     version_output=$(python3 version_scan.py "$FS_SCAN_ROOT" 2>&1) || true
     echo "$version_output" > version_results.txt
     version_count=$(echo "$version_output" | grep -c '^OUTDATED' || true)
+    db_hit_count=$(echo "$version_output" | grep -c '^HIT' || true)
 fi
 
 # Pending apt security updates - OS-level, not application-layer like
@@ -183,7 +188,7 @@ serious="${serious:-0}"
 heuristic="${heuristic:-0}"
 fs="${fs:-0}"
 
-if [ "$hits" -gt 0 ] || [ "$drift_count" -gt 0 ] || [ "$fim_count" -gt 0 ] || [ "$version_count" -gt 0 ] || [ "$apt_count" -gt 0 ] || [ "$mailbox_count" -gt 0 ]; then
+if [ "$hits" -gt 0 ] || [ "$drift_count" -gt 0 ] || [ "$fim_count" -gt 0 ] || [ "$version_count" -gt 0 ] || [ "$apt_count" -gt 0 ] || [ "$mailbox_count" -gt 0 ] || [ "$db_hit_count" -gt 0 ]; then
     {
         if [ "$serious" -gt 0 ]; then
             echo "=== $serious SERIOUS hit(s) (virus/known exploit/maldet) on $HOST ($SCAN_LABEL) ==="
@@ -209,6 +214,11 @@ if [ "$hits" -gt 0 ] || [ "$drift_count" -gt 0 ] || [ "$fim_count" -gt 0 ] || [ 
             echo "$version_output"
             echo ""
         fi
+        if [ "$db_hit_count" -gt 0 ]; then
+            echo "=== WordPress database content: $db_hit_count suspicious hit(s) - opt-in scan, see Settings ==="
+            echo "$version_output" | grep '^HIT'
+            echo ""
+        fi
         if [ "$apt_count" -gt 0 ]; then
             echo "=== Pending apt security updates: $apt_count package(s) ==="
             echo "$apt_output"
@@ -218,5 +228,5 @@ if [ "$hits" -gt 0 ] || [ "$drift_count" -gt 0 ] || [ "$fim_count" -gt 0 ] || [ 
             echo "=== Mailbox virus scan: $mailbox_count infected file(s) ==="
             echo "$mailbox_output"
         fi
-    } | mail -s "[$HOST] OpenXS: $serious serious, $heuristic heuristic, $fs fs-hygiene, $drift_count drift, $fim_count integrity, $version_count outdated, $apt_count apt-security, $mailbox_count mail-virus" "$EMAIL"
+    } | mail -s "[$HOST] OpenXS: $serious serious, $heuristic heuristic, $fs fs-hygiene, $drift_count drift, $fim_count integrity, $version_count outdated, $db_hit_count db-content, $apt_count apt-security, $mailbox_count mail-virus" "$EMAIL"
 fi
