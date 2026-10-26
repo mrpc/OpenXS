@@ -128,6 +128,39 @@ def test_check_composer_does_not_flag_dev_versions(tmp_path, monkeypatch):
     assert results[0][4] is False
 
 
+def test_check_wordpress_unknown_files_reuses_install_list(tmp_path, monkeypatch):
+    import wp_core_checksums as wcc
+    monkeypatch.setattr(wcc, "_all_bundled_hashes_cache", set())
+    wp_root = make_wp_install(tmp_path, "site1", "6.4.2")
+    planted = wp_root / "wp-admin" / "shell.php"  # not actually written - find_unknown_core_files is mocked below
+
+    def fake_find_unknown_core_files(root, version):
+        assert root == str(wp_root) and version == "6.4.2"
+        return [(str(planted), False)]
+    monkeypatch.setattr(wcc, "find_unknown_core_files", fake_find_unknown_core_files)
+
+    wp_results = [(str(wp_root), "6.4.2", "6.4.2", False)]
+    results = vs.check_wordpress_unknown_files(wp_results)
+    assert results == [(str(wp_root), str(planted), False)]
+
+
+def test_record_findings_writes_unknown_core_files(tmp_path, monkeypatch):
+    import openxs_db as db
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
+    wp_root = str(tmp_path / "wp")
+    unknown_path = str(tmp_path / "wp" / "wp-admin" / "shell.php")
+    leftover_path = str(tmp_path / "wp" / "wp-includes" / "old.php")
+    wp_unknown_file_results = [(wp_root, unknown_path, False), (wp_root, leftover_path, True)]
+    vs.record_findings(str(tmp_path), [], [], [], [], [], [], [], wp_unknown_file_results)
+    scans = db.recent_scans(limit=1)
+    findings = db.findings_for_scan(scans[0][0])
+    assert len(findings) == 2
+    by_path = {f[1]: f[2] for f in findings}
+    assert by_path[unknown_path].startswith("Unknown file in WordPress core:")
+    assert not by_path[unknown_path].endswith("(oldversion)")
+    assert by_path[leftover_path].endswith("(oldversion)")
+
+
 def test_record_findings_writes_outdated_hits_tagged_oldversion(tmp_path, monkeypatch):
     import openxs_db as db
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))

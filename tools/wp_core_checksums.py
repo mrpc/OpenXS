@@ -101,3 +101,78 @@ def is_unmodified_core_file(fname, wp_root, checksums):
     if expected is None:
         return False
     return file_md5(fname) == expected
+
+
+_all_bundled_hashes_cache = None
+
+
+def _all_bundled_hashes():
+    """The union of every md5 across every bundled WordPress version's
+    manifest (tools/wp_checksums/*.json.gz) - lets an "unknown" file
+    found under wp-admin/wp-includes be told apart from a genuinely
+    unexpected one: a file left behind by an incomplete update (its
+    content matches SOME older/newer bundled release, just not the
+    one actually installed) is far more common and far less
+    interesting than one that matches no release at all (see
+    find_unknown_core_files()'s docstring). Computed once per process
+    and cached - reading/decompressing 393 bundled manifests (as of
+    this writing) per WordPress install found in one scan run would
+    otherwise add up fast on a fleet with dozens of installs."""
+    global _all_bundled_hashes_cache
+    if _all_bundled_hashes_cache is not None:
+        return _all_bundled_hashes_cache
+    hashes = set()
+    try:
+        names = os.listdir(BUNDLED_DIR)
+    except OSError:
+        names = []
+    for fn in names:
+        if not fn.endswith(".json.gz"):
+            continue
+        try:
+            with gzip.open(os.path.join(BUNDLED_DIR, fn), "rt") as f:
+                hashes.update(json.load(f).values())
+        except (OSError, ValueError):
+            continue
+    _all_bundled_hashes_cache = hashes
+    return hashes
+
+
+def find_unknown_core_files(wp_root, version):
+    """(abs_path, is_old_leftover) for every file under wp-admin/ and
+    wp-includes/ that ISN'T part of this WordPress version's own
+    official file list - mirrors Wordfence's own "unknown core file"
+    check (wordfenceHash.php's checkKnownFileOther(), restricted to
+    exactly these two directories there too - NOT wp-content, where
+    uploads/cache/etc. legitimately contain all sorts of extra files
+    and this check would be pure noise). A file whose own content still
+    matches some OTHER WordPress release (is_old_leftover=True) is very
+    likely update residue (a hosting/permissions hiccup leaving an old
+    file behind, per Wordfence's own description) - LOW severity. One
+    that matches no known release at all is the more interesting case -
+    could be a plugin that writes its own file directly into core
+    (unusual but not unheard of) or something actually planted there -
+    HIGH severity. This only flags EXTRA files; an existing core file
+    that's been modified in place is is_unmodified_core_file()'s job,
+    not this one's.
+
+    []: if this version isn't bundled and couldn't be fetched live
+    either - can't tell "extra" from "expected" without the manifest,
+    so this never guesses rather than risk flagging the entire
+    installation as unknown."""
+    checksums = fetch_checksums(version)
+    if checksums is None:
+        return []
+    known_hashes = _all_bundled_hashes()
+    results = []
+    for subdir in ("wp-admin", "wp-includes"):
+        root = os.path.join(wp_root, subdir)
+        for dirpath, _dirnames, filenames in os.walk(root):
+            for fn in filenames:
+                fname = os.path.join(dirpath, fn)
+                rel = os.path.relpath(fname, wp_root)
+                if rel in checksums:
+                    continue
+                is_old_leftover = file_md5(fname) in known_hashes
+                results.append((fname, is_old_leftover))
+    return results

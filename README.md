@@ -41,6 +41,13 @@ product.
   Composer packages (against Packagist - no built-in knowledge of any
   specific package needed) for outdated versions, plus pending apt
   security updates - an initial, narrower `sversionscan` equivalent.
+- **Unknown WordPress core files**: flags any file under `wp-admin`/
+  `wp-includes` that isn't part of that install's own official release -
+  distinguishing likely update leftovers (content still matches some
+  *other* bundled WordPress release) from genuinely unexpected files
+  (matches no known release at all) - same idea as Wordfence's own
+  "unknown core file" check, deliberately scoped away from `wp-content`
+  where extra files (uploads, cache, ...) are completely normal.
 - **File integrity monitoring**: SHA-256 baseline of a configured list of
   important files (configs, this scanner's own whitelist/rules), reports
   drift against it - pre-seeded with a reasoned default list on install.

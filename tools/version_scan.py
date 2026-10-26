@@ -226,6 +226,24 @@ def check_wordpress(root):
     return results
 
 
+def check_wordpress_unknown_files(wp_results):
+    """(wp_root, abs_path, is_old_leftover) for every file under a
+    WordPress install's wp-admin/wp-includes that isn't part of its own
+    version's official file list - see
+    wp_core_checksums.find_unknown_core_files()'s docstring. Skips an
+    install whose version check itself came back unknown (latest is
+    None, e.g. unreachable) only in the sense that fetch_checksums()
+    there already returns [] rather than guessing when it can't get a
+    manifest - this just reuses check_wordpress()'s own install list so
+    "every WordPress root already found" isn't walked a second time."""
+    import wp_core_checksums
+    results = []
+    for wp_root, installed, _latest, _outdated in wp_results:
+        for abs_path, is_old_leftover in wp_core_checksums.find_unknown_core_files(wp_root, installed):
+            results.append((wp_root, abs_path, is_old_leftover))
+    return results
+
+
 def find_wp_plugins(wp_root):
     """Yields (slug, installed_version) for every plugin under a
     WordPress install's wp-content/plugins/ - reads readme.txt's "Stable
@@ -421,7 +439,8 @@ def check_composer(root):
 
 
 def record_findings(root, wp_results, revive_results, drupal_results, joomla_results,
-                     wp_plugin_results, wp_theme_results, composer_results):
+                     wp_plugin_results, wp_theme_results, composer_results,
+                     wp_unknown_file_results=()):
     """Records OUTDATED hits into OpenXS's own scan-history db (rule_name
     tagged "(oldversion)", same suffix-based convention pmf_scan.py's
     categorize() already uses for "(ClamAV)"/"(maldet)") - so they show
@@ -448,10 +467,24 @@ def record_findings(root, wp_results, revive_results, drupal_results, joomla_res
                  for wp_root, slug, installed, latest, outdated in wp_theme_results if outdated]
     findings += [(lock_path, f"Outdated package {name}: {installed} (latest: {latest}) (oldversion)")
                  for lock_path, name, installed, latest, outdated in composer_results if outdated]
+    # Not a version check, but shares this same once-per-scheduled-scan
+    # recording pass rather than needing its own - see
+    # check_wordpress_unknown_files()/find_unknown_core_files()'s
+    # docstrings. "(oldversion)" for the common, low-severity leftover-
+    # from-an-update case (same "Old Versions" tab, since that's really
+    # what it is); no suffix (falls into the generic yara_heuristic
+    # bucket) for a file that matches no known release at all - the
+    # more interesting, higher-severity case.
+    findings += [(abs_path, f"Old WordPress core file not removed during update: "
+                  f"{os.path.relpath(abs_path, wp_root)} (oldversion)")
+                 for wp_root, abs_path, is_old_leftover in wp_unknown_file_results if is_old_leftover]
+    findings += [(abs_path, f"Unknown file in WordPress core: {os.path.relpath(abs_path, wp_root)}")
+                 for wp_root, abs_path, is_old_leftover in wp_unknown_file_results if not is_old_leftover]
     if not findings:
         return
     total = (len(wp_results) + len(revive_results) + len(drupal_results) + len(joomla_results)
-             + len(wp_plugin_results) + len(wp_theme_results) + len(composer_results))
+             + len(wp_plugin_results) + len(wp_theme_results) + len(composer_results)
+             + len(wp_unknown_file_results))
     try:
         import openxs_db
         openxs_db.record_scan(root, total, findings)
@@ -472,6 +505,7 @@ def main():
     wp_plugin_results = check_wp_plugins(wp_results)
     wp_theme_results = check_wp_themes(wp_results)
     composer_results = check_composer(root)
+    wp_unknown_file_results = check_wordpress_unknown_files(wp_results)
 
     wp_outdated = sum(1 for _, _, _, outdated in wp_results if outdated)
     revive_outdated = sum(1 for _, _, _, outdated in revive_results if outdated)
@@ -529,10 +563,19 @@ def main():
         if outdated:
             print(f"OUTDATED\t{lock_path}\t{name}\t{installed}\t(latest: {latest})")
 
+    wp_unknown_files = sum(1 for _, _, is_old_leftover in wp_unknown_file_results if not is_old_leftover)
+    print(f"# WordPress core: {len(wp_unknown_file_results)} unexpected file(s) under wp-admin/wp-includes, "
+          f"{wp_unknown_files} not matching any known release")
+    for wp_root, abs_path, is_old_leftover in wp_unknown_file_results:
+        tag = "OLD-LEFTOVER" if is_old_leftover else "UNKNOWN"
+        print(f"{tag}\t{wp_root}\t{os.path.relpath(abs_path, wp_root)}")
+
     record_findings(root, wp_results, revive_results, drupal_results, joomla_results,
-                     wp_plugin_results, wp_theme_results, composer_results)
+                     wp_plugin_results, wp_theme_results, composer_results,
+                     wp_unknown_file_results)
     sys.exit(1 if (wp_outdated or revive_outdated or drupal_unsupported or joomla_flagged
-                   or wp_plugin_outdated or wp_theme_outdated or composer_outdated) else 0)
+                   or wp_plugin_outdated or wp_theme_outdated or composer_outdated
+                   or wp_unknown_files) else 0)
 
 
 if __name__ == "__main__":
