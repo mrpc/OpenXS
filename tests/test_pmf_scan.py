@@ -734,6 +734,39 @@ def test_is_probably_binary_empty_data():
     assert not pmf_scan.is_probably_binary(b"")
 
 
+# --- is_valid_utf8_file ----------------------------------------------------
+
+def test_is_valid_utf8_file_true_for_em_dash_in_a_doc_comment(tmp_path):
+    # The exact real-world false-positive case (found live 2026-10-25/26,
+    # ~98-100% of NonPrintableChars volume on two unrelated servers): a
+    # PHPDoc comment using an em dash (U+2014, \xe2\x80\x94 in UTF-8) -
+    # three bytes outside printable ASCII, right next to the word
+    # "function"/"return" that NonPrintableChars keys on.
+    f = tmp_path / "doc.php"
+    f.write_text(
+        "<?php\n/**\n * A model \xe2\x80\x94 not obfuscated.\n */\n"
+        "function example() { return true; }\n",
+        encoding="utf-8",
+    )
+    assert pmf_scan.is_valid_utf8_file(str(f))
+
+
+def test_is_valid_utf8_file_false_for_genuinely_binary_content(tmp_path):
+    f = tmp_path / "blob.bin"
+    f.write_bytes(bytes(range(256)) * 4)  # includes invalid UTF-8 sequences
+    assert not pmf_scan.is_valid_utf8_file(str(f))
+
+
+def test_is_valid_utf8_file_false_for_missing_file():
+    assert not pmf_scan.is_valid_utf8_file("/no/such/file")
+
+
+def test_is_valid_utf8_file_false_when_over_the_size_cap(tmp_path):
+    f = tmp_path / "big.php"
+    f.write_bytes(b"a" * 100)
+    assert not pmf_scan.is_valid_utf8_file(str(f), max_bytes=50)
+
+
 # --- paranoia_level_for ----------------------------------------------------
 
 def test_paranoia_level_for_unknown_rule_defaults_to_1():

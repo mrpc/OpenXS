@@ -34,6 +34,27 @@ Release from that section's text.
   on prodserver overrides its php.ini's default by two orders of magnitude
   (2048M). Never goes below ModSecurity's own stock defaults even when
   no PHP config is found.
+- `NonPrintableChars` (php-malware-finder's own vendored rule) matches
+  "function"/"return"/"base64_decode" followed within 256 characters by
+  3+ consecutive bytes outside printable ASCII - a single em dash,
+  curly quote, or any other non-ASCII character in a PHPDoc comment
+  encodes as exactly that in UTF-8 (an em dash is 3 bytes, all outside
+  ASCII), right next to two of the most common words in any PHP file.
+  Found live across two unrelated servers' 2-day scan history
+  (2026-10-26): every one of 521 (prodserver) and 507 (newserver.anotherserver)
+  distinct flagged files was valid UTF-8 end-to-end - essentially the
+  entire false-positive volume of this rule on both. New
+  `is_valid_utf8_file()` suppresses just this rule (not
+  ObfuscatedPhp/DangerousPhp/etc., whose own trigger patterns don't
+  share this mechanism) when the whole file decodes as valid UTF-8 - a
+  genuinely obfuscated/binary-packed payload essentially never happens
+  to decode as valid UTF-8 across its entire length, so this doesn't
+  trade away real detection. Deliberately NOT fixed by loosening the
+  vendored rule's own byte-range regex - YARA can only match byte
+  ranges, not verify a valid multi-byte UTF-8 *sequence*, so doing that
+  there would also start ignoring genuinely binary/obfuscated content
+  that happens to use the same byte ranges without being valid UTF-8 -
+  weaker than real UTF-8 decoding, not just differently located.
 
 ## [v0.2.0] - 2026-10-25
 

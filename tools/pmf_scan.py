@@ -513,6 +513,27 @@ def _search_with_timeout(pattern, data, fname, seconds=2):
         signal.signal(signal.SIGALRM, old_handler)
 
 
+def is_valid_utf8_file(fname, max_bytes=2_000_000):
+    """True if fname decodes as valid UTF-8 end-to-end - used to suppress
+    NonPrintableChars (see its call site) on files whose only
+    "non-printable" bytes are legitimately-encoded Unicode punctuation/
+    text, not obfuscation. Capped at max_bytes (2MB, comfortably above
+    any real source file) rather than reading an arbitrarily large file
+    a second time just to decide this."""
+    try:
+        with open(fname, "rb") as f:
+            data = f.read(max_bytes + 1)
+    except OSError:
+        return False
+    if len(data) > max_bytes:
+        return False
+    try:
+        data.decode("utf-8", errors="strict")
+        return True
+    except UnicodeDecodeError:
+        return False
+
+
 def is_probably_binary(data, sniff_bytes=8000):
     """Same heuristic git/grep -I use to decide "binary or text": a NUL
     byte anywhere in the first chunk. php-malware-finder's own ruleset
@@ -862,6 +883,29 @@ def main():
                         continue
             real = [m for m in matches if m.rule != "IsWhitelisted" and m.rule != "IsPhp"
                     and paranoia_level_for(m.rule) <= paranoia_level]
+            if any(m.rule == "NonPrintableChars" for m in real) and is_valid_utf8_file(fname):
+                # NonPrintableChars matches 3+ consecutive bytes outside
+                # the printable-ASCII range near "function"/"return"/
+                # "base64_decode" - a single em dash, curly quote, or any
+                # other non-ASCII character in a PHPDoc comment encodes
+                # as exactly that in UTF-8 (an em dash is \xe2\x80\x94),
+                # and "function"/"return" are two of the most common
+                # words in any PHP file. Found live 2026-10-25/26 on two
+                # unrelated servers: every one of 521 (prodserver) and 507
+                # (newserver.anotherserver) distinct NonPrintableChars-flagged
+                # files checked were valid UTF-8 end-to-end - not a
+                # handful of edge cases, this was ~98-100% of the
+                # category's entire false-positive volume on both. A
+                # genuinely obfuscated/binary-packed payload essentially
+                # never happens to decode as valid UTF-8 across its whole
+                # length, so this only suppresses the rule for content
+                # that's provably printable Unicode text, not for
+                # anything that could plausibly be hiding a payload.
+                # Other rules (ObfuscatedPhp, DangerousPhp, ...) aren't
+                # touched - their own trigger patterns don't share this
+                # specific "any UTF-8 punctuation is 'non-printable'"
+                # false-positive mechanism.
+                real = [m for m in real if m.rule != "NonPrintableChars"]
             if real and (is_unmodified_core_file(fname) or is_unmodified_wp_plugin_file(fname)
                          or is_unmodified_wp_plugin_lang_file(fname)):
                 # Byte-for-byte matches the official checksum for this
