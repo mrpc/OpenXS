@@ -245,6 +245,24 @@ def check_wordpress_unknown_files(wp_results):
 
 
 DB_SCAN_RULESET = os.environ.get("OPENXS_RULESET", "/opt/php-malware-finder/php.yar")
+# Same file pmf_scan.py's own scan loop writes its stage/progress to -
+# daemon_stats.cgi reads it to drive the Webmin dashboard's "running,
+# stage N/M" line. pmf_scan.py removes it when ITS run finishes, but
+# run_scheduled_scan.sh calls this script right after that - without
+# writing our own stage markers here, the dashboard would show "Not
+# running" (file gone) for this script's entire run, even though it's
+# often the longer-running half now (unknown-core-file bundle lookups,
+# database-content scans).
+PROGRESS_FILE = os.environ.get("OPENXS_SCAN_PROGRESS_FILE", "/var/lib/openxs/scan_progress")
+
+
+def _write_progress(stage):
+    try:
+        os.makedirs(os.path.dirname(PROGRESS_FILE), exist_ok=True)
+        with open(PROGRESS_FILE, "w") as pf:
+            pf.write(f"{stage}\t0")
+    except OSError:
+        pass
 
 
 def compile_db_scan_rules():
@@ -273,8 +291,11 @@ def check_wordpress_database(wp_results, rules):
     if rules is None:
         return []
     import wp_db_scan
+    excludes = wp_db_scan.load_db_scan_excludes()
     results = []
     for wp_root, _installed, _latest, _outdated in wp_results:
+        if wp_db_scan.is_db_scan_excluded(wp_root, excludes):
+            continue
         for label, rule in wp_db_scan.scan_wp_database(wp_root, rules):
             results.append((wp_root, label, rule))
     return results
@@ -304,8 +325,12 @@ def check_joomla_database(root, rules):
     if rules is None:
         return []
     import joomla_db_scan
+    import wp_db_scan
+    excludes = wp_db_scan.load_db_scan_excludes()
     results = []
     for joomla_root in find_joomla_db_scan_roots(root):
+        if wp_db_scan.is_db_scan_excluded(joomla_root, excludes):
+            continue
         for label, rule in joomla_db_scan.scan_joomla_database(joomla_root, rules):
             results.append((joomla_root, label, rule))
     return results
@@ -319,8 +344,12 @@ def check_drupal_database(drupal_results, rules):
     if rules is None:
         return []
     import drupal_db_scan
+    import wp_db_scan
+    excludes = wp_db_scan.load_db_scan_excludes()
     results = []
     for drupal_root, _installed, _latest, _outdated, _branch_unsupported in drupal_results:
+        if wp_db_scan.is_db_scan_excluded(drupal_root, excludes):
+            continue
         for label, rule in drupal_db_scan.scan_drupal_database(drupal_root, rules):
             results.append((drupal_root, label, rule))
     return results
@@ -594,6 +623,7 @@ def main():
         sys.exit(1)
     root = sys.argv[1]
 
+    _write_progress("version")
     wp_results = check_wordpress(root)
     revive_results = check_revive(root)
     drupal_results = check_drupal(root)
@@ -601,7 +631,11 @@ def main():
     wp_plugin_results = check_wp_plugins(wp_results)
     wp_theme_results = check_wp_themes(wp_results)
     composer_results = check_composer(root)
+
+    _write_progress("corefiles")
     wp_unknown_file_results = check_wordpress_unknown_files(wp_results)
+
+    _write_progress("dbscan")
     db_scan_rules = compile_db_scan_rules()
     wp_db_results = check_wordpress_database(wp_results, db_scan_rules)
     joomla_db_results = check_joomla_database(root, db_scan_rules)
@@ -687,6 +721,10 @@ def main():
                      wp_plugin_results, wp_theme_results, composer_results,
                      wp_unknown_file_results, wp_db_results,
                      joomla_db_results, drupal_db_results)
+    try:
+        os.remove(PROGRESS_FILE)
+    except OSError:
+        pass
     sys.exit(1 if (wp_outdated or revive_outdated or drupal_unsupported or joomla_flagged
                    or wp_plugin_outdated or wp_theme_outdated or composer_outdated
                    or wp_unknown_files or wp_db_results or joomla_db_results or drupal_db_results) else 0)

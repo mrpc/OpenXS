@@ -128,6 +128,20 @@ def test_check_composer_does_not_flag_dev_versions(tmp_path, monkeypatch):
     assert results[0][4] is False
 
 
+def test_write_progress_writes_stage_name(tmp_path, monkeypatch):
+    progress_file = tmp_path / "scan_progress"
+    monkeypatch.setattr(vs, "PROGRESS_FILE", str(progress_file))
+    vs._write_progress("dbscan")
+    assert progress_file.read_text() == "dbscan\t0"
+
+
+def test_write_progress_creates_parent_dir(tmp_path, monkeypatch):
+    progress_file = tmp_path / "nested" / "scan_progress"
+    monkeypatch.setattr(vs, "PROGRESS_FILE", str(progress_file))
+    vs._write_progress("version")
+    assert progress_file.read_text() == "version\t0"
+
+
 def test_check_wordpress_unknown_files_reuses_install_list(tmp_path, monkeypatch):
     import wp_core_checksums as wcc
     monkeypatch.setattr(wcc, "_all_bundled_hashes_cache", set())
@@ -192,6 +206,19 @@ def test_check_wordpress_database_runs_with_rules(tmp_path, monkeypatch):
     assert results == [(str(wp_root), "wp_posts.post_content (post ID 1)", "DangerousPhp")]
 
 
+def test_check_wordpress_database_respects_exclude_list(tmp_path, monkeypatch):
+    wp_root = make_wp_install(tmp_path, "site1", "6.4.2")
+    import wp_db_scan
+
+    def boom(root, rules):
+        raise AssertionError("excluded site's database should never even be queried")
+    monkeypatch.setattr(wp_db_scan, "scan_wp_database", boom)
+    monkeypatch.setattr(wp_db_scan, "load_db_scan_excludes", lambda: [str(wp_root)])
+
+    wp_results = [(str(wp_root), "6.4.2", "6.4.2", False)]
+    assert vs.check_wordpress_database(wp_results, FakeDbScanRules()) == []
+
+
 def test_check_joomla_database_noop_without_rules(tmp_path):
     assert vs.check_joomla_database(str(tmp_path), None) == []
 
@@ -210,6 +237,23 @@ def test_check_joomla_database_finds_mambo_style_install(tmp_path, monkeypatch):
     assert results == [(str(joomla_root), "jos_content.fulltext (article ID 1)", "DangerousPhp")]
 
 
+def test_check_joomla_database_respects_exclude_list(tmp_path, monkeypatch):
+    joomla_root = tmp_path / "site1"
+    (joomla_root / "administrator").mkdir(parents=True)
+    (joomla_root / "configuration.php").write_text(
+        "<?php\n$mosConfig_host = 'localhost';\n$mosConfig_user = 'u';\n"
+        "$mosConfig_password = 'p';\n$mosConfig_db = 'd';\n"
+    )
+    import joomla_db_scan
+    import wp_db_scan
+
+    def boom(root, rules):
+        raise AssertionError("excluded site's database should never even be queried")
+    monkeypatch.setattr(joomla_db_scan, "scan_joomla_database", boom)
+    monkeypatch.setattr(wp_db_scan, "load_db_scan_excludes", lambda: [str(joomla_root)])
+    assert vs.check_joomla_database(str(tmp_path), FakeDbScanRules()) == []
+
+
 def test_check_drupal_database_noop_without_rules():
     assert vs.check_drupal_database([("/drupal", "7.32", "7.103", True, True)], None) == []
 
@@ -221,6 +265,18 @@ def test_check_drupal_database_runs_with_rules(monkeypatch):
     drupal_results = [("/drupal", "7.32", "7.103", True, True)]
     results = vs.check_drupal_database(drupal_results, FakeDbScanRules())
     assert results == [("/drupal", "field_data_body.body_value (entity ID 1)", "DangerousPhp")]
+
+
+def test_check_drupal_database_respects_exclude_list(monkeypatch):
+    import drupal_db_scan
+    import wp_db_scan
+
+    def boom(root, rules):
+        raise AssertionError("excluded site's database should never even be queried")
+    monkeypatch.setattr(drupal_db_scan, "scan_drupal_database", boom)
+    monkeypatch.setattr(wp_db_scan, "load_db_scan_excludes", lambda: ["/drupal"])
+    drupal_results = [("/drupal", "7.32", "7.103", True, True)]
+    assert vs.check_drupal_database(drupal_results, FakeDbScanRules()) == []
 
 
 def test_record_findings_writes_db_hits_tagged_database(tmp_path, monkeypatch):

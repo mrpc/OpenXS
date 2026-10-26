@@ -78,6 +78,7 @@ print &ui_table_row("Quiet output", &ui_checkbox("quiet", "1",
 	"Suppress the scan summary line (useful for cron jobs where only hits should trigger e-mail)",
 	$cfg{'QUIET'} eq '1'));
 print &ui_table_row("Ignore file", "<a href='edit_file.cgi?f=ignore'>Edit /etc/openxs/ignore &raquo;</a> <i>one path/substring per line to skip</i>");
+print &ui_table_row("Database scan exclude list", "<a href='edit_file.cgi?f=db_scan_exclude'>Edit /etc/openxs/db_scan_exclude &raquo;</a> <i>one path/substring per line - that site's database is never connected to at all</i>");
 print &ui_table_row("Custom rule file", "<a href='edit_file.cgi?f=rules'>Edit /etc/openxs/rules &raquo;</a> <i>one extra regex per line to additionally flag</i>");
 print &ui_table_row("Per-path settings", "<a href='edit_file.cgi?f=path_settings'>Edit /etc/openxs/path_settings &raquo;</a> <i>one override per line: ".
 	"<code>/some/path fast_php_only=1,quarantine_enabled=0</code> - longest matching path wins.</i>");

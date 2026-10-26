@@ -19,7 +19,12 @@ return { pid => $pid + 0, rss_mb => sprintf("%.0f", $rss_kb / 1024) + 0, cpu => 
 	etimes => $etimes + 0 };
 }
 
-my @SCAN_STAGES = ('scan', 'clamav', 'maldet', 'fs');
+# "version"/"corefiles"/"dbscan" are version_scan.py's own stages, run
+# by run_scheduled_scan.sh right after "fs" - see its _write_progress()
+# for why it needs these at all (the file pmf_scan.py itself wrote
+# "fs\t0" to and then removed only covered its own run, not the script
+# that runs right after it).
+my @SCAN_STAGES = ('scan', 'clamav', 'maldet', 'fs', 'version', 'corefiles', 'dbscan');
 
 sub scan_progress_json
 {

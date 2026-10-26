@@ -60,6 +60,22 @@ def test_parse_wp_config_none_when_missing_file(tmp_path):
     assert wds.parse_wp_config(str(tmp_path)) is None
 
 
+def test_load_db_scan_excludes_parses_plain_substrings(tmp_path):
+    f = tmp_path / "db_scan_exclude"
+    f.write_text("# comment\n\n/home/someuser\nparked-domain.gr\n")
+    assert wds.load_db_scan_excludes(str(f)) == ["/home/someuser", "parked-domain.gr"]
+
+
+def test_load_db_scan_excludes_empty_when_missing(tmp_path):
+    assert wds.load_db_scan_excludes(str(tmp_path / "no-such-file")) == []
+
+
+def test_is_db_scan_excluded_matches_substring():
+    patterns = ["/home/someuser", "parked-domain.gr"]
+    assert wds.is_db_scan_excluded("/home/someuser/public_html", patterns)
+    assert not wds.is_db_scan_excluded("/home/otheruser/public_html", patterns)
+
+
 def test_webmin_mysql_root_credentials_parses_config(tmp_path, monkeypatch):
     cfg = tmp_path / "config"
     cfg.write_text("date_subs=0\nlogin=root\npass=s3cret\nmysqlshow=/usr/bin/mysqlshow\n")

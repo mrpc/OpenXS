@@ -81,8 +81,10 @@ product.
   credentials (`wp-config.php`/`configuration.php`/`settings.php`), or
   Webmin's own stored MySQL root login when available (one credential
   per server instead of one per site) — every query is a read-only
-  `SELECT`. Idea and approach informed by studying
-  Wordfence's own (GPLv3) database-scan code.
+  `SELECT`. A site whose database shouldn't be touched at all can be
+  listed in `/etc/openxs/db_scan_exclude` (Settings), same plain-
+  substring style as the main Ignore file. Idea and approach informed
+  by studying Wordfence's own (GPLv3) database-scan code.
 - **Repair (restore to pristine)**: one-click action from the findings
   browser for a modified, named Composer package or Drupal 7 core file —
   backs the current content up to quarantine first, then writes back the

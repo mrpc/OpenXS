@@ -39,6 +39,7 @@ import subprocess
 import tempfile
 
 WEBMIN_MYSQL_CONFIG = os.environ.get("OPENXS_WEBMIN_MYSQL_CONFIG", "/etc/webmin/mysql/config")
+DB_SCAN_EXCLUDE_FILE = os.environ.get("OPENXS_DB_SCAN_EXCLUDE_FILE", "/etc/openxs/db_scan_exclude")
 
 DB_DEFINE_RE = re.compile(
     r"define\s*\(\s*['\"]DB_(NAME|USER|PASSWORD|HOST)['\"]\s*,\s*['\"](.*?)['\"]\s*\)", re.DOTALL
@@ -75,6 +76,30 @@ def parse_wp_config(wp_root):
         "host": db["HOST"],
         "prefix": prefix_m.group(1) if prefix_m else "wp_",
     }
+
+
+def load_db_scan_excludes(path=DB_SCAN_EXCLUDE_FILE):
+    """Plain substrings, one per line (# comments/blank lines ignored) -
+    shared by the WordPress/Joomla/Drupal database checks, same plain-
+    substring style as pmf_scan.py's own /etc/openxs/ignore. An install
+    whose root path contains any of these is skipped entirely by
+    is_db_scan_excluded() below - no DB connection even attempted, not
+    just "scanned but findings suppressed"."""
+    patterns = []
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    patterns.append(line)
+    except OSError:
+        pass
+    return patterns
+
+
+def is_db_scan_excluded(install_root, patterns=None):
+    patterns = load_db_scan_excludes() if patterns is None else patterns
+    return any(p in install_root for p in patterns)
 
 
 def webmin_mysql_root_credentials():

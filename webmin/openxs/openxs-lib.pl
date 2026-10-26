@@ -29,6 +29,7 @@ our %editable_files = (
 	'modsec_exclusions' => '/etc/openxs/modsec_exclusions',
 	'modsec_mode' => '/etc/openxs/modsec_mode',
 	'modsec_rule_exclusions' => '/etc/openxs/modsec_rule_exclusions',
+	'db_scan_exclude' => '/etc/openxs/db_scan_exclude',
 );
 
 # One short format description per editable file, shown above its
@@ -47,6 +48,8 @@ our %editable_file_help = (
 	'modsec_rule_exclusions' => "One <code>&lt;rule id&gt; &lt;variable&gt;</code> per line (e.g. <code>930120 ARGS:scope</code>) - rule id must be numeric. ".
 		"Server-wide only, no path scoping - confirmed by hand that it doesn't work on this stack (see Settings' own note below). ".
 		"Blank lines and '#' comments are ignored.",
+	'db_scan_exclude' => "One path or substring per line - a detected WordPress/Joomla/Drupal install whose root path contains this text is skipped entirely by the database content scan ".
+		"(no DB connection even attempted, let alone a query). Same plain-substring style as the Ignore file above. Blank lines and '#' comments are ignored.",
 );
 
 # One validator sub per editable file that needs one - takes the
@@ -237,7 +240,20 @@ return $pid;
 # command line, specifically the "scan" subcommand (not "whitelist").
 sub openxs_scan_pid
 {
-my $pattern = &pgrep_safe_pattern("pmf_scan.py scan");
+# A scheduled scan is really run_scheduled_scan.sh calling pmf_scan.py,
+# then version_scan.py, in sequence - matching only "pmf_scan.py scan"
+# made the whole resource widget (and the stage-progress line) report
+# "Not running" the moment pmf_scan.py's own file-scan loop finished,
+# even though the scan as a whole (fim/version/apt/mailbox, and now the
+# unknown-core-file + database-content checks, all inside
+# version_scan.py) was still very much running. Each alternative needs
+# its OWN pgrep_safe_pattern() call, not one shared on the whole joined
+# string - pgrep_safe_pattern only obscures the first letter to dodge
+# pgrep matching its own invocation, and `pgrep -f` sees its own full
+# '-f' argument (this whole joined pattern) as a process command line
+# too, so an unobscured second/third alternative would self-match.
+my $pattern = join('|', map { &pgrep_safe_pattern($_) }
+	('pmf_scan.py scan', 'run_scheduled_scan.sh', 'version_scan.py'));
 my $out = `pgrep -f '$pattern' 2>/dev/null`;
 my ($pid) = split(/\s+/, $out);
 return $pid;
