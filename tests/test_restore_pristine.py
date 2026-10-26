@@ -51,6 +51,24 @@ def test_repair_file_unresolvable_content(tmp_path, monkeypatch):
     assert f.read_bytes() == b"whatever"  # untouched - never quarantined on a dry hole
 
 
+def test_repair_file_already_pristine_is_a_noop(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
+    monkeypatch.setattr(db, "QUARANTINE_DIR", str(tmp_path / "quarantine"))
+    f = tmp_path / "a.php"
+    f.write_bytes(b"<?php // stock content")
+    scan_id = db.record_scan("/x", 1, [(str(f), "ObfuscatedPhp")])
+    fid = db.findings_for_scan(scan_id)[0][0]
+
+    monkeypatch.setattr(rp, "_fetch_pristine_content", lambda path: b"<?php // stock content")
+    ok, err = rp.repair_file(fid)
+    assert ok is True
+    assert err is None
+    assert f.read_bytes() == b"<?php // stock content"
+
+    row = db.finding_by_id(fid)
+    assert not row[2]  # never quarantined - nothing needed backing up
+
+
 def test_repair_file_success_backs_up_and_restores_permissions(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
     monkeypatch.setattr(db, "QUARANTINE_DIR", str(tmp_path / "quarantine"))

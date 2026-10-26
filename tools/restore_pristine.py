@@ -83,6 +83,21 @@ def repair_file(finding_id):
     if content is None:
         return False, "could not determine the official pristine content for this file"
 
+    try:
+        with open(file_path, "rb") as f:
+            current_content = f.read()
+    except OSError as e:
+        return False, f"could not read the current file: {e}"
+    if current_content == content:
+        # Already byte-for-byte pristine - nothing to back up or
+        # rewrite. Can happen if the YARA hit that created this finding
+        # was itself a false positive is_unmodified_*_file() somehow
+        # didn't already suppress (a different paranoia level, a stale
+        # finding from before this exact version was bundled/cached,
+        # ...) - no need to quarantine an unmodified file just because
+        # someone clicked "repair" on it.
+        return True, None
+
     # The account's own PHP-FPM pool runs as its own user, not root (this
     # whole daemon does) - quarantine_file() renames the original out of
     # the way, so the new file this writes needs the SAME owner/mode the
