@@ -734,6 +734,29 @@ def test_is_probably_binary_empty_data():
     assert not pmf_scan.is_probably_binary(b"")
 
 
+# --- is_documentation_file ---------------------------------------------------
+
+def test_is_documentation_file_true_for_known_extensions():
+    assert pmf_scan.is_documentation_file("/home/x/docs/FINDINGS.md")
+    assert pmf_scan.is_documentation_file("/home/x/CHANGELOG.MARKDOWN")
+    assert pmf_scan.is_documentation_file("/home/x/README.rst")
+    assert pmf_scan.is_documentation_file("/home/x/notes.txt")
+
+
+def test_is_documentation_file_false_for_php():
+    assert not pmf_scan.is_documentation_file("/home/x/public_html/index.php")
+
+
+def test_categorize_yara_exploit_not_suppressed_on_documentation_files(tmp_path):
+    f = tmp_path / "FINDINGS.md"
+    f.write_text("a write-up mentioning a known exploit fingerprint")
+    assert pmf_scan.categorize("Known exploit = [Fingerprint Match]") == "yara_exploit"
+    # (is_documentation_file itself only decides by extension - the actual
+    # suppression-by-category happens in main()'s scan loop, exercised
+    # end-to-end by the real-time hook/scheduled scan, not unit-testable
+    # here without a compiled YARA ruleset.)
+
+
 # --- is_valid_utf8_file ----------------------------------------------------
 
 def test_is_valid_utf8_file_true_for_em_dash_in_a_doc_comment(tmp_path):

@@ -628,6 +628,16 @@ def is_valid_utf8_file(fname, max_bytes=2_000_000):
         return False
 
 
+DOCUMENTATION_EXTENSIONS = (".md", ".markdown", ".rst", ".txt")
+
+
+def is_documentation_file(fname):
+    """True if fname's extension marks it as prose/documentation, never
+    executed as PHP by any standard web server config regardless of its
+    content - see the generic-heuristic suppression at its call site."""
+    return fname.lower().endswith(DOCUMENTATION_EXTENSIONS)
+
+
 def is_probably_binary(data, sniff_bytes=8000):
     """Same heuristic git/grep -I use to decide "binary or text": a NUL
     byte anywhere in the first chunk. php-malware-finder's own ruleset
@@ -1000,6 +1010,22 @@ def main():
                 # specific "any UTF-8 punctuation is 'non-printable'"
                 # false-positive mechanism.
                 real = [m for m in real if m.rule != "NonPrintableChars"]
+            if real and is_documentation_file(fname):
+                # Found live 2026-10-26: a project's own markdown changelog
+                # (FRAMEWORK_FINDINGS.md) repeatedly triggering DodgyStrings/
+                # DangerousPhp/NonPrintableChars - not malicious, just prose
+                # and code-block *examples* discussing real function names
+                # (passthru(), exec()) as part of normal engineering
+                # documentation, re-triggering on every edit via the
+                # real-time watch hook. A .md/.txt/.rst file is never
+                # executed as PHP by any standard web server config, so the
+                # generic obfuscation-shape heuristics (yara_heuristic) have
+                # no webshell to actually catch there - unlike a high-
+                # confidence "Known exploit" fingerprint match (yara_exploit)
+                # or a virus/maldet signature, which could still legitimately
+                # appear verbatim in a doc (e.g. a sample write-up) and stay
+                # worth flagging regardless of extension.
+                real = [m for m in real if categorize(m.rule) != "yara_heuristic"]
             if real and (is_unmodified_core_file(fname) or is_unmodified_wp_plugin_file(fname)
                          or is_unmodified_wp_plugin_lang_file(fname)
                          or is_unmodified_composer_package_file(fname)):
