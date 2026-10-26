@@ -142,12 +142,45 @@ def _split_host(host):
     return host, None, None
 
 
+def _unescape_mysql_field(s):
+    r"""Reverses the mysql CLI's own batch-mode escaping of a field
+    value (\n, \t, \\, \N for SQL NULL) - see run_query()'s own
+    docstring on why this matters: without it, a single field
+    containing a literal newline (virtually every real multi-paragraph
+    post/article/comment) gets its content split across multiple bogus
+    "rows", each missing the columns that ended up in a different
+    fragment - found live 2026-10-27 scanning a real post with this
+    exact shape, where it silently truncated what actually got
+    YARA-matched instead of raising anything that would have surfaced
+    the bug."""
+    out = []
+    i, n = 0, len(s)
+    while i < n:
+        c = s[i]
+        if c == "\\" and i + 1 < n:
+            nxt = s[i + 1]
+            out.append({"n": "\n", "t": "\t", "\\": "\\", "N": ""}.get(nxt, nxt))
+            i += 2
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
 def run_query(db_config, query, timeout=30):
     """Rows (each a list of column strings) from a single read-only
     query against this site's own database, or None on any failure
     (unreachable, bad credentials, timeout, mysql CLI missing) -
     callers treat None the same as "found nothing to scan", never as
-    something to crash a whole scan run over."""
+    something to crash a whole scan run over.
+
+    Runs WITHOUT --raw deliberately: mysql's batch mode then escapes
+    any literal tab/newline/backslash a field's own content contains
+    (NUL/CR/tab/LF/backslash become \\N/\\r/\\t/\\n/\\\\) - exactly what
+    makes "split stdout on real newlines, then on real tabs" a safe way
+    to parse rows/columns at all once a field can contain either byte
+    itself. _unescape_mysql_field() above reverses that escaping on the
+    way back out, so callers see the field's real, original content."""
     host, port, socket = _split_host(db_config["host"])
     cnf_fd, cnf_path = tempfile.mkstemp(suffix=".cnf")
     try:
@@ -162,7 +195,7 @@ def run_query(db_config, query, timeout=30):
                 if port:
                     cnf.write(f"port={port}\n")
         os.chmod(cnf_path, 0o600)
-        cmd = ["mysql", f"--defaults-extra-file={cnf_path}", "--batch", "--raw", "-N",
+        cmd = ["mysql", f"--defaults-extra-file={cnf_path}", "--batch", "-N",
                db_config["name"], "-e", query]
         try:
             result = subprocess.run(cmd, capture_output=True, timeout=timeout)
@@ -173,7 +206,7 @@ def run_query(db_config, query, timeout=30):
         rows = []
         for line in result.stdout.decode(errors="replace").split("\n"):
             if line:
-                rows.append(line.split("\t"))
+                rows.append([_unescape_mysql_field(f) for f in line.split("\t")])
         return rows
     finally:
         try:
