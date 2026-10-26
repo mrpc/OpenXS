@@ -111,3 +111,28 @@ def test_fix_all_world_writable_findings_skips_a_path_already_gone(tmp_path, mon
 def test_fix_all_world_writable_findings_nothing_to_do(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
     assert db.fix_all_world_writable_findings() == (0, 0)
+
+
+def test_resolved_matches_by_path_not_finding_id_across_duplicate_scans(tmp_path, monkeypatch):
+    # Found live 2026-10-26: the same directory gets its own finding row
+    # on every scan run that still sees it. Fixing it via ONE of those
+    # finding_ids must resolve ALL of them - the underlying directory is
+    # fixed either way, regardless of which scan first noticed it.
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "openxs.db"))
+    d = tmp_path / "wtest"
+    d.mkdir()
+    os.chmod(d, 0o777)
+
+    scan1 = db.record_scan("/home", 1, [(str(d), "world-writable directory")])
+    scan2 = db.record_scan("/home", 1, [(str(d), "world-writable directory")])
+    fid1 = db.findings_for_scan(scan1)[0][0]
+    fid2 = db.findings_for_scan(scan2)[0][0]
+    assert fid1 != fid2
+
+    assert sorted(db.unresolved_world_writable_finding_ids()) == sorted([fid1, fid2])
+    db.fix_world_writable_permission(fid1)  # fix via fid1 only
+
+    # Both rows now count as resolved - fid2 was never individually fixed.
+    assert db.unresolved_world_writable_finding_ids() == []
+    rows, count = db.search_findings(resolved=True)
+    assert count == 2

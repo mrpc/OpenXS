@@ -56,6 +56,19 @@ Release from that section's text.
   that happens to use the same byte ranges without being valid UTF-8 -
   weaker than real UTF-8 decoding, not just differently located.
 
+### Fixed
+- "Resolved" status for a permission-fix finding was matched by
+  `finding_id`, not by the underlying path - the same world-writable
+  directory gets its own separate finding row from every scan run that
+  still sees it, so fixing it via one finding_id never marked any of
+  its OTHER (same-path, earlier-scan) finding rows as resolved. Found
+  live 2026-10-26 rolling out the "Fix all" button below: 199/199
+  sampled "still unresolved" findings on a production server were, on
+  disk, already fixed - every one a duplicate row for a path some other
+  finding_id's own fix had already handled. Matched by path now - fixing
+  it via any one row resolves all of them, which is what "resolved"
+  should mean.
+
 ### Added
 - "Fix all permission findings" button on the Findings page - bulk-fixes
   every currently-unresolved "world-writable directory" finding in one

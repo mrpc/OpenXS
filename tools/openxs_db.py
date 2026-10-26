@@ -719,8 +719,18 @@ _CATEGORY_SQL = {
 
 _RESOLVED_SQL = (
     "(f.quarantine_path IS NOT NULL AND f.quarantine_path != '' "
-    "OR EXISTS (SELECT 1 FROM permission_fixes pf WHERE pf.finding_id = f.id AND pf.restored_at IS NULL))"
+    "OR EXISTS (SELECT 1 FROM permission_fixes pf WHERE pf.path = f.file_path AND pf.restored_at IS NULL))"
 )
+# Matched by path, not finding_id: the same directory can be scanned and
+# recorded as a separate "world-writable directory" finding row by every
+# scan run that still sees it (found live 2026-10-26 - 199/199 sampled
+# "unresolved" findings on a production server were, on disk, already
+# fixed; every one was a duplicate row from an earlier scan, pointing at
+# a path some OTHER finding_id's own permission_fixes record had already
+# fixed). Matching by path means fixing it via any one of those rows
+# resolves all of them, which is what "resolved" should mean here - the
+# underlying directory is fixed, regardless of which scan run first
+# noticed it was a problem.
 
 
 def search_findings(category=None, search=None, limit=50, offset=0, sort="date", order="desc", resolved=None):
