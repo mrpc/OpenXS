@@ -250,12 +250,11 @@ DB_SCAN_RULESET = os.environ.get("OPENXS_RULESET", "/opt/php-malware-finder/php.
 def check_wordpress_database(wp_results):
     """(wp_root, label, rule_name) for every suspicious hit found in any
     detected WordPress install's own database - see
-    wp_db_scan.scan_wp_database()'s docstring. Off by default
-    (OPENXS_DB_SCAN_ENABLED) and a complete no-op (not even a yara
-    import) unless explicitly turned on - reading a site's own DB
-    credentials and connecting to its live database is a bigger step
-    than anything file-scanning-only does. Reuses check_wordpress()'s
-    own install list rather than walking for WordPress a second time."""
+    wp_db_scan.scan_wp_database()'s docstring. Gated by
+    OPENXS_DB_SCAN_ENABLED (on by default, same as the version check
+    itself) - a complete no-op (not even a yara import) when turned
+    off. Reuses check_wordpress()'s own install list rather than
+    walking for WordPress a second time."""
     if os.environ.get("OPENXS_DB_SCAN_ENABLED") != "1":
         return []
     try:

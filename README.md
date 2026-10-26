@@ -65,7 +65,7 @@ product.
 - **Quarantine**: optional, opt-in — moves flagged files out of the
   webroot on scan (not on the real-time hook, which already blocks the
   request), with restore/delete from the UI.
-- **WordPress database content scan** (opt-in, off by default): scans
+- **WordPress database content scan**: scans
   `wp_posts`/`wp_comments` for malicious content injected directly into
   the database — a real 2+ year compromise found on a site in our own
   fleet (2026-10-25) lived entirely in `wp_posts` as a published

@@ -32,15 +32,15 @@ my $mail_note = $mail_active eq '1'
 	: "";
 print &ui_table_row("WordPress core / composer package version check (nightly, sversionscan-equivalent)",
 	&ui_checkbox("version_scan_enabled", "1", "Enabled", $cfg{'VERSION_SCAN_ENABLED'} eq '1'));
-print &ui_table_row("WordPress database content scan (nightly, opt-in)",
+print &ui_table_row("WordPress database content scan (nightly)",
 	&ui_checkbox("db_scan_enabled", "1", "Enabled", $cfg{'DB_SCAN_ENABLED'} eq '1') .
 	"<i>Scans each detected WordPress install's own database (wp_posts, wp_comments) for injected malicious " .
 	"content, using the exact same YARA ruleset as the file scan - catches a compromise that lives entirely " .
 	"in the database (a published WPCode/Insert-Headers-and-Footers snippet, for example) and never touches " .
-	"the filesystem at all, which no amount of file scanning could ever find. Off by default: reading a " .
-	"site's own DB credentials (from its wp-config.php, or Webmin's own stored MySQL root login if present - " .
-	"see wp_db_scan.py) and connecting to its live database is a bigger step than anything else this does, " .
-	"so it needs a deliberate opt-in. Every query is a read-only SELECT.</i>");
+	"the filesystem at all, which no amount of file scanning could ever find. Reads a site's own DB " .
+	"credentials (from its wp-config.php, or Webmin's own stored MySQL root login if present - see " .
+	"wp_db_scan.py) to connect - every query is a read-only SELECT, nothing is stored or sent anywhere " .
+	"beyond this server's own findings database.</i>");
 print &ui_table_row("Pending apt security updates check (nightly)",
 	&ui_checkbox("apt_security_enabled", "1", "Enabled", $cfg{'APT_SECURITY_ENABLED'} eq '1'));
 print &ui_table_row("Scan mailboxes for viruses (cxs's 'virusscan' - ClamAV only, not YARA)",

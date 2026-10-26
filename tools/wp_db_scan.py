@@ -20,10 +20,9 @@ credentials passed via a temp --defaults-extra-file, never as a CLI
 argument (which would otherwise leak the password into `ps`/process
 listings for anyone else on the box).
 
-Opt-in, off by default (OPENXS_DB_SCAN_ENABLED) - reading a site's own
-DB credentials and connecting to its live database is a meaningfully
-bigger step than anything file-scanning-only does, so this doesn't
-run until a server operator deliberately turns it on.
+Gated by OPENXS_DB_SCAN_ENABLED (on by default, same as the version
+check) - a server operator who wants file-scanning only can still turn
+it off per server from Settings.
 
 v1 scope: wp_posts (post_title/post_content, any type/status) and
 wp_comments (comment_content) - the two places real injected-content
