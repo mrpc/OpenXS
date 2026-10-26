@@ -23,15 +23,22 @@ heuristic suppression already reads):
     having existed 90 days.
   3 - Composer-checksum suppression disabled entirely, regardless of
     whitelist or stats.
-"""
+
+Reputation stats are cached (STATS_CACHE_DB, STATS_CACHE_TTL) - a
+non-whitelisted package otherwise hits Packagist's info API on every
+single one of its files, on every scan, across however many sites on
+the fleet install it."""
 import fnmatch
 import json
 import os
+import sqlite3
 import time
 import urllib.request
 
 PACKAGIST_INFO_URL = "https://packagist.org/packages/{name}.json"
 WHITELIST_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "composer_trusted_packages")
+STATS_CACHE_DB = os.environ.get("OPENXS_COMPOSER_STATS_CACHE_DB", "/var/lib/openxs/composer_trust_stats.db")
+STATS_CACHE_TTL = 7 * 24 * 3600  # downloads/age only matter at a coarse level here - re-check at most once a week
 
 
 def _load_whitelist(path=WHITELIST_PATH):
@@ -52,26 +59,53 @@ def is_whitelisted(name, patterns=None):
     return any(fnmatch.fnmatchcase(name, p) for p in patterns)
 
 
+def _stats_cache_connect():
+    os.makedirs(os.path.dirname(STATS_CACHE_DB), exist_ok=True)
+    conn = sqlite3.connect(STATS_CACHE_DB)
+    conn.execute("CREATE TABLE IF NOT EXISTS package_stats "
+                 "(name TEXT PRIMARY KEY, published_ts REAL, downloads INTEGER, checked_at REAL NOT NULL)")
+    return conn
+
+
 def _package_stats(name, timeout=10):
-    """(age_days, total_downloads) from Packagist's own package-info API,
-    or None if the lookup fails (network, unknown package)."""
+    """(age_days, total_downloads) from Packagist's own package-info API -
+    every non-whitelisted package hit this on every scan before this
+    cache existed, which doesn't scale across a whole fleet's worth of
+    vendor/ files. published_ts (the package's first-release date) never
+    changes once known, so it's cached forever; downloads is re-checked
+    at most once a week (STATS_CACHE_TTL) since it only matters here at
+    a coarse, slow-changing level. A transient lookup failure falls back
+    to a stale cache entry rather than failing closed outright - only a
+    cold cache with no successful lookup ever returns None."""
+    conn = _stats_cache_connect()
+    row = conn.execute("SELECT published_ts, downloads, checked_at FROM package_stats WHERE name = ?",
+                        (name,)).fetchone()
+    if row and time.time() - row[2] < STATS_CACHE_TTL:
+        conn.close()
+        return ((time.time() - row[0]) / 86400, row[1])
+
     url = PACKAGIST_INFO_URL.format(name=name)
     try:
         with urllib.request.urlopen(url, timeout=timeout) as resp:
             data = json.loads(resp.read())
-    except Exception:
-        return None
-    package = data.get("package") or {}
-    first_published = package.get("time")
-    downloads = (package.get("downloads") or {}).get("total")
-    if not first_published or downloads is None:
-        return None
-    try:
+        package = data.get("package") or {}
+        first_published = package.get("time")
+        downloads = (package.get("downloads") or {}).get("total")
+        if not first_published or downloads is None:
+            raise ValueError("missing time/downloads in Packagist response")
         published_ts = time.mktime(time.strptime(first_published[:19], "%Y-%m-%dT%H:%M:%S"))
-    except ValueError:
+    except Exception:
+        conn.close()
+        if row:
+            return ((time.time() - row[0]) / 86400, row[1])
         return None
-    age_days = (time.time() - published_ts) / 86400
-    return (age_days, downloads)
+
+    conn.execute("INSERT INTO package_stats (name, published_ts, downloads, checked_at) VALUES (?, ?, ?, ?) "
+                 "ON CONFLICT(name) DO UPDATE SET downloads=excluded.downloads, checked_at=excluded.checked_at",
+                 (name, published_ts, downloads, time.time()))
+    conn.commit()
+    conn.close()
+    return ((time.time() - published_ts) / 86400, downloads)
 
 
 def meets_reputation_bar(name, min_age_days, min_downloads):
