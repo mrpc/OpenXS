@@ -47,8 +47,16 @@ if (defined($in{'vmrss_max_mb'}) && $in{'vmrss_max_mb'} ne "") {
 	$v =~ s/[^0-9]//g;
 	$cfg{'VMRSS_MAX_MB'} = $v if ($v ne "");
 	}
-if (defined($in{'yara_paranoia_level'}) && $in{'yara_paranoia_level'} =~ /^[12]$/) {
+if (defined($in{'yara_paranoia_level'}) && $in{'yara_paranoia_level'} =~ /^[123]$/) {
 	$cfg{'YARA_PARANOIA_LEVEL'} = $in{'yara_paranoia_level'};
+	}
+foreach my $k ('composer_trust_min_age_days', 'composer_trust_min_downloads',
+               'composer_trust_l2_min_age_days', 'composer_trust_l2_min_downloads') {
+	if (defined($in{$k}) && $in{$k} ne "") {
+		my $v = $in{$k};
+		$v =~ s/[^0-9]//g;
+		$cfg{uc($k)} = $v if ($v ne "");
+		}
 	}
 $cfg{'VERSION_SCAN_ENABLED'} = (defined($in{'version_scan_enabled'}) && $in{'version_scan_enabled'} eq '1') ? '1' : '0';
 $cfg{'APT_SECURITY_ENABLED'} = (defined($in{'apt_security_enabled'}) && $in{'apt_security_enabled'} eq '1') ? '1' : '0';

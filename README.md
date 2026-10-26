@@ -81,6 +81,34 @@ product.
   daemon control, settings (its own page, separate from the dashboard),
   scan history, statistics, and quarantine management.
 
+### A known limitation of Composer/Packagist checksum suppression
+
+WordPress/Drupal/Revive/Roundcube/phpMyAdmin core and any wordpress.org
+plugin all go through those projects' own reviewed release directories,
+so a checksum match there is a strong signal. Packagist is different:
+it does no review of what gets published under a package name - it's a
+pure auto-index of whatever a package's own GitHub repo publishes as a
+release, so a checksum match there only verifies *"this matches what
+Packagist/GitHub say is official"* - not *"this is safe"*. If that
+channel itself is compromised (a maintainer's account taken over, a
+malicious release published under a legitimate name), the malicious
+code matches the checksum too.
+
+Mitigated (not eliminated) by `composer_trust.py`: a package also needs
+to be trusted - via `tools/composer_trusted_packages` (common ecosystem
+prefixes, auto-trusted) or Packagist's own age/downloads reputation
+stats (configurable thresholds) - before a checksum match suppresses
+anything for it. `OPENXS_YARA_PARANOIA_LEVEL` controls how strict that
+bar is, up to disabling Composer-checksum suppression entirely at
+level 3 - see its docstring.
+
+What still applies regardless of any of this: ClamAV and OpenXS's own
+custom MD5/SHA256/regex rules run on every file no matter what the
+checksum/trust check says - a known-bad signature or hash still gets
+caught. What doesn't: a brand-new supply-chain payload with no existing
+signature, published through an otherwise-trusted package, has no other
+layer here to catch it. Known, accepted tradeoff, not a bug.
+
 ## Architecture
 
 A small Python daemon (`openxs-scand`) keeps the compiled YARA ruleset in

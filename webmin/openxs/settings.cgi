@@ -120,17 +120,35 @@ print &ui_table_row("Scheduled scan memory limit",
 	"check the server's free RAM first.</i>");
 print &ui_table_row("YARA rule paranoia level",
 	&ui_select("yara_paranoia_level", $cfg{'YARA_PARANOIA_LEVEL'} || '1',
-		[["1", "1 - standard (default)"], ["2", "2 - include known-noisy heuristics"]]) .
+		[["1", "1 - standard (default)"], ["2", "2 - include known-noisy heuristics, stricter Composer trust"],
+		 ["3", "3 - also disable Composer-checksum trust entirely"]]) .
 	"<i>A handful of the vendored webshell-detection rules are heuristic by their own author's admission - " .
 	"they fire on ANY smallish file that touches request input (\$_GET/\$_POST/etc.) and calls one of ~30 " .
 	"completely ordinary PHP functions (array_map, call_user_func, spl_autoload_register, ...), which is also " .
 	"the shape of a lot of legitimate code (Adminer, PHPUnit's eval-stdin utility, WordPress plugin option " .
-	"handlers). Level 1 (default) doesn't even report these; level 2 includes them, for a deeper one-off look. " .
+	"handlers). Level 1 (default) doesn't even report these; level 2+ includes them, for a deeper one-off look. " .
 	"Not mod_security's 4-level paranoia (that's curated per-rule by the CRS project itself, at a depth we " .
-	"don't have here) - starts at 2 levels, more can be added as specific rules need narrower opt-in. " .
-	"<b>Changing this needs the scan daemon restarted</b> (<code>systemctl restart openxs-scand</code>) for " .
-	"the real-time upload-blocking hook and watch daemon to pick it up - a new scheduled/manual scan picks it " .
-	"up on its own.</i>");
+	"don't have here) - starts at 3 levels, more can be added as specific rules need narrower opt-in. " .
+	"This level also controls how much a Composer/Packagist package (vendor/ directory) gets trusted for " .
+	"checksum-based suppression, below - Packagist does no review of what gets published under a package " .
+	"name, unlike WordPress/Drupal's own reviewed directories, so an unknown/low-traffic package is a weaker " .
+	"signal there than elsewhere. <b>Changing this needs the scan daemon restarted</b> " .
+	"(<code>systemctl restart openxs-scand</code>) for the real-time upload-blocking hook and watch daemon " .
+	"to pick it up - a new scheduled/manual scan picks it up on its own.</i>");
+print &ui_table_row("Composer package trust threshold (level 1)",
+	&ui_textbox("composer_trust_min_age_days", $cfg{'COMPOSER_TRUST_MIN_AGE_DAYS'} || '90', 6) .
+	" days old, " .
+	&ui_textbox("composer_trust_min_downloads", $cfg{'COMPOSER_TRUST_MIN_DOWNLOADS'} || '1000', 8) .
+	" total downloads (Packagist) minimum" .
+	"<i>A non-whitelisted (<code>tools/composer_trusted_packages</code>) Composer package needs both to be " .
+	"trusted for checksum-match suppression at paranoia level 1. Low bar by design - most real packages on " .
+	"Packagist clear this easily.</i>");
+print &ui_table_row("Composer package trust threshold (level 2)",
+	&ui_textbox("composer_trust_l2_min_age_days", $cfg{'COMPOSER_TRUST_L2_MIN_AGE_DAYS'} || '180', 6) .
+	" days old, " .
+	&ui_textbox("composer_trust_l2_min_downloads", $cfg{'COMPOSER_TRUST_L2_MIN_DOWNLOADS'} || '50000', 8) .
+	" total downloads (Packagist) minimum" .
+	"<i>Same check, much higher bar, used only when paranoia level is set to 2 above.</i>");
 my $remoteip_active_for_autoban = &openxs_remoteip_active();
 print &ui_table_row("CSF auto-ban (watch daemon, high-confidence findings only)",
 	&ui_checkbox("csf_autoban_enabled", "1",

@@ -554,6 +554,8 @@ my %cfg = ( 'EMAIL' => 'root@localhost', 'SCAN_PATH' => '/var/www', 'QUARANTINE_
             'WATCHD_MAX_RSS_MB' => '1024', 'OPENXS_SRC' => '', 'AUTO_UPDATE' => '0',
             'VMRSS_MAX_MB' => '2000',
             'YARA_PARANOIA_LEVEL' => '1',
+            'COMPOSER_TRUST_MIN_AGE_DAYS' => '90', 'COMPOSER_TRUST_MIN_DOWNLOADS' => '1000',
+            'COMPOSER_TRUST_L2_MIN_AGE_DAYS' => '180', 'COMPOSER_TRUST_L2_MIN_DOWNLOADS' => '50000',
             # Off by default - this bans a real IP (temporarily, but
             # still a production-affecting action), only ever on an
             # exact, unambiguous watch-daemon correlation (never the

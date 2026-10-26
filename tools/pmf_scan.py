@@ -476,25 +476,34 @@ def is_unmodified_composer_package_file(fname):
     Composer ecosystem. Found live 2026-10-25/26 to be a real,
     substantial false-positive source on two unrelated servers
     (well-known packages like symfony/* triggering generic obfuscation
-    heuristics on their own legitimate, often-dense code)."""
+    heuristics on their own legitimate, often-dense code). Gated by
+    composer_trust.is_trusted() - Packagist does no review of what gets
+    published under a package name, so a checksum match alone isn't
+    enough trust for an obscure/unreviewed package the way it is for
+    wordpress.org/drupal.org's own reviewed directories (see
+    composer_trust.py's docstring)."""
     found = find_composer_package_root_for(fname)
     if not found:
         return False
     project_root, name, package_root = found
     try:
-        import version_scan
         import composer_package_checksums
+        import composer_trust
     except ImportError:
         return False
-    version = None
-    for pkg_name, pkg_version in version_scan.installed_packages(
-            os.path.join(project_root, "composer.lock")):
-        if pkg_name == name:
-            version = pkg_version
-            break
+    if not composer_trust.is_trusted(name):
+        return False
+    entry = composer_package_checksums.lock_entry(os.path.join(project_root, "composer.lock"), name)
+    if not entry:
+        return False
+    version, dist_url, reference = entry
     if not version:
         return False
-    checksums = composer_package_checksums.fetch_checksums(name, version)
+    # A dev-branch alias (e.g. "dev-main") isn't a stable release - cache
+    # by its exact pinned commit instead, since the same alias can point
+    # at a different commit later (see lock_entry()'s docstring).
+    cache_key = reference if version.startswith("dev-") else version
+    checksums = composer_package_checksums.fetch_checksums(name, version, dist_url=dist_url, cache_key=cache_key)
     if not checksums:
         return False
     return composer_package_checksums.is_unmodified_core_file(fname, package_root, checksums)

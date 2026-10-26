@@ -1,0 +1,59 @@
+# Shipped with OpenXS - Composer/Packagist vendor prefixes auto-trusted
+# for checksum-based suppression (composer_trust.py), no reputation-API
+# lookup needed. Packagist itself does zero review (pure auto-indexing
+# from any GitHub repo, unlike wordpress.org/drupal.org's actual
+# directory review) - this list exists so well-known ecosystems don't
+# pay a Packagist API round-trip on every scan, not as the main defense
+# (that's the age/downloads reputation check for everything else).
+# One prefix per line, "vendor/*" or "vendor/exact-package". # comments
+# and blank lines ignored.
+symfony/*
+guzzlehttp/*
+doctrine/*
+psr/*
+monolog/monolog
+phpunit/phpunit
+composer/*
+mrpc/*
+pramnoshosting/*
+
+# Found live 2026-10-26 scanning real vendor/ findings on two servers in
+# our own fleet - established, well-known packages that already clear
+# the reputation bar on their own (age/downloads), whitelisted here
+# purely to skip the Packagist API round-trip on every scan, not because
+# the reputation check wouldn't trust them anyway.
+vrana/adminer
+sabberworm/php-css-parser
+scssphp/scssphp
+swiftmailer/swiftmailer
+phpoffice/phpspreadsheet
+spomky-labs/pki-framework
+chillerlan/php-qrcode
+google/apiclient-services
+squizlabs/php_codesniffer
+tecnickcom/tcpdf
+web-auth/webauthn-lib
+paragonie/random_compat
+twig/twig
+thecodingmachine/safe
+ezyang/htmlpurifier
+sebastian/environment
+stripe/stripe-php
+ramsey/uuid
+nikic/fast-route
+
+# Smaller download counts but legitimate, known publishers.
+otgs/installer
+wpml/fp
+wpml/core-api
+ampproject/amp-toolbox
+woocommerce/action-scheduler
+automattic/block-delimiter
+
+# Not real Packagist package names (vendored/bundled code under a
+# vendor/ path, not something installed via Composer - no composer.lock
+# entry, so checksum lookup always fails regardless of this whitelist).
+# Listed anyway since they're legitimate software, in case that ever
+# changes upstream.
+stripe/lib
+wordfence/wf-waf

@@ -842,7 +842,7 @@ def test_is_unmodified_composer_package_file_matches(tmp_path, monkeypatch):
     import composer_package_checksums
     monkeypatch.setattr(
         composer_package_checksums, "fetch_checksums",
-        lambda name, version: {"Hydrator.php": __import__("hashlib").sha256(b"stock content").hexdigest()},
+        lambda name, version, dist_url=None, cache_key=None: {"Hydrator.php": __import__("hashlib").sha256(b"stock content").hexdigest()},
     )
     assert pmf_scan.is_unmodified_composer_package_file(str(target))
 
@@ -859,5 +859,7 @@ def test_is_unmodified_composer_package_file_false_when_not_on_packagist(tmp_pat
     target.write_bytes(b"stock content")
 
     import composer_package_checksums
-    monkeypatch.setattr(composer_package_checksums, "fetch_checksums", lambda name, version: None)
+    import composer_trust
+    monkeypatch.setattr(composer_trust, "is_trusted", lambda name, paranoia_level=None: True)
+    monkeypatch.setattr(composer_package_checksums, "fetch_checksums", lambda name, version, dist_url=None, cache_key=None: None)
     assert not pmf_scan.is_unmodified_composer_package_file(str(target))

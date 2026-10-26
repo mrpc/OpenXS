@@ -36,6 +36,10 @@ VERSION_SCAN_ENABLED="1"
 APT_SECURITY_ENABLED="1"
 VMRSS_MAX_MB="2000"
 YARA_PARANOIA_LEVEL="1"
+COMPOSER_TRUST_MIN_AGE_DAYS="90"
+COMPOSER_TRUST_MIN_DOWNLOADS="1000"
+COMPOSER_TRUST_L2_MIN_AGE_DAYS="180"
+COMPOSER_TRUST_L2_MIN_DOWNLOADS="50000"
 # Parsed as plain data, not `source`-d: the config file is writable via the
 # Webmin settings form, and `source` would execute $()/`` in any value as
 # real shell code (e.g. a crafted EMAIL value running arbitrary commands
@@ -60,6 +64,10 @@ if [ -f "$CONFIG" ]; then
             APT_SECURITY_ENABLED) APT_SECURITY_ENABLED="$value" ;;
             VMRSS_MAX_MB) VMRSS_MAX_MB="$value" ;;
             YARA_PARANOIA_LEVEL) YARA_PARANOIA_LEVEL="$value" ;;
+            COMPOSER_TRUST_MIN_AGE_DAYS) COMPOSER_TRUST_MIN_AGE_DAYS="$value" ;;
+            COMPOSER_TRUST_MIN_DOWNLOADS) COMPOSER_TRUST_MIN_DOWNLOADS="$value" ;;
+            COMPOSER_TRUST_L2_MIN_AGE_DAYS) COMPOSER_TRUST_L2_MIN_AGE_DAYS="$value" ;;
+            COMPOSER_TRUST_L2_MIN_DOWNLOADS) COMPOSER_TRUST_L2_MIN_DOWNLOADS="$value" ;;
         esac
     done < "$CONFIG"
 fi
@@ -104,6 +112,10 @@ export OPENXS_QUARANTINE_CATEGORIES="$QUARANTINE_CATEGORIES"
 export OPENXS_FAST_PHP_ONLY="$FAST_PHP_ONLY"
 export OPENXS_VMRSS_MAX_KB=$((VMRSS_MAX_MB * 1024))
 export OPENXS_YARA_PARANOIA_LEVEL="$YARA_PARANOIA_LEVEL"
+export OPENXS_COMPOSER_TRUST_MIN_AGE_DAYS="$COMPOSER_TRUST_MIN_AGE_DAYS"
+export OPENXS_COMPOSER_TRUST_MIN_DOWNLOADS="$COMPOSER_TRUST_MIN_DOWNLOADS"
+export OPENXS_COMPOSER_TRUST_L2_MIN_AGE_DAYS="$COMPOSER_TRUST_L2_MIN_AGE_DAYS"
+export OPENXS_COMPOSER_TRUST_L2_MIN_DOWNLOADS="$COMPOSER_TRUST_L2_MIN_DOWNLOADS"
 python3 pmf_scan.py scan php.yar filelist.txt > scan_results.txt 2> scan.log
 
 # Proactive whitelist-drift check: a whitelisted file whose content has

@@ -76,14 +76,41 @@ def _find_dist_url(name, version, timeout=10):
     return None
 
 
-def compute_checksums_from_zip(name, version, timeout=30):
-    """Downloads this exact package version's own release archive (via
-    Packagist's own metadata, not a guessed URL) and hashes every file
-    inside it, returns {relative_path: sha256} - paths relative to the
-    archive's own single top-level directory, whatever that happens to
-    be named. None if the package/version isn't on Packagist, or the
-    download/extraction fails."""
-    dist_url = _find_dist_url(name, version, timeout=timeout)
+def lock_entry(lock_path, name):
+    """(version, dist_url, reference) for this exact package as
+    composer.lock itself records it - more direct and more precise than
+    asking Packagist's p2 API for it, since composer.lock already pins
+    the exact dist URL/commit that's actually installed. Covers
+    "dev-main"-style branch aliases too (common for an actively
+    developed first-party package pinned straight off its own repo),
+    which aren't real Packagist releases and have no dist entry in the
+    p2 API at all - found live 2026-10-26 checksum-fetching
+    mrpc/pramnosframework and vrana/adminer on a real site pinned to
+    dev-main, both silently failing via the p2-only path. None if the
+    lock can't be read or doesn't list this package."""
+    try:
+        with open(lock_path, errors="replace") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return None
+    for pkg in data.get("packages", []) + data.get("packages-dev", []):
+        if pkg.get("name") == name:
+            dist = pkg.get("dist") or {}
+            return (pkg.get("version"), dist.get("url"), dist.get("reference"))
+    return None
+
+
+def compute_checksums_from_zip(name, version, timeout=30, dist_url=None):
+    """Downloads this exact package version's own release archive and
+    hashes every file inside it, returns {relative_path: sha256} - paths
+    relative to the archive's own single top-level directory, whatever
+    that happens to be named. dist_url overrides the normal Packagist
+    p2-API lookup when the caller already has a more precise one (e.g.
+    from composer.lock itself, via lock_entry() above) - required for a
+    dev-branch alias version, which the p2 API doesn't list at all.
+    None if the package/version isn't resolvable, or the download/
+    extraction fails."""
+    dist_url = dist_url or _find_dist_url(name, version, timeout=timeout)
     if not dist_url:
         return None
     req = urllib.request.Request(dist_url)
@@ -115,19 +142,25 @@ def compute_checksums_from_zip(name, version, timeout=30):
     return checksums or None
 
 
-def fetch_checksums(name, version):
+def fetch_checksums(name, version, dist_url=None, cache_key=None):
     """{relative_path: sha256} for this exact "vendor/package" version,
-    disk cache first, falling back to Packagist + the real release
-    archive and caching the result for next time - a released package
-    version's files never change, so the cache never goes stale."""
-    cached = _cached_checksums(name, version)
+    disk cache first, falling back to the real release archive (via
+    dist_url if given, else Packagist's p2 API) and caching the result
+    for next time. cache_key overrides the default (name, version)
+    cache identity - pass the composer.lock's own commit reference for
+    a dev-branch alias version (e.g. "dev-main"), since that alias
+    isn't a stable release and the same alias can point at a different
+    commit later; a tagged release's version string is already a
+    stable identity on its own and never needs this."""
+    cache_key = cache_key or version
+    cached = _cached_checksums(name, cache_key)
     if cached is not None:
         return cached
-    checksums = compute_checksums_from_zip(name, version)
+    checksums = compute_checksums_from_zip(name, version, dist_url=dist_url)
     if checksums:
         try:
             os.makedirs(CACHE_DIR, exist_ok=True)
-            with gzip.open(_cache_path(name, version), "wt") as f:
+            with gzip.open(_cache_path(name, cache_key), "wt") as f:
                 json.dump(checksums, f)
         except OSError:
             pass
