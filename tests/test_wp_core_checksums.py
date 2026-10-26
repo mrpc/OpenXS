@@ -134,6 +134,21 @@ def test_find_unknown_core_files_flags_truly_unknown(tmp_path, monkeypatch):
     assert results == [(str(planted), False)]
 
 
+def test_find_unknown_core_files_ignores_error_log(tmp_path, monkeypatch):
+    # Found live 2026-10-26: PHP's log_errors writes an "error_log" into
+    # whatever directory the error happened in - a near-universal shared-
+    # hosting default, nothing to do with WordPress or a webshell.
+    monkeypatch.setattr(wcc, "_all_bundled_hashes_cache", None)
+    bundled_dir = tmp_path / "bundle"
+    monkeypatch.setattr(wcc, "BUNDLED_DIR", str(bundled_dir))
+    wp_root = tmp_path / "site"
+    log = wp_root / "wp-includes" / "error_log"
+    log.parent.mkdir(parents=True)
+    log.write_bytes(b"PHP Fatal error: ...")
+    _write_bundle(bundled_dir, "6.0", {})
+    assert wcc.find_unknown_core_files(str(wp_root), "6.0") == []
+
+
 def test_find_unknown_core_files_ignores_wp_content(tmp_path, monkeypatch):
     monkeypatch.setattr(wcc, "_all_bundled_hashes_cache", None)
     bundled_dir = tmp_path / "bundle"

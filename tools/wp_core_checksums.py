@@ -103,6 +103,8 @@ def is_unmodified_core_file(fname, wp_root, checksums):
     return file_md5(fname) == expected
 
 
+NOISE_FILENAMES = frozenset({"error_log"})
+
 _all_bundled_hashes_cache = None
 
 
@@ -169,6 +171,14 @@ def find_unknown_core_files(wp_root, version):
         root = os.path.join(wp_root, subdir)
         for dirpath, _dirnames, filenames in os.walk(root):
             for fn in filenames:
+                if fn in NOISE_FILENAMES:
+                    # Found live 2026-10-26: PHP's own log_errors writes
+                    # an "error_log" wherever the error happened, with no
+                    # path override set - a near-universal shared-hosting
+                    # default, not WordPress-related at all, and not
+                    # something a webshell would plausibly be disguised
+                    # as (no attacker benefit to the exact name "error_log").
+                    continue
                 fname = os.path.join(dirpath, fn)
                 rel = os.path.relpath(fname, wp_root)
                 if rel in checksums:
