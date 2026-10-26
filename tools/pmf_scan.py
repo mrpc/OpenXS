@@ -415,6 +415,91 @@ def is_unmodified_wp_plugin_lang_file(fname):
     return wp_plugin_lang_checksums.is_unmodified_core_file(fname, checksums)
 
 
+_COMPOSER_LOCK_ROOT_CACHE = {}
+
+
+def find_composer_lock_root_for(fname):
+    """Nearest ancestor directory of fname containing a composer.lock,
+    or None - same memoized-walk-up shape as find_platform_root_for(),
+    but composer.lock isn't a _PLATFORMS entry (a project can have one
+    at any depth, with no fixed relationship to a CMS/platform marker,
+    and a single lock file governs potentially dozens of independently-
+    versioned vendor/ sub-packages rather than one whole-install
+    version the way _PLATFORMS' markers do)."""
+    d = os.path.dirname(fname)
+    checked = []
+    while d and d not in ("/", ""):
+        if d in _COMPOSER_LOCK_ROOT_CACHE:
+            result = _COMPOSER_LOCK_ROOT_CACHE[d]
+            for c in checked:
+                _COMPOSER_LOCK_ROOT_CACHE[c] = result
+            return result
+        checked.append(d)
+        if os.path.isfile(os.path.join(d, "composer.lock")):
+            for c in checked:
+                _COMPOSER_LOCK_ROOT_CACHE[c] = d
+            return d
+        parent = os.path.dirname(d)
+        if parent == d:
+            break
+        d = parent
+    for c in checked:
+        _COMPOSER_LOCK_ROOT_CACHE[c] = None
+    return None
+
+
+def find_composer_package_root_for(fname):
+    """If fname sits under some project's vendor/<org>/<package>/,
+    returns (project_root, "<org>/<package>", package_root). None
+    otherwise (not under a composer-managed project, or under vendor/
+    but not deep enough to be a real package path, e.g. vendor/autoload.php
+    itself or vendor/composer/* which isn't a real Packagist package)."""
+    project_root = find_composer_lock_root_for(fname)
+    if not project_root:
+        return None
+    vendor_dir = os.path.join(project_root, "vendor")
+    rel = os.path.relpath(fname, vendor_dir)
+    if rel.startswith(".."):
+        return None
+    parts = rel.split(os.sep)
+    if len(parts) < 3 or parts[0] == "composer":  # vendor/composer/* is Composer's own metadata, not a package
+        return None
+    name = f"{parts[0]}/{parts[1]}"
+    return (project_root, name, os.path.join(vendor_dir, parts[0], parts[1]))
+
+
+def is_unmodified_composer_package_file(fname):
+    """True if fname sits under a Composer-managed project's vendor/ and
+    matches that exact installed package version's official checksum
+    (from Packagist's own release archive, see composer_package_checksums.py)
+    - generalizes is_unmodified_wp_plugin_file()'s pattern to the
+    Composer ecosystem. Found live 2026-10-25/26 to be a real,
+    substantial false-positive source on two unrelated servers
+    (well-known packages like symfony/* triggering generic obfuscation
+    heuristics on their own legitimate, often-dense code)."""
+    found = find_composer_package_root_for(fname)
+    if not found:
+        return False
+    project_root, name, package_root = found
+    try:
+        import version_scan
+        import composer_package_checksums
+    except ImportError:
+        return False
+    version = None
+    for pkg_name, pkg_version in version_scan.installed_packages(
+            os.path.join(project_root, "composer.lock")):
+        if pkg_name == name:
+            version = pkg_version
+            break
+    if not version:
+        return False
+    checksums = composer_package_checksums.fetch_checksums(name, version)
+    if not checksums:
+        return False
+    return composer_package_checksums.is_unmodified_core_file(fname, package_root, checksums)
+
+
 def categorize(rule_name):
     """cxs quarantines only a conservative default (Viruses + Known
     Exploits) 'to avoid otherwise breaking web sites' - filesystem
@@ -907,7 +992,8 @@ def main():
                 # false-positive mechanism.
                 real = [m for m in real if m.rule != "NonPrintableChars"]
             if real and (is_unmodified_core_file(fname) or is_unmodified_wp_plugin_file(fname)
-                         or is_unmodified_wp_plugin_lang_file(fname)):
+                         or is_unmodified_wp_plugin_lang_file(fname)
+                         or is_unmodified_composer_package_file(fname)):
                 # Byte-for-byte matches the official checksum for this
                 # exact version (core platform, a wordpress.org-hosted
                 # plugin, or that plugin's own official translation

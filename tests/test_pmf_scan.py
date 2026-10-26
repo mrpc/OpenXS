@@ -781,3 +781,83 @@ def test_paranoia_level_for_strips_archive_member_suffix():
     assert pmf_scan.paranoia_level_for(
         "WEBSHELL_PHP_Dynamic_Big (in archive member libraries/videos.php)"
     ) == 2
+
+
+# --- find_composer_package_root_for / is_unmodified_composer_package_file --
+
+def test_find_composer_package_root_for_detects_vendor_package(tmp_path):
+    pmf_scan._COMPOSER_LOCK_ROOT_CACHE.clear()
+    project_root = tmp_path / "myapp"
+    (project_root / "vendor" / "symfony" / "var-exporter").mkdir(parents=True)
+    (project_root / "composer.lock").write_text("{}")
+    target = project_root / "vendor" / "symfony" / "var-exporter" / "Hydrator.php"
+    target.write_text("x")
+    found = pmf_scan.find_composer_package_root_for(str(target))
+    assert found == (str(project_root), "symfony/var-exporter",
+                      str(project_root / "vendor" / "symfony" / "var-exporter"))
+
+
+def test_find_composer_package_root_for_none_without_a_composer_lock(tmp_path):
+    pmf_scan._COMPOSER_LOCK_ROOT_CACHE.clear()
+    target = tmp_path / "vendor" / "symfony" / "var-exporter" / "Hydrator.php"
+    target.parent.mkdir(parents=True)
+    target.write_text("x")
+    assert pmf_scan.find_composer_package_root_for(str(target)) is None
+
+
+def test_find_composer_package_root_for_none_for_composers_own_metadata(tmp_path):
+    # vendor/composer/* is Composer's own autoloader machinery, not a
+    # real Packagist package - must not be mistaken for one.
+    pmf_scan._COMPOSER_LOCK_ROOT_CACHE.clear()
+    project_root = tmp_path / "myapp"
+    (project_root / "vendor" / "composer").mkdir(parents=True)
+    (project_root / "composer.lock").write_text("{}")
+    target = project_root / "vendor" / "composer" / "autoload_real.php"
+    target.write_text("x")
+    assert pmf_scan.find_composer_package_root_for(str(target)) is None
+
+
+def test_find_composer_package_root_for_none_outside_vendor(tmp_path):
+    pmf_scan._COMPOSER_LOCK_ROOT_CACHE.clear()
+    project_root = tmp_path / "myapp"
+    project_root.mkdir(parents=True)
+    (project_root / "composer.lock").write_text("{}")
+    target = project_root / "src" / "Application.php"
+    target.parent.mkdir(parents=True)
+    target.write_text("x")
+    assert pmf_scan.find_composer_package_root_for(str(target)) is None
+
+
+def test_is_unmodified_composer_package_file_matches(tmp_path, monkeypatch):
+    pmf_scan._COMPOSER_LOCK_ROOT_CACHE.clear()
+    project_root = tmp_path / "myapp"
+    pkg_dir = project_root / "vendor" / "symfony" / "var-exporter"
+    pkg_dir.mkdir(parents=True)
+    (project_root / "composer.lock").write_text(
+        '{"packages": [{"name": "symfony/var-exporter", "version": "v8.1.9"}]}'
+    )
+    target = pkg_dir / "Hydrator.php"
+    target.write_bytes(b"stock content")
+
+    import composer_package_checksums
+    monkeypatch.setattr(
+        composer_package_checksums, "fetch_checksums",
+        lambda name, version: {"Hydrator.php": __import__("hashlib").sha256(b"stock content").hexdigest()},
+    )
+    assert pmf_scan.is_unmodified_composer_package_file(str(target))
+
+
+def test_is_unmodified_composer_package_file_false_when_not_on_packagist(tmp_path, monkeypatch):
+    pmf_scan._COMPOSER_LOCK_ROOT_CACHE.clear()
+    project_root = tmp_path / "myapp"
+    pkg_dir = project_root / "vendor" / "acme" / "private-package"
+    pkg_dir.mkdir(parents=True)
+    (project_root / "composer.lock").write_text(
+        '{"packages": [{"name": "acme/private-package", "version": "1.0.0"}]}'
+    )
+    target = pkg_dir / "Thing.php"
+    target.write_bytes(b"stock content")
+
+    import composer_package_checksums
+    monkeypatch.setattr(composer_package_checksums, "fetch_checksums", lambda name, version: None)
+    assert not pmf_scan.is_unmodified_composer_package_file(str(target))

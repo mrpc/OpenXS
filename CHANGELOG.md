@@ -19,6 +19,28 @@ Release from that section's text.
 
 ## [Unreleased]
 
+### Signatures
+- Any Composer/Packagist-hosted package (not a hand-picked few):
+  suppress false positives on its own unmodified, officially-released
+  code via `composer_package_checksums.py` - generalizes
+  wp_plugin_checksums.py's pattern (too many packages/versions to
+  pre-bundle, so this caches to disk on first use per (name, version)
+  instead) to the vendor/ ecosystem. Unlike wordpress.org (one fixed
+  download URL, one predictable top-level directory name), Packagist
+  only indexes metadata pointing at wherever the package's own VCS host
+  (almost always GitHub) publishes a release archive - a two-step
+  fetch (Packagist's own `p2` API for the exact version's `dist.url`,
+  then that URL for the actual files), with the archive's one
+  top-level directory detected from its own contents rather than
+  assumed (GitHub codeload zips name it "<owner>-<repo>-<short-sha>/",
+  never the package/version string). Found live 2026-10-25/26 to be a
+  real, substantial false-positive source on two unrelated servers
+  (well-known packages like symfony/* and spomky-labs/* triggering
+  generic obfuscation heuristics on their own legitimate, often-dense
+  code) - verified end-to-end against a real production file (symfony/
+  var-exporter's LazyGhostTrait.php) before shipping, not just unit
+  tests against fakes.
+
 ### Fixed
 - `install_modsecurity.sh` hardcoded ModSecurity's `SecRequestBodyLimit`/
   `SecRequestBodyNoFilesLimit` to its own stock recommended defaults
