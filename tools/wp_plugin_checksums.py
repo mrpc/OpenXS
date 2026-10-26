@@ -102,6 +102,31 @@ def file_sha256(path):
     return h.hexdigest()
 
 
+def fetch_file_content(slug, version, rel_path, timeout=60):
+    """The real, pristine bytes of one file from this plugin version's
+    own release zip - used only by the manual "restore to pristine
+    version" action (restore_pristine.py), not by anything in the
+    regular scan path (which only ever needs the hash, via
+    fetch_checksums() above). Downloaded fresh every call - this
+    doesn't happen often enough to be worth caching a whole zip's
+    content on disk the way fetch_checksums() caches hashes. None if
+    the download fails or rel_path isn't in this release."""
+    url = DOWNLOAD_URL.format(slug=slug, version=version)
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            data = resp.read()
+    except Exception:
+        return None
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            try:
+                return zf.read(f"{slug}/{rel_path}")
+            except KeyError:
+                return None
+    except zipfile.BadZipFile:
+        return None
+
+
 def is_unmodified_core_file(fname, plugin_root, checksums):
     """True if fname (an absolute path under plugin_root) matches this
     plugin version's official checksum for that relative path. Named

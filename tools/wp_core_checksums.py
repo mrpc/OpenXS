@@ -14,14 +14,20 @@ latest-version cache which has a TTL since "latest" does change).
 """
 import gzip
 import hashlib
+import io
 import json
 import os
 import sqlite3
+import zipfile
 import urllib.request
 
 CHECKSUMS_URL = "https://api.wordpress.org/core/checksums/1.0/?version={version}&locale={locale}"
 CACHE_DB = os.environ.get("OPENXS_WP_CHECKSUM_CACHE_DB", "/var/lib/openxs/wp_checksums.db")
 BUNDLED_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wp_checksums")
+# Only used by fetch_file_content() below - the checksums API above
+# gives hashes only, never the actual bytes, so a repair action needs
+# this separate, heavier download instead.
+WP_ZIP_URL = "https://wordpress.org/wordpress-{version}.zip"
 
 
 def _cache_connect():
@@ -186,3 +192,32 @@ def find_unknown_core_files(wp_root, version):
                 is_old_leftover = file_md5(fname) in known_hashes
                 results.append((fname, is_old_leftover))
     return results
+
+
+def fetch_file_content(version, rel_path, timeout=60):
+    """The real, pristine bytes of one file from this WordPress
+    version's own official release zip - used only by the manual
+    "restore to pristine version" action (restore_pristine.py), not by
+    anything in the regular scan path (which only ever needs the hash,
+    via fetch_checksums() above - wordpress.org's checksums API gives
+    hashes only, never the actual bytes). The full install zip, not the
+    "no-content" one - the checksums API's own file list includes the
+    bundled default themes under wp-content/themes/, which the
+    no-content zip would be missing. Downloaded fresh every call - this
+    doesn't happen often enough to be worth caching a whole zip's
+    content on disk the way fetch_checksums() caches hashes. None if
+    the download fails or rel_path isn't in this release."""
+    url = WP_ZIP_URL.format(version=version)
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            data = resp.read()
+    except Exception:
+        return None
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            try:
+                return zf.read(f"wordpress/{rel_path}")
+            except KeyError:
+                return None
+    except zipfile.BadZipFile:
+        return None

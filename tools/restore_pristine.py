@@ -16,12 +16,12 @@ outright, since nothing here can independently verify the fetched
 or a wrongly-detected version, could otherwise silently hand back the
 wrong bytes with no way to undo it).
 
-Only Composer packages and Drupal 7 core are wired up so far - the
-other platforms pmf_scan.py's find_platform_root_for() already
-recognizes (Revive, Roundcube, phpMyAdmin) and WordPress core don't
-have a fetch_file_content() yet (WordPress's checksums API only ever
-gave hashes, not content - would need its own release-zip download,
-not yet built)."""
+Composer packages, Drupal 7 core, WordPress core and wordpress.org-
+hosted WordPress plugins are wired up. Revive/Roundcube/phpMyAdmin
+(the other platforms pmf_scan.py's find_platform_root_for() already
+recognizes) aren't yet - nobody's needed it for those so far, and each
+would need its own fetch_file_content() added to its own checksums
+module first (see wp_core_checksums.py's for the shape to follow)."""
 import os
 import sys
 
@@ -29,9 +29,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import composer_package_checksums
 import drupal_core_checksums
 import pmf_scan
+import wp_core_checksums
+import wp_plugin_checksums
 
 RESTORABLE_PLATFORMS = {
     "drupal7": drupal_core_checksums,
+    "wordpress": wp_core_checksums,
 }
 
 
@@ -50,6 +53,24 @@ def _fetch_pristine_content(file_path):
             return None
         rel = os.path.relpath(file_path, package_root)
         return composer_package_checksums.fetch_file_content(name, version, rel, dist_url=dist_url)
+
+    # Checked before the generic platform branch below, same precedence
+    # is_unmodified_wp_plugin_file() has over is_unmodified_core_file()
+    # in pmf_scan.py - a plugin file sits under a WordPress install root
+    # too, but needs the PLUGIN's own version/checksums, not core's.
+    wp_plugin_found = pmf_scan.find_wp_plugin_root_for(file_path)
+    if wp_plugin_found:
+        wp_root, slug, plugin_root = wp_plugin_found
+        import version_scan
+        version = None
+        for s, v in version_scan.find_wp_plugins(wp_root):
+            if s == slug:
+                version = v
+                break
+        if not version:
+            return None
+        rel = os.path.relpath(file_path, plugin_root)
+        return wp_plugin_checksums.fetch_file_content(slug, version, rel)
 
     platform, root = pmf_scan.find_platform_root_for(file_path)
     if platform and platform["name"] in RESTORABLE_PLATFORMS:

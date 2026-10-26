@@ -86,12 +86,12 @@ product.
   substring style as the main Ignore file. Idea and approach informed
   by studying Wordfence's own (GPLv3) database-scan code.
 - **Repair (restore to pristine)**: one-click action from the findings
-  browser for a modified, named Composer package or Drupal 7 core file —
+  browser for a modified, named Composer package, Drupal 7 core file,
+  WordPress core file, or wordpress.org-hosted WordPress plugin file —
   backs the current content up to quarantine first, then writes back the
   exact bytes from that package/version's own official release. Modeled
-  after Wordfence's own restoreFile action. WordPress core/plugins and
-  the other recognized platforms (Revive, Roundcube, phpMyAdmin) aren't
-  wired up yet.
+  after Wordfence's own restoreFile action. Revive/Roundcube/phpMyAdmin
+  (the other recognized platforms) aren't wired up yet.
 - **Scan history**: a small local SQLite database, so results survive
   past the next scan - including per-scan duration (broken down by
   detector) and system load, for answering "is it optimized", not just

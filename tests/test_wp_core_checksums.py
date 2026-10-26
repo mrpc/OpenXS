@@ -1,8 +1,53 @@
+import io
 import json
 import sys
 
 sys.path.insert(0, "tools")
 import wp_core_checksums as wcc
+
+
+def _make_wp_zip_bytes(files):
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for rel, content in files.items():
+            zf.writestr(f"wordpress/{rel}", content)
+    return buf.getvalue()
+
+
+def test_fetch_file_content_returns_the_real_bytes(monkeypatch):
+    zip_bytes = _make_wp_zip_bytes({"wp-includes/comment.php": "<?php // stock"})
+
+    class FakeResp:
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def read(self):
+            return zip_bytes
+    monkeypatch.setattr(wcc.urllib.request, "urlopen", lambda url, timeout=60: FakeResp())
+    assert wcc.fetch_file_content("6.0.0", "wp-includes/comment.php") == b"<?php // stock"
+
+
+def test_fetch_file_content_none_for_missing_path(monkeypatch):
+    zip_bytes = _make_wp_zip_bytes({"wp-includes/comment.php": "<?php // stock"})
+
+    class FakeResp:
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def read(self):
+            return zip_bytes
+    monkeypatch.setattr(wcc.urllib.request, "urlopen", lambda url, timeout=60: FakeResp())
+    assert wcc.fetch_file_content("6.0.0", "wp-includes/does-not-exist.php") is None
+
+
+def test_fetch_file_content_none_on_download_failure(monkeypatch):
+    def fail(url, timeout=60):
+        raise OSError("unreachable")
+    monkeypatch.setattr(wcc.urllib.request, "urlopen", fail)
+    assert wcc.fetch_file_content("6.0.0", "wp-includes/comment.php") is None
 
 
 def test_fetch_checksums_caches_across_calls(tmp_path, monkeypatch):

@@ -17,6 +17,41 @@ def _make_zip_bytes(slug, files):
     return buf.getvalue()
 
 
+def test_fetch_file_content_returns_the_real_bytes(monkeypatch):
+    zip_bytes = _make_zip_bytes("wordfence", {"wordfence.php": "<?php // stock"})
+
+    class FakeResp:
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def read(self):
+            return zip_bytes
+    monkeypatch.setattr(wpc.urllib.request, "urlopen", lambda url, timeout=60: FakeResp())
+    assert wpc.fetch_file_content("wordfence", "7.11.6", "wordfence.php") == b"<?php // stock"
+
+
+def test_fetch_file_content_none_for_missing_path(monkeypatch):
+    zip_bytes = _make_zip_bytes("wordfence", {"wordfence.php": "<?php // stock"})
+
+    class FakeResp:
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def read(self):
+            return zip_bytes
+    monkeypatch.setattr(wpc.urllib.request, "urlopen", lambda url, timeout=60: FakeResp())
+    assert wpc.fetch_file_content("wordfence", "7.11.6", "does/not/exist.php") is None
+
+
+def test_fetch_file_content_none_on_download_failure(monkeypatch):
+    def fail(url, timeout=60):
+        raise OSError("unreachable")
+    monkeypatch.setattr(wpc.urllib.request, "urlopen", fail)
+    assert wpc.fetch_file_content("wordfence", "7.11.6", "wordfence.php") is None
+
+
 def test_compute_checksums_from_zip(monkeypatch):
     zip_bytes = _make_zip_bytes("wordfence", {"wordfence.php": "<?php // stock",
                                                "lib/wfConfig.php": "<?php"})
