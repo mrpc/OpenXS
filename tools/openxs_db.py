@@ -481,6 +481,34 @@ def permission_fix_for(finding_id):
     return tuple(row) if row else None
 
 
+def unresolved_world_writable_finding_ids():
+    """Every 'world-writable directory' finding that doesn't already have
+    an active permission fix - used both to decide whether the Findings
+    page's "Fix all permission findings" button should even appear, and
+    to drive what it actually fixes. Real-world motivation: a single
+    account's uploads tree can accumulate tens of thousands of these
+    (found live on two unrelated servers, 2026-10-24/26, both in the
+    thousands-to-tens-of-thousands range) - fixing them one Webmin click
+    at a time was never going to be realistic at that scale."""
+    conn = _connect()
+    rows = conn.execute(
+        f"SELECT id FROM findings f WHERE rule_name = 'world-writable directory' AND NOT {_RESOLVED_SQL}"
+    ).fetchall()
+    conn.close()
+    return [r[0] for r in rows]
+
+
+def fix_all_world_writable_findings():
+    """Runs fix_world_writable_permission() over every currently-unresolved
+    'world-writable directory' finding. Returns (fixed, total) - total
+    may exceed fixed if a path was already gone/no longer a directory by
+    the time this ran (fix_world_writable_permission() returning None is
+    not itself an error, see its own docstring)."""
+    ids = unresolved_world_writable_finding_ids()
+    fixed = sum(1 for fid in ids if fix_world_writable_permission(fid) is not None)
+    return fixed, len(ids)
+
+
 def delete_quarantined(finding_id):
     """Permanently deletes a quarantined file."""
     conn = _connect()

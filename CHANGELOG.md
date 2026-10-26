@@ -56,6 +56,18 @@ Release from that section's text.
   that happens to use the same byte ranges without being valid UTF-8 -
   weaker than real UTF-8 decoding, not just differently located.
 
+### Added
+- "Fix all permission findings" button on the Findings page - bulk-fixes
+  every currently-unresolved "world-writable directory" finding in one
+  click, shown only when at least one exists. The existing one-at-a-time
+  "Fix permissions" button was never going to be realistic at the scale
+  this turned out to matter at: 2,629 on one server and 21,121 on another
+  (both production accounts' own upload trees, accumulated with no
+  technical reason for the world-write bit - php-fpm's own pool already
+  owns the files). `openxs_db.fix_all_world_writable_findings()` reuses
+  the existing per-finding fix/restore mechanism underneath, so each one
+  is still individually reversible afterward.
+
 ## [v0.2.0] - 2026-10-25
 
 ### Signatures

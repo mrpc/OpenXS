@@ -37,6 +37,20 @@ return "<a href='findings.cgi?$base_qs&fsort=$col&forder=$next_order'>$label$arr
 
 print &ui_subheading("Findings");
 
+my $unresolved_perm_count = `python3 -c "
+import sys
+sys.path.insert(0, '$pmf_dir')
+import openxs_db
+print(len(openxs_db.unresolved_world_writable_finding_ids()))
+"`;
+chomp($unresolved_perm_count);
+if ($unresolved_perm_count =~ /^[1-9][0-9]*$/) {
+	print &ui_form_start("fix_all_permissions.cgi", "post") .
+		&ui_submit("Fix all permission findings ($unresolved_perm_count)", "go", 0,
+			"onclick=\"return confirm('Strip the world-write bit from all $unresolved_perm_count world-writable directories? This is reversible per-finding (Restore), but affects every one at once.')\"") .
+		&ui_form_end();
+	}
+
 my @tabs = (["", "All"], ["yara_exploit", "Exploits"], ["yara_heuristic", "Suspicious patterns"],
             ["virus", "Virus"], ["maldet", "maldet"], ["oldversion", "Old Versions"], ["fs", "Filesystem"]);
 
