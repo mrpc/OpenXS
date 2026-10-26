@@ -51,7 +51,9 @@ MAX_RSS_KB = int(float(os.environ.get("OPENXS_SCAND_MAX_RSS_MB", "1024") or "102
 _rules_lock = threading.Lock()
 _rules = None
 _paranoia_level = 1
+_ignore_patterns = ([], {}, {}, ())
 CONFIG = "/etc/openxs/openxs.conf"
+IGNORE_FILE = os.environ.get("OPENXS_IGNORE_FILE", "/etc/openxs/ignore")
 
 
 def log(msg):
@@ -81,12 +83,22 @@ def load_paranoia_level():
 
 
 def load_rules():
-    global _rules, _paranoia_level
+    global _rules, _paranoia_level, _ignore_patterns
     compiled = pmf_scan.compile_ruleset(RULESET)
     level = load_paranoia_level()
+    # Found live 2026-10-26: this daemon never consulted /etc/openxs/ignore
+    # or the shipped default_ignore at all, unlike the scheduled/manual
+    # scan path (iter_files() skips an ignored file before ever handing
+    # it to YARA) - a confirmed false positive someone added here (or
+    # that shipped in default_ignore for known-noisy third-party
+    # software) could still get a real upload rejected by the mod_
+    # security real-time hook, or keep generating new watch-daemon
+    # findings, even though the scheduled scan correctly never flags it.
+    ignore = pmf_scan.load_ignore_patterns(IGNORE_FILE)
     with _rules_lock:
         _rules = compiled
         _paranoia_level = level
+        _ignore_patterns = ignore
     log(f"ruleset loaded from {RULESET} (paranoia level {level})")
 
 
@@ -106,6 +118,12 @@ class ScanHandler(socketserver.BaseRequestHandler):
         text = data.decode("utf-8", errors="replace")
         all_mode = text.startswith("ALL ")
         path = text[4:] if all_mode else text
+
+        with _rules_lock:
+            ignore = _ignore_patterns
+        if pmf_scan.is_ignored(path, *ignore):
+            self.request.sendall(b"[]\n" if all_mode else b"1\n")
+            return
 
         try:
             size = os.path.getsize(path)
@@ -135,6 +153,31 @@ class ScanHandler(socketserver.BaseRequestHandler):
                 level = _paranoia_level
             matches = [m for m in rules.match(path, fast=True)
                        if pmf_scan.paranoia_level_for(m.rule) <= level]
+            if any(m.rule == "NonPrintableChars" for m in matches) and pmf_scan.is_valid_utf8_file(path):
+                # Same false-positive mechanism as pmf_scan.py's
+                # scheduled/manual-scan loop (see is_valid_utf8_file()'s
+                # call site there for the full reasoning - found live
+                # 2026-10-25/26, ~98-100% of this rule's entire FP
+                # volume) - missing here means this exact, already-
+                # understood false positive could still get a real
+                # upload rejected by the mod_security real-time hook.
+                # A second, capped file read (is_valid_utf8_file caps
+                # at 2MB) only happens when NonPrintableChars actually
+                # fired, not on every request.
+                matches = [m for m in matches if m.rule != "NonPrintableChars"]
+            if pmf_scan.is_documentation_file(path):
+                # Same reasoning as pmf_scan.py's scheduled/manual-scan
+                # loop (see is_documentation_file()'s call site there) -
+                # found live 2026-10-26 specifically through THIS path:
+                # a frequently-rewritten project changelog (.md) kept
+                # re-triggering the same generic heuristics on every
+                # edit via the watch daemon's own ALL-mode queries,
+                # which don't go through pmf_scan.py's main() loop at
+                # all and so never got that fix on their own. Checksum-
+                # based suppression (composer/wp) isn't worth doing
+                # here too - those need filesystem/network lookups this
+                # per-write hot path is deliberately kept free of.
+                matches = [m for m in matches if pmf_scan.categorize(m.rule) != "yara_heuristic"]
 
         if all_mode:
             self.request.sendall((json.dumps([m.rule for m in matches]) + "\n").encode())

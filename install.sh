@@ -173,7 +173,15 @@ if command -v systemctl >/dev/null 2>&1; then
     # the daemon's own Python code no chance to send anything itself.
     cp "$HERE/tools/openxs-alert@.service" /etc/systemd/system/openxs-alert@.service
     systemctl daemon-reload
-    systemctl enable --now openxs-scand
+    systemctl enable openxs-scand
+    # restart, not "enable --now" alone - that's a no-op if already
+    # running, which it always is on a redeploy, leaving the daemon's
+    # own in-memory Python code stale even though the .py file on disk
+    # just got updated (SIGHUP only reloads the YARA ruleset/paranoia
+    # level, not the module code itself - found live 2026-10-26: this
+    # meant every pmf_scan.py change deployed today never actually took
+    # effect for the real-time watch hook until manually restarted).
+    systemctl restart openxs-scand
 else
     echo "    systemd not available on this host - start the daemon manually:"
     echo "    python3 $PMF_DIR/openxs-scand.py &"
