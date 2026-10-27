@@ -119,6 +119,21 @@ def test_categorize_yara_exploit():
     assert pmf_scan.categorize("Known exploit = [Fingerprint Match] [PHP Exploit [P1755]]") == "yara_exploit"
 
 
+def test_categorize_high_confidence_webshell_rules_as_yara_exploit():
+    # Confirmed true-positive on the real fleet 2026-10-27 (two live
+    # webshells, one unauthenticated) - see HIGH_CONFIDENCE_RULE_NAMES.
+    assert pmf_scan.categorize("WEBSHELL_PHP_Generic_Eval") == "yara_exploit"
+    assert pmf_scan.categorize("WEBSHELL_PHP_Encoded_Big") == "yara_exploit"
+
+
+def test_categorize_other_webshell_rules_stay_heuristic():
+    # Known false positives (false_positive_reports #1-3) - NOT promoted,
+    # unlike the general WEBSHELL_* family.
+    assert pmf_scan.categorize("WEBSHELL_PHP_Writer") == "yara_heuristic"
+    assert pmf_scan.categorize("WEBSHELL_PHP_OBFUSC_3") == "yara_heuristic"
+    assert pmf_scan.categorize("WEBSHELL_PHP_Function_Via_Get") == "yara_heuristic"
+
+
 # --- custom rules (regex + hash) --------------------------------------------
 
 def test_check_custom_rules_regex_match(tmp_path):

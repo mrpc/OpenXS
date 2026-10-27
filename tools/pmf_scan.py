@@ -144,6 +144,24 @@ FS_RULES = {"SUID file", "world-writable directory", "symlink", "socket",
             "core dump file", "Linux binary or executable file",
             "Windows binary or executable file", "hidden directory owned by nobody"}
 
+# Hand-curated, same style/reasoning as RULE_PARANOIA_LEVEL below: specific
+# php-malware-finder signature rules proven true-positive in practice on
+# this fleet - NOT "every WEBSHELL_* rule". The WEBSHELL_* family also
+# contains rules that FP on legitimate code (WEBSHELL_PHP_Writer on a
+# login-gated upload feature, WEBSHELL_PHP_OBFUSC_3 self-triggering on a
+# security-scanner tool's own source, WEBSHELL_PHP_Function_Via_Get on a
+# plain mail() page - see false_positive_reports #1-3), so those stay
+# yara_heuristic. Needed 2026-10-27: categorize()'s "Known exploit" check
+# below has never matched any rule in the actual php-malware-finder
+# ruleset (confirmed: 0 occurrences in the compiled php.yar) - so
+# yara_exploit was effectively dead code, and two confirmed, live
+# webshells (one an unauthenticated shell_exec()) sat flagged-but-ignored
+# for 3 days because nothing promoted them past yara_heuristic.
+HIGH_CONFIDENCE_RULE_NAMES = {
+    "WEBSHELL_PHP_Generic_Eval",
+    "WEBSHELL_PHP_Encoded_Big",
+}
+
 QUARANTINE_LOG = "/var/log/openxs-quarantine.log"
 
 # A rule's own YARA 'score' meta (upstream's confidence rating) doesn't
@@ -547,6 +565,8 @@ def categorize(rule_name):
     if rule_name in FS_RULES:
         return "fs"
     if "Known exploit" in rule_name:
+        return "yara_exploit"
+    if rule_name.split(" (", 1)[0] in HIGH_CONFIDENCE_RULE_NAMES:
         return "yara_exploit"
     return "yara_heuristic"
 
