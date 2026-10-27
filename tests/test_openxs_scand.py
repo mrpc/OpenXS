@@ -30,3 +30,27 @@ def test_load_paranoia_level_ignores_garbage_value(tmp_path, monkeypatch):
     config.write_text("YARA_PARANOIA_LEVEL=not-a-number\n")
     monkeypatch.setattr(openxs_scand, "CONFIG", str(config))
     assert openxs_scand.load_paranoia_level() == 1
+
+
+def test_handle_answers_when_file_vanishes_during_yara_match(tmp_path, monkeypatch):
+    import types
+    fake_yara = types.ModuleType("yara")
+    fake_yara.Error = type("Error", (Exception,), {})
+    monkeypatch.setitem(sys.modules, "yara", fake_yara)
+
+    class VanishingRules:
+        def match(self, path, fast=True):
+            raise fake_yara.Error(f'could not open file "{path}"')
+
+    target = tmp_path / "cache.tmp"
+    target.write_text("<?php echo 1;")
+    monkeypatch.setattr(openxs_scand, "_rules", VanishingRules())
+    monkeypatch.setattr(openxs_scand, "_ignore_patterns", ([], []), raising=False)
+    monkeypatch.setattr(openxs_scand.pmf_scan, "is_ignored", lambda *a: False)
+
+    for query, expected in ((str(target), b"1\n"), ("ALL " + str(target), b"[]\n")):
+        sent = []
+        handler = openxs_scand.ScanHandler.__new__(openxs_scand.ScanHandler)
+        handler.request = types.SimpleNamespace(recv=lambda n, q=query: q.encode(), sendall=sent.append)
+        handler.handle()
+        assert sent == [expected]

@@ -151,8 +151,19 @@ class ScanHandler(socketserver.BaseRequestHandler):
             with _rules_lock:
                 rules = _rules
                 level = _paranoia_level
-            matches = [m for m in rules.match(path, fast=True)
-                       if pmf_scan.paranoia_level_for(m.rule) <= level]
+            import yara
+            try:
+                matches = [m for m in rules.match(path, fast=True)
+                           if pmf_scan.paranoia_level_for(m.rule) <= level]
+            except yara.Error:
+                # Same race as the getsize() check above, one step later:
+                # the file vanished or got truncated to 0 bytes in between
+                # (temp files, cache rewrites - found live on production,
+                # "could not open file" / "could not map file into
+                # memory"). Unhandled, it dumped a traceback and closed
+                # the connection without an answer.
+                self.request.sendall(b"[]\n" if all_mode else b"1\n")
+                return
             if any(m.rule == "NonPrintableChars" for m in matches) and pmf_scan.is_valid_utf8_file(path):
                 # Same false-positive mechanism as pmf_scan.py's
                 # scheduled/manual-scan loop (see is_valid_utf8_file()'s
