@@ -182,6 +182,15 @@ if command -v systemctl >/dev/null 2>&1; then
     # meant every pmf_scan.py change deployed today never actually took
     # effect for the real-time watch hook until manually restarted).
     systemctl restart openxs-scand
+    # Same reasoning as openxs-scand above, for the watch daemon - it also
+    # imports pmf_scan.py (categorize(), is_ignored(), ...) in-process, so a
+    # code change here is just as stale until restarted. Only if it's
+    # ALREADY running (`restart`, never `start`) - on a server where it was
+    # never enabled (no WATCH_PATHS configured yet), this must stay a no-op,
+    # not silently start a daemon nobody configured.
+    if systemctl is-active --quiet openxs-watchd; then
+        systemctl restart openxs-watchd
+    fi
 else
     echo "    systemd not available on this host - start the daemon manually:"
     echo "    python3 $PMF_DIR/openxs-scand.py &"
