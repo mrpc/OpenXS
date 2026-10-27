@@ -27,7 +27,10 @@ with no clue why" bug this module exists to prevent - just for one site
 instead of the whole server.
 """
 import glob
+import os
 import re
+
+CONFIG_FILE = os.environ.get("OPENXS_CONFIG", "/etc/openxs/openxs.conf")
 
 _SIZE_RE = re.compile(r"^\s*(\d+)\s*([KMG]?)\s*$", re.IGNORECASE)
 _UNITS = {"": 1, "K": 1024, "M": 1024 ** 2, "G": 1024 ** 3}
@@ -151,6 +154,37 @@ def recommended_limits():
     )
 
 
-if __name__ == "__main__":
+def body_limit_ceiling(path=None):
+    """MODSEC_BODY_LIMIT_CEILING from openxs.conf, in bytes, or None if
+    unset/blank/not a positive integer. An optional admin-set cap on top
+    of recommended_limits()'s own PHP-derived value - e.g. to match a
+    CDN/WAF's own per-request limit (Cloudflare Free/Pro: 100M), which
+    raising a site's PHP limit further can never make ModSecurity need
+    to allow past anyway."""
+    path = path or CONFIG_FILE
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if line.startswith("MODSEC_BODY_LIMIT_CEILING="):
+                    value = line.split("=", 1)[1].strip()
+                    return int(value) if value.isdigit() and int(value) > 0 else None
+    except OSError:
+        pass
+    return None
+
+
+def capped_recommended_limits():
+    """recommended_limits(), capped to body_limit_ceiling() when one is
+    set - the actual values install_modsecurity.sh and the Webmin
+    Settings page's "apply" action both write to modsecurity.conf."""
     body_limit, no_files_limit = recommended_limits()
+    ceiling = body_limit_ceiling()
+    if ceiling is not None:
+        body_limit = min(body_limit, ceiling)
+        no_files_limit = min(no_files_limit, ceiling)
+    return body_limit, no_files_limit
+
+
+if __name__ == "__main__":
+    body_limit, no_files_limit = capped_recommended_limits()
     print(f"{body_limit}\t{no_files_limit}")

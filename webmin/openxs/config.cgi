@@ -83,6 +83,16 @@ if (defined($in{'csf_autoban_enabled'}) && $in{'csf_autoban_enabled'} eq '1' && 
 $cfg{'CSF_AUTOBAN_ENABLED'} = (defined($in{'csf_autoban_enabled'}) && $in{'csf_autoban_enabled'} eq '1') ? '1' : '0';
 $cfg{'CSF_AUTOBAN_TTL'} = &one_line($in{'csf_autoban_ttl'}) if (defined($in{'csf_autoban_ttl'}) && $in{'csf_autoban_ttl'} ne '');
 
+if (defined($in{'modsec_body_limit_ceiling'})) {
+	my $v = $in{'modsec_body_limit_ceiling'};
+	$v =~ s/[^0-9]//g;
+	if ($v ne $cfg{'MODSEC_BODY_LIMIT_CEILING'}) {
+		$cfg{'MODSEC_BODY_LIMIT_CEILING'} = $v;
+		&openxs_write_config(%cfg);  # modsec_body_limit.py reads the ceiling from this file
+		&openxs_apply_modsec_body_limit() if (&openxs_modsecurity_installed());
+		}
+	}
+
 if ($cfg{'OPENXS_SRC'} ne '' && -d "$cfg{'OPENXS_SRC'}/.git") {
 	$cfg{'AUTO_UPDATE'} = (defined($in{'auto_update'}) && $in{'auto_update'} eq '1') ? '1' : '0';
 	my $cron_file = '/etc/cron.d/openxs-selfupdate';
