@@ -98,6 +98,12 @@ if (-d '/etc/modsecurity') {
 		"stack (neither LocationMatch, &lt;If&gt;, ctl:ruleRemoveById, nor a mod_rewrite env var made a difference). For a false ".
 		"positive that genuinely needs path-level scoping, use the <a href='edit_file.cgi?f=modsec_mode'>detection-only mode</a> ".
 		"toggle (host-level, proven to work) or <a href='edit_file.cgi?f=modsec_exclusions'>path exclusions</a> (full disable) instead.</i>");
+	print &ui_table_row("mod_security request body size ceiling",
+		&ui_textbox("modsec_body_limit_ceiling", $cfg{'MODSEC_BODY_LIMIT_CEILING'}, 12) . " bytes " .
+		"<i>SecRequestBodyLimit/SecRequestBodyNoFilesLimit are normally derived from this server's own PHP ".
+		"upload_max_filesize/post_max_size (tools/modsec_body_limit.py) - this optionally caps that derived ".
+		"value, e.g. to match a CDN/WAF's own per-request limit (Cloudflare Free/Pro: 104857600 = 100M) that ".
+		"raising PHP's own limit further can never get past anyway. Blank = no cap, use the derived value as-is.</i>");
 	}
 print &ui_table_row("File integrity monitoring - watched paths", "<a href='edit_file.cgi?f=fim_paths'>Edit /etc/openxs/fim_paths &raquo;</a> ".
 	"<i>one file or directory per line, e.g. /etc/passwd or your framework's core folder - hashed and checked for drift ".

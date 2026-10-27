@@ -96,3 +96,32 @@ def test_recommended_limits_adds_margin_above_the_detected_php_max(monkeypatch):
     expected = 500 * 1024 ** 2 + mbl.MULTIPART_OVERHEAD_MARGIN
     assert body_limit == expected
     assert no_files_limit == expected
+
+
+def test_body_limit_ceiling_reads_config(tmp_path):
+    cfg = tmp_path / "openxs.conf"
+    cfg.write_text("EMAIL=root@localhost\nMODSEC_BODY_LIMIT_CEILING=104857600\n")
+    assert mbl.body_limit_ceiling(str(cfg)) == 104857600
+
+
+def test_body_limit_ceiling_none_when_blank_or_missing_or_zero(tmp_path):
+    assert mbl.body_limit_ceiling(str(tmp_path / "no-such-file")) is None
+    cfg = tmp_path / "openxs.conf"
+    cfg.write_text("MODSEC_BODY_LIMIT_CEILING=\n")
+    assert mbl.body_limit_ceiling(str(cfg)) is None
+    cfg.write_text("MODSEC_BODY_LIMIT_CEILING=0\n")
+    assert mbl.body_limit_ceiling(str(cfg)) is None
+
+
+def test_capped_recommended_limits_caps_both_values(monkeypatch, tmp_path):
+    cfg = tmp_path / "openxs.conf"
+    cfg.write_text("MODSEC_BODY_LIMIT_CEILING=104857600\n")
+    monkeypatch.setattr(mbl, "CONFIG_FILE", str(cfg))
+    monkeypatch.setattr(mbl, "recommended_limits", lambda: (2 * 1024 ** 3, 2 * 1024 ** 3))
+    assert mbl.capped_recommended_limits() == (104857600, 104857600)
+
+
+def test_capped_recommended_limits_passes_through_without_ceiling(monkeypatch, tmp_path):
+    monkeypatch.setattr(mbl, "CONFIG_FILE", str(tmp_path / "no-such-file"))
+    monkeypatch.setattr(mbl, "recommended_limits", lambda: (500, 600))
+    assert mbl.capped_recommended_limits() == (500, 600)

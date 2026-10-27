@@ -297,6 +297,30 @@ sub openxs_modsecurity_hook_installed
 return -e $modsec_rule ? 1 : 0;
 }
 
+# Re-derives SecRequestBodyLimit/SecRequestBodyNoFilesLimit the exact same
+# way install_modsecurity.sh does (tools/modsec_body_limit.py - from this
+# server's own PHP config, capped to MODSEC_BODY_LIMIT_CEILING in
+# openxs.conf if one is set) and applies it to the already-installed
+# modsecurity.conf, so changing the ceiling from Settings takes effect
+# without re-running the installer. Returns 1 on success, 0 if
+# modsecurity.conf is missing, the derive script fails, or Apache's
+# configtest/reload fails.
+sub openxs_apply_modsec_body_limit
+{
+my $conf = '/etc/modsecurity/modsecurity.conf';
+return 0 if (!-e $conf);
+my $out = `python3 $pmf_dir/modsec_body_limit.py 2>/dev/null`;
+my ($body_limit, $no_files_limit) = split(/\s+/, $out);
+return 0 if ($body_limit !~ /^\d+$/ || $no_files_limit !~ /^\d+$/);
+system("sed", "-i",
+	"-e", "s/^SecRequestBodyLimit [0-9]\\+\$/SecRequestBodyLimit $body_limit/",
+	"-e", "s/^SecRequestBodyNoFilesLimit [0-9]\\+\$/SecRequestBodyNoFilesLimit $no_files_limit/",
+	$conf);
+return 0 if (system("apache2ctl", "-t") != 0);
+system("systemctl", "reload", "apache2") == 0 || system("service", "apache2", "reload");
+return 1;
+}
+
 sub openxs_csf_present
 {
 return -e '/etc/csf/csf.conf' ? 1 : 0;
@@ -584,7 +608,8 @@ my %cfg = ( 'EMAIL' => 'root@localhost', 'SCAN_PATH' => '/var/www', 'QUARANTINE_
             # still a production-affecting action), only ever on an
             # exact, unambiguous watch-daemon correlation (never the
             # batch scan - see csf_autoban.py's own docstring).
-            'CSF_AUTOBAN_ENABLED' => '0', 'CSF_AUTOBAN_TTL' => '3d' );
+            'CSF_AUTOBAN_ENABLED' => '0', 'CSF_AUTOBAN_TTL' => '3d',
+            'MODSEC_BODY_LIMIT_CEILING' => '' );
 if (open(my $fh, '<', $config_file)) {
 	while (<$fh>) {
 		chomp;
