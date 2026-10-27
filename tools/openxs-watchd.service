@@ -28,7 +28,15 @@ RestartSec=2
 # until a page fault finally resolved (a D-state process cannot be
 # killed by any signal until it leaves that state). No swap for this
 # cgroup means a breach is killed immediately, not slowly thrashed.
-MemoryMax=1536M
+#
+# 1536M was too tight: rebuilding the recursive inotify watch tree after
+# ANY restart (including the in-process check's own graceful self-exit
+# above) is a real memory burst that happens before any event has
+# arrived for check_rss_guard to run against - found for real on
+# prod-host-1.example (3 OOM-kills across two restarts, one pair 80s
+# apart, 2026-10-24 and 2026-10-27) with steady-state already at ~1.1G.
+# Raised for headroom during that burst, not because steady-state grew.
+MemoryMax=2304M
 MemorySwapMax=0
 
 [Install]
