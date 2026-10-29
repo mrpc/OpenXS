@@ -36,7 +36,7 @@ RestartPreventExitStatus=3
 # ANY restart (including the in-process check's own graceful self-exit
 # above) is a real memory burst that happens before any event has
 # arrived for check_rss_guard to run against - found for real on
-# prod-host-1.example (3 OOM-kills across two restarts, one pair 80s
+# a production host (3 OOM-kills across two restarts, one pair 80s
 # apart, 2026-10-24 and 2026-10-27) with steady-state already at ~1.1G.
 # Raised for headroom during that burst, not because steady-state grew.
 MemoryMax=2304M
