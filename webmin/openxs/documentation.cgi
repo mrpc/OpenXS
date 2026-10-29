@@ -56,7 +56,7 @@ THROTTLE_LOAD=                     # blank = disabled; pause scanning if load av
 QUIET=0                            # suppress the scan summary line (for cron)
 WATCH_PATHS=                       # comma-separated dirs for the watch daemon; blank = every account's web root
 WATCH_EXCLUDE=                     # watch daemon: one regex of paths NOT to watch (e.g. /uploads/), saves inotify watches/RAM
-WATCH_MAX_DIRS=100000              # watch daemon refuses to start (and alerts) above this many dirs; 0 = no limit
+WATCH_MAX_DIRS=200000              # watch daemon refuses to start (and alerts) above this many dirs; 0 = no limit
 WATCH_RATE_COUNT=5                 # watch daemon: ignore a file after this many scans...
 WATCH_RATE_WINDOW=10                # ...within this many seconds...
 WATCH_RATE_COOLDOWN=60              # ...for this many seconds (cxs's --Wrateignore)
