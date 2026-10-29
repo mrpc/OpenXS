@@ -113,6 +113,15 @@ print &ui_table_row("Watch paths (for the watch daemon)",
 	" <i>comma-separated directories to monitor continuously. Blank = every account's web root ".
 	"(Accounts directory/subpath above), same as accounts-mode scanning. ".
 	"Restart the watch daemon (Dashboard) after changing this.</i>");
+print &ui_table_row("Watch daemon exclude",
+	&ui_textbox("watch_exclude", $cfg{'WATCH_EXCLUDE'}, 60, 0, 0, "autocomplete='off'") .
+	" <i>one regular expression (POSIX extended) matched against full paths - matching directories are never watched, ".
+	"e.g. <tt>/uploads/</tt> or <tt>/(cache|uploads)/</tt>. Use it for huge upload/cache trees: every directory costs an inotify watch and memory. ".
+	"Restart the watch daemon after changing this.</i>");
+print &ui_table_row("Watch daemon directory limit",
+	&ui_textbox("watch_max_dirs", $cfg{'WATCH_MAX_DIRS'}, 8) .
+	" <i>the daemon refuses to start (and sends a failure alert) if the watched paths contain more directories than this ".
+	"- each one costs roughly 7KB of memory as an inotify watch. Exclude big trees above, or raise this. 0 = no limit.</i>");
 print &ui_table_row("Watch daemon rate limit",
 	"ignore a file for " . &ui_textbox("watch_rate_cooldown", $cfg{'WATCH_RATE_COOLDOWN'}, 5) .
 	"s if it's scanned more than " . &ui_textbox("watch_rate_count", $cfg{'WATCH_RATE_COUNT'}, 5) .

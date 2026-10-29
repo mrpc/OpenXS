@@ -13,6 +13,9 @@ Type=simple
 ExecStart=/usr/bin/python3 /opt/php-malware-finder/openxs-watchd.py
 Restart=on-failure
 RestartSec=2
+# watchd exits 3 when the tree is too big to watch (WATCH_MAX_DIRS) -
+# alert, but don't loop re-walking it every 2s
+RestartPreventExitStatus=3
 # Kernel-enforced hard backstop, independent of WATCHD_MAX_RSS_MB's own
 # in-process check (which only runs between events - found for real
 # that it never got a chance to run again once a single event's own

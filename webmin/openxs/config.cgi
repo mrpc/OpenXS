@@ -27,7 +27,8 @@ push(@qcats, 'maldet') if (defined($in{'qcat_maldet'}) && $in{'qcat_maldet'} eq 
 push(@qcats, 'fs') if (defined($in{'qcat_fs'}) && $in{'qcat_fs'} eq '1');
 $cfg{'QUARANTINE_CATEGORIES'} = join(',', @qcats);
 $cfg{'WATCH_PATHS'} = &one_line($in{'watch_paths'}) if (defined($in{'watch_paths'}));
-foreach my $k ('watch_rate_count', 'watch_rate_window', 'watch_rate_cooldown') {
+$cfg{'WATCH_EXCLUDE'} = &one_line($in{'watch_exclude'}) if (defined($in{'watch_exclude'}));
+foreach my $k ('watch_rate_count', 'watch_rate_window', 'watch_rate_cooldown', 'watch_max_dirs') {
 	if (defined($in{$k}) && $in{$k} ne "") {
 		my $v = $in{$k};
 		$v =~ s/[^0-9]//g;

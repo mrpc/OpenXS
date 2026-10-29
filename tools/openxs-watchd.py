@@ -218,6 +218,37 @@ def scan_one(fname, ignore, custom_rules, path_overrides, global_fast_php_only):
     _mem("after-db-record", fname)
 
 
+def inotify_cmd(watch_paths, exclude=""):
+    """WATCH_EXCLUDE is one POSIX extended regex matched against full
+    paths; with -r inotifywait never adds watches under a matching dir,
+    which is the point - a per-photo uploads tree once cost 340k watches
+    and >2GB of cgroup memory before a single event arrived."""
+    cmd = ["inotifywait", "-m", "-r", "-e", "create,modify,moved_to", "--format", "%w%f"]
+    if exclude:
+        cmd += ["--exclude", exclude]
+    return cmd + watch_paths
+
+
+def count_dirs(watch_paths, exclude="", limit=0):
+    """Directories inotifywait -r would put a watch on, stopping early
+    once past `limit` (no point walking all 350k). Each watch costs
+    ~6-7KB of cgroup memory in practice (kernel + inotifywait's own
+    tree), so this is the cheap way to refuse a tree that would OOM."""
+    import re
+    rx = re.compile(exclude) if exclude else None
+    n = 0
+    for top in watch_paths:
+        for root, dirs, _ in os.walk(top):
+            # inotifywait matches dirs with a trailing slash
+            if rx and rx.search(root.rstrip("/") + "/"):
+                dirs[:] = []
+                continue
+            n += 1
+            if limit and n > limit:
+                return n
+    return n
+
+
 def main():
     cfg_path = os.environ.get("OPENXS_CONFIG", "/etc/openxs/openxs.conf")
     cfg = {}
@@ -257,8 +288,17 @@ def main():
     os.environ.setdefault("OPENXS_CSF_AUTOBAN_ENABLED", cfg.get("CSF_AUTOBAN_ENABLED", "0"))
     os.environ.setdefault("OPENXS_CSF_AUTOBAN_TTL", cfg.get("CSF_AUTOBAN_TTL", "3d"))
 
-    log(f"Starting, watching: {', '.join(watch_paths)}")
-    cmd = ["inotifywait", "-m", "-r", "-e", "create,modify,moved_to", "--format", "%w%f"] + watch_paths
+    exclude = cfg.get("WATCH_EXCLUDE", "").strip()
+    max_dirs = int(cfg.get("WATCH_MAX_DIRS", "100000") or "0")
+    if max_dirs and count_dirs(watch_paths, exclude, max_dirs) > max_dirs:
+        # exit 3 = RestartPreventExitStatus in the unit: still a failure
+        # (OnFailure alert fires) but no restart loop re-walking the tree
+        log(f"More than {max_dirs} directories to watch (WATCH_MAX_DIRS) - refusing to start, "
+            f"it would cost ~{max_dirs * 7 // 1024}MB+ of inotify watches. Set WATCH_EXCLUDE "
+            f"for the big upload/cache trees, or raise WATCH_MAX_DIRS (0 = no limit).")
+        sys.exit(3)
+    log(f"Starting, watching: {', '.join(watch_paths)}" + (f" (excluding {exclude})" if exclude else ""))
+    cmd = inotify_cmd(watch_paths, exclude)
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True)
     for line in proc.stdout:
         check_rss_guard(max_rss_kb)

@@ -121,3 +121,18 @@ def test_mem_does_nothing_when_debug_disabled(monkeypatch, capsys):
     monkeypatch.setattr(openxs_watchd.pmf_scan, "vmrss_kb", lambda: 99_999_999)
     openxs_watchd._mem("phase-c")
     assert capsys.readouterr().out == ""
+
+
+def test_inotify_cmd_adds_exclude_before_paths():
+    cmd = openxs_watchd.inotify_cmd(["/a", "/b"], "/uploads/")
+    assert cmd[-4:] == ["--exclude", "/uploads/", "/a", "/b"]
+    assert "--exclude" not in openxs_watchd.inotify_cmd(["/a"])
+
+
+def test_count_dirs_skips_excluded_and_stops_at_limit(tmp_path):
+    for i in range(5):
+        (tmp_path / "uploads" / str(i)).mkdir(parents=True)
+    (tmp_path / "code").mkdir()
+    assert openxs_watchd.count_dirs([str(tmp_path)]) == 8
+    assert openxs_watchd.count_dirs([str(tmp_path)], "/uploads/") == 2
+    assert openxs_watchd.count_dirs([str(tmp_path)], limit=3) == 4
