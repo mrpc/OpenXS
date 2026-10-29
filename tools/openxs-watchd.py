@@ -231,9 +231,10 @@ def inotify_cmd(watch_paths, exclude=""):
 
 def count_dirs(watch_paths, exclude="", limit=0):
     """Directories inotifywait -r would put a watch on, stopping early
-    once past `limit` (no point walking all 350k). Steady state is cheap
-    (~116k dirs ran at ~68MB), but the initial recursive setup is not:
-    350k dirs hit the 2304M MemoryMax within a minute."""
+    once past `limit` (no point walking all 350k). Off by default: even
+    116k dirs set up fine - the cgroup's MemoryCurrent climbs to
+    MemoryMax during setup, but that's reclaimable dentry/inode slab,
+    not real memory (anon stayed ~37MB, no OOM-kill)."""
     import re
     rx = re.compile(exclude) if exclude else None
     n = 0
@@ -289,12 +290,11 @@ def main():
     os.environ.setdefault("OPENXS_CSF_AUTOBAN_TTL", cfg.get("CSF_AUTOBAN_TTL", "3d"))
 
     exclude = cfg.get("WATCH_EXCLUDE", "").strip()
-    max_dirs = int(cfg.get("WATCH_MAX_DIRS", "200000") or "0")
+    max_dirs = int(cfg.get("WATCH_MAX_DIRS", "0") or "0")
     if max_dirs and count_dirs(watch_paths, exclude, max_dirs) > max_dirs:
         # exit 3 = RestartPreventExitStatus in the unit: still a failure
         # (OnFailure alert fires) but no restart loop re-walking the tree
-        log(f"More than {max_dirs} directories to watch (WATCH_MAX_DIRS) - refusing to start, "
-            f"the initial watch setup could exhaust the memory limit. Set WATCH_EXCLUDE "
+        log(f"More than {max_dirs} directories to watch (WATCH_MAX_DIRS) - refusing to start. Set WATCH_EXCLUDE "
             f"for the big upload/cache trees, or raise WATCH_MAX_DIRS (0 = no limit).")
         sys.exit(3)
     log(f"Starting, watching: {', '.join(watch_paths)}" + (f" (excluding {exclude})" if exclude else ""))

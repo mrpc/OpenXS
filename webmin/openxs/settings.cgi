@@ -121,7 +121,7 @@ print &ui_table_row("Watch daemon exclude",
 print &ui_table_row("Watch daemon directory limit",
 	&ui_textbox("watch_max_dirs", $cfg{'WATCH_MAX_DIRS'}, 8) .
 	" <i>the daemon refuses to start (and sends a failure alert) if the watched paths contain more directories than this ".
-	"- setting up a recursive watch on hundreds of thousands of directories can exhaust the daemon's memory limit. Exclude big trees above, or raise this. 0 = no limit.</i>");
+	"- an optional cap against watching a runaway tree (e.g. one directory per uploaded file). Exclude big trees above, or raise this. 0 = no limit (default).</i>");
 print &ui_table_row("Watch daemon rate limit",
 	"ignore a file for " . &ui_textbox("watch_rate_cooldown", $cfg{'WATCH_RATE_COOLDOWN'}, 5) .
 	"s if it's scanned more than " . &ui_textbox("watch_rate_count", $cfg{'WATCH_RATE_COUNT'}, 5) .
