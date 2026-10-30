@@ -25,6 +25,7 @@ import io
 import json
 import os
 import zipfile
+import urllib.parse
 import urllib.request
 
 PACKAGIST_P2_URL = "https://repo.packagist.org/p2/{name}.json"
@@ -38,6 +39,17 @@ CACHE_DIR = os.environ.get("OPENXS_COMPOSER_CHECKSUM_CACHE_DIR", "/var/lib/openx
 # egress IP. Entirely optional; this module works fine without it,
 # just more likely to hit a transient rate limit on a cold cache.
 GITHUB_TOKEN = os.environ.get("OPENXS_GITHUB_TOKEN")
+
+
+def _is_github_api_host(url):
+    """True only for an actual api.github.com request - a substring
+    check ("api.github.com" in url) would also match
+    https://api.github.com.evil.example/ or https://evil.example/?x=
+    api.github.com, leaking GITHUB_TOKEN to an attacker-controlled
+    host. dist_url comes from Packagist's own API response (or, for a
+    dev-branch alias, composer.lock), neither of which this process
+    controls, so treat it as untrusted input."""
+    return urllib.parse.urlparse(url).hostname == "api.github.com"
 
 
 def _cache_path(name, version):
@@ -114,7 +126,7 @@ def compute_checksums_from_zip(name, version, timeout=30, dist_url=None):
     if not dist_url:
         return None
     req = urllib.request.Request(dist_url)
-    if GITHUB_TOKEN and "api.github.com" in dist_url:
+    if GITHUB_TOKEN and _is_github_api_host(dist_url):
         req.add_header("Authorization", f"Bearer {GITHUB_TOKEN}")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -155,7 +167,7 @@ def fetch_file_content(name, version, rel_path, dist_url=None, timeout=30):
     if not dist_url:
         return None
     req = urllib.request.Request(dist_url)
-    if GITHUB_TOKEN and "api.github.com" in dist_url:
+    if GITHUB_TOKEN and _is_github_api_host(dist_url):
         req.add_header("Authorization", f"Bearer {GITHUB_TOKEN}")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
