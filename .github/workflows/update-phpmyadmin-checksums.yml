@@ -8,13 +8,20 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  actions: write
 
 jobs:
   update:
     runs-on: ubuntu-latest
     steps:
+      # A real PAT (not the default GITHUB_TOKEN) so the resulting push/PR
+      # triggers CI normally and the "test (3.12)" required status check
+      # actually lands on this PR - GITHUB_TOKEN-authored pushes/PRs never
+      # trigger other workflows (GitHub's anti-recursion rule), so the
+      # required check would otherwise never run and auto-merge would
+      # never fire. See OpenXS-ops/TIMELINE.md 2026-10-30.
       - uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.OPENXS_BOT_PAT }}
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
@@ -24,7 +31,7 @@ jobs:
 
       - name: Open PR with new files, if any
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.OPENXS_BOT_PAT }}
         run: |
           git config user.name "openxs-bot"
           git config user.email "noreply@users.noreply.github.com"
@@ -40,9 +47,4 @@ jobs:
           gh pr create --title "Add newly tagged phpMyAdmin version(s) to the checksums bundle" \
             --body "Automated weekly checksum bundle update. Auto-merges once CI passes." \
             --base main --head "$BRANCH"
-          # A push/PR made with GITHUB_TOKEN never triggers other
-          # workflows (anti-recursion rule), so the "test (3.12)" required
-          # status check would otherwise never run on this branch -
-          # dispatch it explicitly.
-          gh workflow run ci.yml --ref "$BRANCH"
           gh pr merge "$BRANCH" --auto --squash
