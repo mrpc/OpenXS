@@ -2,6 +2,7 @@ import hashlib
 import io
 import json
 import sys
+import urllib.parse
 import zipfile
 
 sys.path.insert(0, "tools")
@@ -46,7 +47,7 @@ def test_compute_checksums_from_zip(monkeypatch):
 
     def fake_urlopen(req, timeout=30):
         url = req if isinstance(req, str) else req.full_url
-        if "repo.packagist.org" in url:
+        if urllib.parse.urlparse(url).hostname == "repo.packagist.org":
             return FakeResp(_packagist_response("symfony/var-exporter", "v8.1.9", dist_url))
         return FakeResp(zip_bytes)
 
@@ -112,7 +113,7 @@ def test_fetch_checksums_caches_to_disk(tmp_path, monkeypatch):
     def fake_urlopen(req, timeout=30):
         url = req if isinstance(req, str) else req.full_url
         calls.append(url)
-        if "repo.packagist.org" in url:
+        if urllib.parse.urlparse(url).hostname == "repo.packagist.org":
             return FakeResp(_packagist_response("acme/thing", "1.2.3", dist_url))
         return FakeResp(zip_bytes)
     monkeypatch.setattr(cpc.urllib.request, "urlopen", fake_urlopen)
