@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: write
 
 jobs:
   update:
@@ -39,4 +40,9 @@ jobs:
           gh pr create --title "Add newly tagged phpMyAdmin version(s) to the checksums bundle" \
             --body "Automated weekly checksum bundle update. Auto-merges once CI passes." \
             --base main --head "$BRANCH"
+          # A push/PR made with GITHUB_TOKEN never triggers other
+          # workflows (anti-recursion rule), so the "test (3.12)" required
+          # status check would otherwise never run on this branch -
+          # dispatch it explicitly.
+          gh workflow run ci.yml --ref "$BRANCH"
           gh pr merge "$BRANCH" --auto --squash

@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Lets the checksum-bundle bot workflows (see update-*-checksums.yml)
+  # manually dispatch this on their own PR branch: a push/PR made with the
+  # default GITHUB_TOKEN never triggers other workflows (GitHub's anti-
+  # recursion rule), so without this their PRs would sit forever waiting
+  # on a "test (3.12)" status check that would never run.
+  workflow_dispatch:
 
 jobs:
   test:
