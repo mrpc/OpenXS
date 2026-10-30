@@ -93,6 +93,16 @@ def test_fetch_file_content_none_when_dist_url_unresolvable(monkeypatch):
     assert content is None
 
 
+def test_is_github_api_host_rejects_substring_spoofing():
+    # dist_url is untrusted (from Packagist's API, or composer.lock) -
+    # a plain "api.github.com" in url substring check would also match
+    # these, leaking GITHUB_TOKEN to a host we don't control.
+    assert cpc._is_github_api_host("https://api.github.com/repos/acme/thing/zipball/x") is True
+    assert cpc._is_github_api_host("https://api.github.com.evil.example/x") is False
+    assert cpc._is_github_api_host("https://evil.example/?x=api.github.com") is False
+    assert cpc._is_github_api_host("not a url at all") is False
+
+
 def test_fetch_checksums_caches_to_disk(tmp_path, monkeypatch):
     monkeypatch.setattr(cpc, "CACHE_DIR", str(tmp_path))
     dist_url = "https://api.github.com/repos/acme/thing/zipball/def456"
