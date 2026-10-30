@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
+  actions: write
 
 jobs:
   update:
@@ -20,11 +22,27 @@ jobs:
       - name: Fetch any newly released WordPress versions' checksums
         run: python3 tools/build_wp_checksums_bundle.py
 
-      - name: Commit new files, if any
+      - name: Open PR with new files, if any
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "openxs-bot"
           git config user.email "noreply@users.noreply.github.com"
           git add tools/wp_checksums/
           git diff --cached --quiet && echo "Nothing new." && exit 0
+          BRANCH="bot/update-wp-checksums-${{ github.run_id }}"
+          git checkout -b "$BRANCH"
           git commit -m "Add newly released WordPress version(s) to the checksums bundle"
-          git push origin main
+          git push origin "$BRANCH"
+          # main requires the "test (3.12)" status check - a direct push is
+          # rejected (GH006), so open a PR and let auto-merge land it once
+          # CI passes instead.
+          gh pr create --title "Add newly released WordPress version(s) to the checksums bundle" \
+            --body "Automated weekly checksum bundle update. Auto-merges once CI passes." \
+            --base main --head "$BRANCH"
+          # A push/PR made with GITHUB_TOKEN never triggers other
+          # workflows (anti-recursion rule), so the "test (3.12)" required
+          # status check would otherwise never run on this branch -
+          # dispatch it explicitly.
+          gh workflow run ci.yml --ref "$BRANCH"
+          gh pr merge "$BRANCH" --auto --squash
