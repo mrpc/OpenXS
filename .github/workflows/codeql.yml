@@ -17,11 +17,11 @@ jobs:
       security-events: write
     steps:
       - uses: actions/checkout@v7
-      - uses: github/codeql-action/init@v3
+      - uses: github/codeql-action/init@v4
         with:
           # Python only - that's where the real logic lives (daemons,
           # the scan/quarantine DB, the CLI tools). The Perl Webmin
           # module and the one inline <script> block aren't CodeQL-
           # supported/worth a dedicated pass.
           languages: python
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@v4
