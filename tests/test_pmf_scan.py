@@ -209,6 +209,29 @@ def test_maldet_scan_parses_event_log_hits(tmp_path, monkeypatch):
     assert findings == [("/tmp/a.php", "{HEX}test.test.eicar.1040")]
 
 
+def test_maldet_scan_overrides_email_alert_and_quarantine(monkeypatch):
+    # Found live 2026-11-02: a manual scan sent an independent maldet
+    # alert email, bypassing OpenXS's own alert pipeline entirely -
+    # email_alert wasn't in the -co override list alongside
+    # quarantine_hits/scan_clamscan. Pins the exact flag string so this
+    # can't silently regress.
+    monkeypatch.setattr(pmf_scan.shutil, "which", lambda name: "/usr/local/sbin/maldet" if name == "maldet" else None)
+    calls = []
+
+    class FakeResult:
+        stdout = ""
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        return FakeResult()
+
+    monkeypatch.setattr(pmf_scan.subprocess, "run", fake_run)
+    pmf_scan.maldet_scan(["/tmp/a.php"])
+    assert len(calls) == 1
+    co_arg = calls[0][calls[0].index("-co") + 1]
+    assert set(co_arg.split(",")) == {"quarantine_hits=0", "scan_clamscan=0", "email_alert=0"}
+
+
 def test_check_custom_rules_no_match(tmp_path):
     f = tmp_path / "clean.php"
     write(f, "<?php echo 'hi'; ?>")
