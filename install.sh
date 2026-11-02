@@ -25,7 +25,7 @@ set -euo pipefail
 # the upstream diff. To use our fork's latest commit instead of the pinned
 # one, override with the branch name: PMF_COMMIT=master sudo -E ./install.sh
 PMF_FORK=https://github.com/mrpc/php-malware-finder.git
-PMF_COMMIT="${PMF_COMMIT:-c0ee51ae7ff203fc3a5d4e1e8a1a38e1eafb4a4d}"
+PMF_COMMIT="${PMF_COMMIT:-f93489d67686be7223a30fa8ab347fd0b598e1db}"
 
 WITH_MODSECURITY=0
 WITH_CSF_HOOK=0
