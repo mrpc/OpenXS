@@ -838,6 +838,17 @@ def maldet_scan(filenames):
     pass - once by our own clamav_scan() above, once again inside maldet.
     Forcing this off makes maldet use only its own independent MD5/HEX/
     YARA signatures here, since ClamAV coverage is already handled.
+
+    email_alert=0 is forced too (found live 2026-11-02: a manual OpenXS
+    scan sent an independent "maldet alert" email straight to the admin,
+    bypassing OpenXS's own consolidated alert pipeline entirely - maldet
+    defaults this to "1" in conf.maldet, and nothing here had overridden
+    it, same blind spot as the two settings above). This is meant to be
+    a quiet data source OpenXS folds into its own findings, the same way
+    its hits already feed openxs_db/openxs_alert.sh rather than maldet
+    emailing on its own - every other maldet behavior that bypasses
+    OpenXS's own decision-making gets forced off here for the same
+    reason, and alerting is exactly that kind of decision.
     """
     maldet_bin = shutil.which("maldet")
     if not maldet_bin or not filenames:
@@ -848,7 +859,7 @@ def maldet_scan(filenames):
             tf.write("\n".join(filenames))
             tmp_path = tf.name
         out = subprocess.run(
-            [maldet_bin, "-co", "quarantine_hits=0,scan_clamscan=0", "-f", tmp_path],
+            [maldet_bin, "-co", "quarantine_hits=0,scan_clamscan=0,email_alert=0", "-f", tmp_path],
             capture_output=True, text=True, timeout=600,
         ).stdout
     except Exception:
