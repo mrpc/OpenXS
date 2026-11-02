@@ -153,7 +153,7 @@ class ScanHandler(socketserver.BaseRequestHandler):
                 level = _paranoia_level
             import yara
             try:
-                matches = [m for m in rules.match(path, fast=True)
+                matches = [m for m in rules.match(path, fast=True, externals={"filename": path})
                            if pmf_scan.paranoia_level_for(m.rule) <= level]
             except yara.Error:
                 # Same race as the getsize() check above, one step later:
