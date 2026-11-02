@@ -124,6 +124,11 @@ def test_categorize_high_confidence_webshell_rules_as_yara_exploit():
     # webshells, one unauthenticated) - see HIGH_CONFIDENCE_RULE_NAMES.
     assert pmf_scan.categorize("WEBSHELL_PHP_Generic_Eval") == "yara_exploit"
     assert pmf_scan.categorize("WEBSHELL_PHP_Encoded_Big") == "yara_exploit"
+    # Our own rules (2026-11-02), promoted on write - see
+    # HIGH_CONFIDENCE_RULE_NAMES for why these skip the usual
+    # field-experience wait that upstream WEBSHELL_* rules get.
+    assert pmf_scan.categorize("WEBSHELL_PHP_Stateless_XOR_Rot13_Dropper") == "yara_exploit"
+    assert pmf_scan.categorize("WEBSHELL_PHP_Destruct_Temp_Include_Dropper") == "yara_exploit"
 
 
 def test_categorize_other_webshell_rules_stay_heuristic():

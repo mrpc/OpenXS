@@ -160,6 +160,15 @@ FS_RULES = {"SUID file", "world-writable directory", "symlink", "socket",
 HIGH_CONFIDENCE_RULE_NAMES = {
     "WEBSHELL_PHP_Generic_Eval",
     "WEBSHELL_PHP_Encoded_Big",
+    # Our own rules (php-malware-finder fork, 2026-11-02), not a vendored
+    # upstream one of unknown FP history - narrow structural fingerprints
+    # for two specific stateless webshell loader shapes, written against
+    # real confirmed samples and verified at zero false positives across
+    # 1932 real PHP files. Promoted straight to high-confidence rather
+    # than waiting on field experience, unlike the general WEBSHELL_*
+    # caution above - we know exactly what they match and why.
+    "WEBSHELL_PHP_Stateless_XOR_Rot13_Dropper",
+    "WEBSHELL_PHP_Destruct_Temp_Include_Dropper",
 }
 
 QUARANTINE_LOG = "/var/log/openxs-quarantine.log"
