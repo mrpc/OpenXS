@@ -39,7 +39,7 @@ def test_handle_answers_when_file_vanishes_during_yara_match(tmp_path, monkeypat
     monkeypatch.setitem(sys.modules, "yara", fake_yara)
 
     class VanishingRules:
-        def match(self, path, fast=True):
+        def match(self, path, fast=True, externals=None):
             raise fake_yara.Error(f'could not open file "{path}"')
 
     target = tmp_path / "cache.tmp"
