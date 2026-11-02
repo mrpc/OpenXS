@@ -913,7 +913,12 @@ def compile_ruleset(yar_path):
     ruleset during OpenXS's corpus analysis, see OpenXS-ops/TIMELINE.md,
     2026-10-22. Shared by every consumer (CLI scans, the scan daemon, the
     watch daemon) so there's exactly one compiled copy of the full
-    ruleset, not one per process."""
+    ruleset, not one per process.
+
+    Declares the `filename` external IsPhp needs (php.yar, 2026-11-02) -
+    an external used in a rule's condition must exist at compile time,
+    even though the real value is only known per-file at match() time
+    (see FILENAME_EXTERNALS / yara_match_filename below)."""
     import yara
     sources = {"php": yar_path}
     rules_dir = os.path.join(os.path.dirname(os.path.abspath(yar_path)), "openxs-rules")
@@ -921,7 +926,8 @@ def compile_ruleset(yar_path):
         for fn in sorted(os.listdir(rules_dir)):
             if fn.endswith(".yar"):
                 sources[f"openxs_{fn[:-4]}"] = os.path.join(rules_dir, fn)
-    return yara.compile(filepaths=sources, includes=True, error_on_warning=False)
+    return yara.compile(filepaths=sources, includes=True, error_on_warning=False,
+                         externals={"filename": ""})
 
 def main():
     if len(sys.argv) != 4 or sys.argv[1] not in ("whitelist", "scan"):
@@ -946,7 +952,7 @@ def main():
         entries = []
         for fname in iter_files(filelist_path, ignore_patterns, changed_hours,
                                  path_overrides=path_overrides, global_fast_php_only=global_fast_php_only):
-            matches = rules.match(fname, fast=True)
+            matches = rules.match(fname, fast=True, externals={"filename": fname})
             if matches:
                 with open(fname, "rb") as fh:
                     h = hashlib.sha1(fh.read()).hexdigest()
@@ -1001,8 +1007,14 @@ def main():
                 # custom_hits/ClamAV below, same as any other file.
                 matches = []
             else:
+                # `filename` feeds IsPhp's .php-extension fallback
+                # (php.yar, 2026-11-02) - a file whose content never
+                # contains a literal PHP tag anymore (3 copies of the
+                # same dropper found stripped of theirs on a real
+                # compromised account, see OpenXS-ops/TIMELINE.md) would
+                # otherwise be invisible to every rule, tag or no tag.
                 try:
-                    matches = rules.match(fname, fast=True)
+                    matches = rules.match(fname, fast=True, externals={"filename": fname})
                 except UnicodeEncodeError:
                     # A path with a raw non-UTF8 byte (surrogateescape'd
                     # by iter_files) can't be passed through to yara's C
@@ -1011,11 +1023,18 @@ def main():
                     # being one for having an oddly-encoded name).
                     # Python's own open() handles a surrogateescape'd
                     # path fine, so read the bytes ourselves and match
-                    # against those instead.
+                    # against those instead. The `filename` external is
+                    # best-effort here too (same raw-byte risk through
+                    # the external-variable path) - fall back to no
+                    # extension-based IsPhp match rather than skip
+                    # scanning the file's actual content entirely.
                     try:
                         with open(fname, "rb") as f:
                             data = f.read()
-                        matches = rules.match(data=data, fast=True)
+                        try:
+                            matches = rules.match(data=data, fast=True, externals={"filename": fname})
+                        except UnicodeEncodeError:
+                            matches = rules.match(data=data, fast=True)
                     except OSError:
                         print(f"# Skipped (unreadable, unencodable path): {fname!r}", file=sys.stderr)
                         continue
@@ -1079,7 +1098,7 @@ def main():
             archive_hits = []
             if fname.endswith(ARCHIVE_EXTS):
                 for member_name, data in iter_archive_members(fname):
-                    for m in rules.match(data=data):
+                    for m in rules.match(data=data, externals={"filename": member_name}):
                         if m.rule not in ("IsWhitelisted", "IsPhp") and paranoia_level_for(m.rule) <= paranoia_level:
                             archive_hits.append(f"{m.rule} (in archive member {member_name})")
             if real or custom_hits or archive_hits:
