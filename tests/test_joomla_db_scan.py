@@ -11,7 +11,7 @@ class FakeMatch:
 
 
 class FakeRules:
-    def match(self, data):
+    def match(self, data, externals=None):
         hits = [FakeMatch("IsPhp")]
         if b"EVIL" in data:
             hits.append(FakeMatch("DangerousPhp"))

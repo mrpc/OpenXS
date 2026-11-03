@@ -15,7 +15,7 @@ class FakeRules:
     actually do in yara-python's results - exercising that the code
     under test filters them out anyway, not relying on YARA's own
     private-rule semantics to do it."""
-    def match(self, data):
+    def match(self, data, externals=None):
         hits = [FakeMatch("IsPhp")]
         if b"EVIL" in data:
             hits.append(FakeMatch("DangerousPhp"))
@@ -116,6 +116,71 @@ def test_scan_wp_database_prefers_webmin_root_credentials(tmp_path, monkeypatch)
     assert captured["db_config"]["user"] == "root"
     assert captured["db_config"]["password"] == "webmin-root-password"
     assert captured["db_config"]["name"] == "wp_site"  # DB name/host still from wp-config.php
+
+
+class FakeIsPhpGatedRules:
+    """Mimics php.yar's real IsPhp GLOBAL rule semantics: every other
+    rule is gated on a .php-looking `filename` external OR a literal
+    `<?php` tag in the content - neither of which a bare WPCode/Insert
+    Headers and Footers snippet body has. Without the `filename`
+    external wp_db_scan.py now passes, this returns no match at all
+    even for obviously malicious content - exactly the real bug found
+    live 2026-11-03."""
+    def match(self, data, externals=None):
+        is_php = bool(externals and externals.get("filename", "").endswith(".php")) or b"<?php" in data
+        if not is_php:
+            return []
+        hits = [FakeMatch("IsPhp")]
+        if b"EVIL" in data:
+            hits.append(FakeMatch("DangerousPhp"))
+        return hits
+
+
+def test_match_content_passes_php_filename_external_so_global_isphp_rule_fires():
+    bare_malicious_snippet = b"EVIL payload with no opening php tag"
+    assert wds._match_content(FakeIsPhpGatedRules(), bare_malicious_snippet.decode(), "label") == [("DangerousPhp", "label")]
+
+
+def test_scan_wp_database_matches_wp_options_snippet_storage(tmp_path, monkeypatch):
+    wp_root = tmp_path
+    (wp_root / "wp-config.php").write_text(
+        "<?php\n"
+        "define('DB_NAME', 'wp_site');\n"
+        "define('DB_USER', 'wp_user');\n"
+        "define('DB_PASSWORD', 'site-own-password');\n"
+        "define('DB_HOST', 'localhost');\n"
+    )
+    monkeypatch.setattr(wds, "webmin_mysql_root_credentials", lambda: None)
+
+    def fake_run_query(db_config, query, timeout=30):
+        if "options" in query:
+            return [["7", "wpcode_snippets", "contains EVIL payload"]]
+        return None
+    monkeypatch.setattr(wds, "run_query", fake_run_query)
+
+    results = wds.scan_wp_database(str(wp_root), FakeRules())
+    assert results == [("wp_options.option_value (wpcode_snippets, option ID 7)", "DangerousPhp")]
+
+
+def test_scan_wp_database_matches_ihaf_flat_options(tmp_path, monkeypatch):
+    wp_root = tmp_path
+    (wp_root / "wp-config.php").write_text(
+        "<?php\n"
+        "define('DB_NAME', 'wp_site');\n"
+        "define('DB_USER', 'wp_user');\n"
+        "define('DB_PASSWORD', 'site-own-password');\n"
+        "define('DB_HOST', 'localhost');\n"
+    )
+    monkeypatch.setattr(wds, "webmin_mysql_root_credentials", lambda: None)
+
+    def fake_run_query(db_config, query, timeout=30):
+        if "options" in query:
+            return [["9", "ihaf_insert_footer", "contains EVIL payload"]]
+        return None
+    monkeypatch.setattr(wds, "run_query", fake_run_query)
+
+    results = wds.scan_wp_database(str(wp_root), FakeRules())
+    assert results == [("wp_options.option_value (ihaf_insert_footer, option ID 9)", "DangerousPhp")]
 
 
 def test_split_host_plain():
