@@ -500,6 +500,19 @@ def test_find_wp_themes_reads_style_css_header(tmp_path):
     assert found == [("twentytwentyfour", "1.2")]
 
 
+def test_check_wp_sensitive_plugins_flags_known_slug(tmp_path):
+    wp_root = make_wp_install(tmp_path, "site", "6.4.2")
+    make_wp_plugin(wp_root, "insert-headers-and-footers", "2.4.1")
+    make_wp_plugin(wp_root, "akismet", "5.3")  # not sensitive - must not appear
+    wp_results = [(str(wp_root), "6.4.2", "6.4.2", False)]
+    results = vs.check_wp_sensitive_plugins(wp_results)
+    assert len(results) == 1
+    plugin_dir, slug, reason = results[0]
+    assert plugin_dir == str(wp_root / "wp-content" / "plugins" / "insert-headers-and-footers")
+    assert slug == "insert-headers-and-footers"
+    assert "PHP/JS" in reason
+
+
 def test_check_wp_plugins_flags_outdated(tmp_path, monkeypatch):
     monkeypatch.setattr(vs, "PACKAGE_CACHE_DB", str(tmp_path / "cache.db"))
     wp_root = make_wp_install(tmp_path, "site", "6.4.2")
