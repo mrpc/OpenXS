@@ -212,10 +212,12 @@ hand, which has no automated coverage yet.
 ## Status
 
 This is an early-stage project. What's implemented is listed above and has
-been tested end-to-end (including on a vanilla, from-scratch install), but
-it has **not yet been deployed to a real production server**. `install.sh`
-has only been tested on Debian 12 (bookworm); it explicitly refuses to run
-on non-apt systems rather than failing halfway through.
+been tested end-to-end (including on a vanilla, from-scratch install), and
+is now running on several production servers. `install.sh` has been
+verified on both Debian 12 (bookworm) and Debian 13 (trixie), including a
+fresh install on a virgin trixie box (2026-11-03) with no changes needed to
+the script itself; it explicitly refuses to run on non-apt systems rather
+than failing halfway through.
 
 Still on the roadmap, deliberately incremental rather than all-at-once:
 
