@@ -19,7 +19,34 @@ Release from that section's text.
 
 ## [Unreleased]
 
+## [v0.3.0] - 2026-11-03
+
 ### Signatures
+- Pulled in php-malware-finder's curated YARA-Forge webshell rules
+  (`yara_forge_webshells.yar`) via a `PMF_COMMIT` bump
+  (mrpc/php-malware-finder#1, c0ee51a).
+- Speculative rule for the trojanized `anthropic.claude-code` VS
+  Code/Cursor extension (v2.1.313, Open VSX) reported 2026-10-30 to
+  drop an SSH backdoor + reverse tunnel - matches the IOCs as
+  reconstructed from secondary reporting (no primary source or
+  official rule found; not verified against an actual sample). Left at
+  default `yara_heuristic` (flagged, not auto-quarantined) given the
+  low confidence and this project's usual target (hosted PHP/web
+  content, not dev workstations).
+- The 2 new webshell-dropper rules below (`WEBSHELL_PHP_Stateless_XOR_Rot13_Dropper`,
+  `WEBSHELL_PHP_Destruct_Temp_Include_Dropper`) promoted to
+  `HIGH_CONFIDENCE_RULE_NAMES` - correctly flagged 4 real confirmed
+  samples live but weren't quarantine-eligible without this,
+  the exact silent-miss failure mode that list's own history warns
+  about. Verified at zero false positives across 1932 real PHP files
+  before promoting.
+- WordPress database-content scanning (`wp_db_scan.py`) now also
+  covers the WPCode/Insert Headers and Footers plugin's other two
+  storage schemas - the single `wp_options.wpcode_snippets` serialized
+  option, and the older flat `ihaf_insert_header`/`footer`/`body`
+  options - alongside the existing `wp_posts`/`wp_comments` coverage.
+  Both found live and previously undetected across the fleet
+  2026-11-03.
 - Any Composer/Packagist-hosted package (not a hand-picked few):
   suppress false positives on its own unmodified, officially-released
   code via `composer_package_checksums.py` - generalizes
@@ -42,6 +69,43 @@ Release from that section's text.
   tests against fakes.
 
 ### Fixed
+- `IsPhp` (php.yar's one `global private rule`, an implicit precondition
+  on every other rule) only checked for a literal `<?` tag in content -
+  a `.php` file with the tag stripped (exactly what's valid to feed to
+  `eval()` instead of `include()`) was structurally invisible to the
+  *entire* ruleset, not just one rule. Found live 2026-11-02 testing
+  against a known-compromised account: 4 of 5 manually-spotted
+  webshells were missed entirely, 3 of them separate copies of the
+  same tag-less dropper. Fixed upstream by trusting the `.php`
+  extension as a fallback (`$php or filename matches /\.php[0-9]?$/i`),
+  via a `filename` external declared at compile time and passed at
+  every file-scan `match()` call. Verified against the 5 real samples
+  via the actual `compile_ruleset()` + `match()` path - all 5 now
+  correctly flagged; zero new false positives across 1932 real PHP
+  files (204 = 204 hits before/after).
+- The same `IsPhp` gap above also silently zeroed out every
+  `wp_db_scan.py`/`joomla_db_scan.py`/`drupal_db_scan.py` database-
+  content match: `_match_content()` never passed the `filename`
+  external at all, and a WPCode/Insert Headers and Footers snippet's
+  PHP body is stored WITHOUT its opening tag (the plugin `eval()`s it
+  bare) - exactly this field's own real-world shape. Confirmed against
+  the real ruleset: a known-malicious obfuscated payload went from 0
+  matches to 2 after passing a synthetic `.php` filename external.
+- `openxs-scand`: a file deleted or truncated to 0 bytes between the
+  size check and `rules.match()` (temp files, cache rewrites) raised
+  `yara.Error` ("could not open file" / "could not map file into
+  memory"), unhandled - the request thread logged a traceback and
+  closed the connection without replying. Seen on a production host:
+  14 such tracebacks over 3 days. Now caught and replied to exactly
+  like the existing vanished-file branch.
+- `maldet_scan()` already forced `quarantine_hits=0`/`scan_clamscan=0`
+  (maldet is meant to be a quiet data source OpenXS folds into its own
+  findings/alerting, not something that acts or notifies
+  independently) but missed `email_alert`, which defaults to `"1"` -
+  a manual scan on a production server triggered an independent maldet
+  alert email straight to the admin, bypassing OpenXS's own
+  consolidated alert pipeline entirely. Added `email_alert=0` to the
+  same override string.
 - `install_modsecurity.sh` hardcoded ModSecurity's `SecRequestBodyLimit`/
   `SecRequestBodyNoFilesLimit` to its own stock recommended defaults
   (12.5MB/128KB) - raising a site's own PHP `upload_max_filesize`/
@@ -77,8 +141,6 @@ Release from that section's text.
   there would also start ignoring genuinely binary/obfuscated content
   that happens to use the same byte ranges without being valid UTF-8 -
   weaker than real UTF-8 decoding, not just differently located.
-
-### Fixed
 - "Resolved" status for a permission-fix finding was matched by
   `finding_id`, not by the underlying path - the same world-writable
   directory gets its own separate finding row from every scan run that
@@ -102,6 +164,14 @@ Release from that section's text.
   owns the files). `openxs_db.fix_all_world_writable_findings()` reuses
   the existing per-finding fix/restore mechanism underneath, so each one
   is still individually reversible afterward.
+- WPCode/Insert Headers and Footers (`insert-headers-and-footers`)
+  now flagged as a sensitive plugin wherever installed, regardless of
+  whether any malicious content is actually found - this project's own
+  position is that it has no legitimate use case that outweighs the
+  code-execution-via-plugin-UI risk. The finding's path is the
+  plugin's own directory, so the existing quarantine/delete action on
+  the Findings page already works as a one-click removal, no new UI
+  needed.
 
 ## [v0.2.0] - 2026-10-25
 
