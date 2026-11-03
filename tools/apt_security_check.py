@@ -5,7 +5,7 @@ composer packages). Portable across Debian and Ubuntu (the fleet mixes
 both) via plain `apt-get -s dist-upgrade` (simulate, never installs
 anything), rather than Ubuntu-only tools like update-notifier's
 apt-check, which isn't available on Debian at all (verified: not present
-on prodserver, a Debian 12 box).
+on a Debian box in the fleet).
 
 Report-only, like the other checkers here.
 """
