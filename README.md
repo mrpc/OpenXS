@@ -214,10 +214,11 @@ hand, which has no automated coverage yet.
 This is an early-stage project. What's implemented is listed above and has
 been tested end-to-end (including on a vanilla, from-scratch install), and
 is now running on several production servers. `install.sh` has been
-verified on both Debian 12 (bookworm) and Debian 13 (trixie), including a
-fresh install on a virgin trixie box (2026-11-03) with no changes needed to
-the script itself; it explicitly refuses to run on non-apt systems rather
-than failing halfway through.
+verified on Debian 12 (bookworm), Debian 13 (trixie) - including a fresh
+install on a virgin trixie box (2026-11-03) with no changes needed to the
+script itself - and Ubuntu 24.04 (noble, also in production); it
+explicitly refuses to run on non-apt systems rather than failing halfway
+through.
 
 Still on the roadmap, deliberately incremental rather than all-at-once:
 
@@ -229,11 +230,12 @@ Still on the roadmap, deliberately incremental rather than all-at-once:
   far) — CyberPanel, HestiaCP, CloudPanel. Each has its own account
   layout and plugin/module system; needs its own investigation per
   panel before any code.
-- Testing `install.sh` against more environments: other Debian/Ubuntu
-  releases, RHEL/CentOS-family systems (would need a yum/dnf code path),
-  and against the actual CSF version (v14.24, pre-GPLv3) still running on
-  most of our own servers — the CSF-hook installer has only been verified
-  against the v15.00 GPLv3 release so far.
+- Testing `install.sh` against more environments: Debian 12/13 and Ubuntu
+  24.04 are verified (all three in production); other Debian/Ubuntu
+  releases and RHEL/CentOS-family systems (would need a yum/dnf code path)
+  are not. Also against the actual CSF version (v14.24, pre-GPLv3) still
+  running on most of our own servers — the CSF-hook installer has only
+  been verified against the v15.00 GPLv3 release so far.
 - WordPress database-content scan coverage beyond `wp_posts`/
   `wp_comments` (see "What it does" below) — `wp_options` and
   `wp_postmeta`/`wp_usermeta` deliberately deferred until the current,
