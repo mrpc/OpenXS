@@ -39,6 +39,16 @@ PHPMYADMIN_VERSION_RE = re.compile(r'"version"\s*:\s*"([\d.]+)"')
 JOOMLA_MANIFEST_RELPATH = os.path.join("administrator", "manifests", "files", "joomla.xml")
 JOOMLA_VERSION_RE = re.compile(r"<version>([^<]+)</version>")
 JOOMLA_TAGS_URL = "https://api.github.com/repos/joomla/joomla-cms/tags?per_page=100"
+# Plugins flagged regardless of version/vulnerability status - the risk is
+# the plugin's own feature set (arbitrary PHP/JS execution via its admin UI),
+# not a bug that could be patched. insert-headers-and-footers (WPCode) hit
+# the SAME site (mrpc.pramnos.net) twice (2026-10-25 wp_posts, 2026-11-03
+# wp_options) via this exact mechanism - see INBOX.md 2026-11-03 entry.
+SENSITIVE_WP_PLUGINS = {
+    "insert-headers-and-footers": "WPCode (Insert Headers and Footers) lets any "
+        "admin-UI user inject arbitrary PHP/JS site-wide - no legitimate use case "
+        "outweighs that as a backdoor vector once a site is compromised.",
+}
 WP_PLUGIN_VERSION_RE = re.compile(r"""^\s*\*?\s*(?:Stable tag|Version)\s*:\s*(\S+)""", re.IGNORECASE | re.MULTILINE)
 WP_PLUGIN_INFO_URL = "https://api.wordpress.org/plugins/info/1.0/{slug}.json"
 WP_THEME_INFO_URL = "https://api.wordpress.org/themes/info/1.0/{slug}.json"
@@ -461,6 +471,22 @@ def check_wp_plugins(wp_results):
     return results
 
 
+def check_wp_sensitive_plugins(wp_results):
+    """(plugin_dir, slug, reason) for every installed plugin in
+    SENSITIVE_WP_PLUGINS - plugin_dir (not wp_root) is the finding's
+    file_path, so the existing quarantine/delete buttons in reports.cgi
+    (which just os.rename()/os.remove() whatever file_path points at,
+    directory or not) already double as the "remove this plugin" action
+    the dashboard needed - no new UI/action.cgi required."""
+    results = []
+    for wp_root, _installed, _latest, _outdated in wp_results:
+        for slug, _version in find_wp_plugins(wp_root):
+            reason = SENSITIVE_WP_PLUGINS.get(slug)
+            if reason:
+                results.append((os.path.join(wp_root, "wp-content", "plugins", slug), slug, reason))
+    return results
+
+
 def check_wp_themes(wp_results):
     """Same shape as check_wp_plugins, for themes."""
     conn = _wp_asset_cache_connect()
@@ -552,7 +578,8 @@ def check_composer(root):
 def record_findings(root, wp_results, revive_results, drupal_results, joomla_results,
                      wp_plugin_results, wp_theme_results, composer_results,
                      wp_unknown_file_results=(), wp_db_results=(),
-                     joomla_db_results=(), drupal_db_results=()):
+                     joomla_db_results=(), drupal_db_results=(),
+                     wp_sensitive_plugin_results=()):
     """Records OUTDATED hits into OpenXS's own scan-history db (rule_name
     tagged "(oldversion)", same suffix-based convention pmf_scan.py's
     categorize() already uses for "(ClamAV)"/"(maldet)") - so they show
@@ -577,6 +604,11 @@ def record_findings(root, wp_results, revive_results, drupal_results, joomla_res
                  for wp_root, slug, installed, latest, outdated in wp_plugin_results if outdated]
     findings += [(wp_root, f"Outdated WordPress theme {slug}: {installed} (latest: {latest}) (oldversion)")
                  for wp_root, slug, installed, latest, outdated in wp_theme_results if outdated]
+    # No "(oldversion)"/"(database)" suffix - falls into the generic
+    # yara_heuristic bucket, same as an unknown core file, since this is
+    # about the plugin's own capabilities, not its version or DB content.
+    findings += [(plugin_dir, f"Sensitive plugin installed: {slug} - {reason} (sensitive-plugin)")
+                 for plugin_dir, slug, reason in wp_sensitive_plugin_results]
     findings += [(lock_path, f"Outdated package {name}: {installed} (latest: {latest}) (oldversion)")
                  for lock_path, name, installed, latest, outdated in composer_results if outdated]
     # Not a version check, but shares this same once-per-scheduled-scan
@@ -609,7 +641,7 @@ def record_findings(root, wp_results, revive_results, drupal_results, joomla_res
     total = (len(wp_results) + len(revive_results) + len(drupal_results) + len(joomla_results)
              + len(wp_plugin_results) + len(wp_theme_results) + len(composer_results)
              + len(wp_unknown_file_results) + len(wp_db_results)
-             + len(joomla_db_results) + len(drupal_db_results))
+             + len(joomla_db_results) + len(drupal_db_results) + len(wp_sensitive_plugin_results))
     try:
         import openxs_db
         openxs_db.record_scan(root, total, findings)
@@ -629,6 +661,7 @@ def main():
     drupal_results = check_drupal(root)
     joomla_results = check_joomla(root)
     wp_plugin_results = check_wp_plugins(wp_results)
+    wp_sensitive_plugin_results = check_wp_sensitive_plugins(wp_results)
     wp_theme_results = check_wp_themes(wp_results)
     composer_results = check_composer(root)
 
@@ -668,6 +701,10 @@ def main():
     for wp_root, slug, installed, latest, outdated in wp_theme_results:
         if outdated:
             print(f"OUTDATED\t{wp_root}\t{slug}\t{installed}\t(latest: {latest})")
+
+    print(f"# WordPress sensitive plugins: {len(wp_sensitive_plugin_results)} flagged")
+    for plugin_dir, slug, reason in wp_sensitive_plugin_results:
+        print(f"SENSITIVE\t{plugin_dir}\t{slug}\t{reason}")
 
     print(f"# Revive Adserver: {len(revive_results)} install(s), {revive_outdated} outdated")
     for install_root, installed, latest, outdated in revive_results:
@@ -720,14 +757,15 @@ def main():
     record_findings(root, wp_results, revive_results, drupal_results, joomla_results,
                      wp_plugin_results, wp_theme_results, composer_results,
                      wp_unknown_file_results, wp_db_results,
-                     joomla_db_results, drupal_db_results)
+                     joomla_db_results, drupal_db_results, wp_sensitive_plugin_results)
     try:
         os.remove(PROGRESS_FILE)
     except OSError:
         pass
     sys.exit(1 if (wp_outdated or revive_outdated or drupal_unsupported or joomla_flagged
                    or wp_plugin_outdated or wp_theme_outdated or composer_outdated
-                   or wp_unknown_files or wp_db_results or joomla_db_results or drupal_db_results) else 0)
+                   or wp_unknown_files or wp_db_results or joomla_db_results or drupal_db_results
+                   or wp_sensitive_plugin_results) else 0)
 
 
 if __name__ == "__main__":

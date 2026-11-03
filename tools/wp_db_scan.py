@@ -29,9 +29,27 @@ wp_comments (comment_content) - the two places real injected-content
 compromises are actually known to live. wp_options (highly variable in
 size/shape - serialized widget/customizer data, transients that change
 constantly) and wp_postmeta/wp_usermeta (huge row counts on any site
-with real traffic/media) are deliberately deferred rather than
+with real traffic/media) were deliberately deferred rather than
 guessed at without first seeing what the first two tables turn up on
 the real fleet.
+
+v2: the SAME mrpc.pramnos.net install was compromised AGAIN on
+2026-11-03, this time via wp_options.wpcode_snippets (same WPCode
+plugin, same C2 pattern) - confirming the deferred gap for real. Still
+not a brute-force scan of the whole table (option_value really is huge
+and mostly irrelevant on a busy site): WP_OPTIONS_NAME_PATTERNS below
+narrows it to option_name values that look like plugin/snippet code
+storage - the exact shape the real incident lived in - rather than
+every row.
+
+v3: fleet-wide sweep the same day (see tools/wp_db_backdoor_scan.py's
+own docstring/history, and the Servers session that ran it) found the
+SAME plugin family's OLDER storage schema too - plain
+ihaf_insert_header/ihaf_insert_footer/ihaf_insert_body rows (Insert
+Headers and Footers, pre-WPCode-rebrand) - live on blog.captainbook.gr
+and dormant-but-never-cleaned-up on ckaouni. "ihaf_%" added to
+WP_OPTIONS_NAME_PATTERNS to cover that whole option family rather than
+hardcoding those three exact names.
 """
 import os
 import re
@@ -47,6 +65,11 @@ DB_DEFINE_RE = re.compile(
 TABLE_PREFIX_RE = re.compile(r"\$table_prefix\s*=\s*['\"](.*?)['\"]")
 
 MAX_ROW_BYTES = 2 * 1024 * 1024  # a legitimate post/comment is never anywhere close to this
+
+# option_name LIKE patterns matching known code/snippet-storage plugins -
+# the real wpcode_snippets incident's own shape, not a guess. Extend this
+# list as other snippet/code-storage plugins turn up on the fleet.
+WP_OPTIONS_NAME_PATTERNS = ["%snippet%", "%_code_snippets%", "%headers_and_footers%", "ihaf_%"]
 
 
 def parse_wp_config(wp_root):
@@ -220,12 +243,23 @@ def _match_content(rules, content, label):
     piece of DB content - "real" meaning the same IsWhitelisted/IsPhp
     meta-rule exclusion pmf_scan.py's own file-scan loop applies (see
     its is_unmodified_core_file()'s docstring on why those never
-    actually appear in match results anyway)."""
+    actually appear in match results anyway).
+
+    Passes a synthetic .php `filename` external - php.yar's IsPhp is a
+    GLOBAL rule (gates every other rule, not just its own), and without
+    either a literal `<?php` tag in the content or a .php-looking
+    filename it never fires, which silently zeroes out every match no
+    matter how malicious the content is. Confirmed live: a WPCode/Insert
+    Headers and Footers snippet's PHP body is stored WITHOUT its opening
+    tag (the plugin eval()s it bare) - exactly this field's own real-
+    world shape - so omitting this (as an earlier version of this
+    function did) meant the DB scan could never actually have caught
+    the mrpc.pramnos.net/blog.captainbook.gr incidents it was built for."""
     if not content or len(content) > MAX_ROW_BYTES:
         return []
     data = content.encode("utf-8", errors="replace")
     try:
-        matches = rules.match(data=data)
+        matches = rules.match(data=data, externals={"filename": "db_content.php"})
     except Exception:
         return []
     return [(m.rule, label) for m in matches if m.rule not in ("IsWhitelisted", "IsPhp")]
@@ -273,6 +307,21 @@ def scan_wp_database(wp_root, rules):
                 continue
             comment_id, body = row
             for rule, label in _match_content(rules, body, f"{prefix}comments.comment_content (comment ID {comment_id})"):
+                results.append((label, rule))
+
+    # WP_OPTIONS_NAME_PATTERNS is a fixed constant above, never user input -
+    # plain quoting is fine, no escaping needed.
+    name_filter = " OR ".join(f"option_name LIKE '{p}'" for p in WP_OPTIONS_NAME_PATTERNS)
+    options = run_query(
+        db_config,
+        f"SELECT option_id, option_name, option_value FROM {prefix}options WHERE {name_filter}",
+    )
+    if options:
+        for row in options:
+            if len(row) != 3:
+                continue
+            option_id, name, value = row
+            for rule, label in _match_content(rules, value, f"{prefix}options.option_value ({name}, option ID {option_id})"):
                 results.append((label, rule))
 
     return results
