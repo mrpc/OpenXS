@@ -19,6 +19,17 @@ Release from that section's text.
 
 ## [Unreleased]
 
+### Added
+- `ALERT_MIN_SEVERITY` setting (Settings page: "Send alert e-mail for") -
+  `serious` sends the scheduled-scan e-mail only for virus/known-exploit/
+  maldet hits, WordPress DB-content backdoors, or mailbox viruses,
+  skipping advisory-only noise (routine heuristic/fs hits, pending apt
+  updates, outdated WordPress core, whitelist/integrity drift) that
+  would otherwise trigger an e-mail on its own. Default (`all`) keeps
+  the previous behavior. A serious hit still shows everything else found
+  in that e-mail's body - this only changes what's allowed to trigger
+  the send by itself.
+
 ## [v0.3.0] - 2026-11-03
 
 ### Signatures
