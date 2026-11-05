@@ -37,6 +37,7 @@ DB_SCAN_ENABLED="1"
 APT_SECURITY_ENABLED="1"
 VMRSS_MAX_MB="2000"
 YARA_PARANOIA_LEVEL="1"
+ALERT_MIN_SEVERITY="all"
 COMPOSER_TRUST_MIN_AGE_DAYS="90"
 COMPOSER_TRUST_MIN_DOWNLOADS="1000"
 COMPOSER_TRUST_L2_MIN_AGE_DAYS="180"
@@ -66,6 +67,7 @@ if [ -f "$CONFIG" ]; then
             APT_SECURITY_ENABLED) APT_SECURITY_ENABLED="$value" ;;
             VMRSS_MAX_MB) VMRSS_MAX_MB="$value" ;;
             YARA_PARANOIA_LEVEL) YARA_PARANOIA_LEVEL="$value" ;;
+            ALERT_MIN_SEVERITY) ALERT_MIN_SEVERITY="$value" ;;
             COMPOSER_TRUST_MIN_AGE_DAYS) COMPOSER_TRUST_MIN_AGE_DAYS="$value" ;;
             COMPOSER_TRUST_MIN_DOWNLOADS) COMPOSER_TRUST_MIN_DOWNLOADS="$value" ;;
             COMPOSER_TRUST_L2_MIN_AGE_DAYS) COMPOSER_TRUST_L2_MIN_AGE_DAYS="$value" ;;
@@ -188,7 +190,27 @@ serious="${serious:-0}"
 heuristic="${heuristic:-0}"
 fs="${fs:-0}"
 
-if [ "$hits" -gt 0 ] || [ "$drift_count" -gt 0 ] || [ "$fim_count" -gt 0 ] || [ "$version_count" -gt 0 ] || [ "$apt_count" -gt 0 ] || [ "$mailbox_count" -gt 0 ] || [ "$db_hit_count" -gt 0 ]; then
+# ALERT_MIN_SEVERITY=serious: skip the email entirely when the only
+# things found are advisory-only noise (routine heuristic/fs hits,
+# pending apt updates, outdated core, whitelist/integrity drift) -
+# someone who only wants to be interrupted for something that actually
+# needs acting on now. db_hit_count (WordPress DB-content backdoors) and
+# mailbox_count (actual virus in a mailbox) count as "serious" here too,
+# same as the YARA/ClamAV/maldet bucket - both are real malicious
+# content, not an advisory. The default ("all") keeps today's behavior:
+# any non-zero category sends.
+should_alert=0
+if [ "$ALERT_MIN_SEVERITY" = "serious" ]; then
+    [ "$serious" -gt 0 ] && should_alert=1
+    [ "$db_hit_count" -gt 0 ] && should_alert=1
+    [ "$mailbox_count" -gt 0 ] && should_alert=1
+else
+    if [ "$hits" -gt 0 ] || [ "$drift_count" -gt 0 ] || [ "$fim_count" -gt 0 ] || [ "$version_count" -gt 0 ] || [ "$apt_count" -gt 0 ] || [ "$mailbox_count" -gt 0 ] || [ "$db_hit_count" -gt 0 ]; then
+        should_alert=1
+    fi
+fi
+
+if [ "$should_alert" -eq 1 ]; then
     {
         if [ "$serious" -gt 0 ]; then
             echo "=== $serious SERIOUS hit(s) (virus/known exploit/maldet) on $HOST ($SCAN_LABEL) ==="

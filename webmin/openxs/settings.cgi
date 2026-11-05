@@ -18,6 +18,10 @@ print &ui_subheading("Settings");
 print &ui_form_start("config.cgi", "post", undef, "autocomplete='off'");
 print &ui_table_start(undef, undef, 2);
 print &ui_table_row("Alert e-mail address", &ui_textbox("alert_addr", $cfg{'EMAIL'}, 40, 0, 0, "autocomplete='off'"));
+print &ui_table_row("Send alert e-mail for", &ui_select("alert_min_severity", $cfg{'ALERT_MIN_SEVERITY'} || 'all',
+	[["all", "Anything found (default) - including routine heuristic/fs hits, pending apt updates, outdated core"],
+	 ["serious", "Only serious findings - virus/known exploit/maldet, WordPress DB-content backdoors, mailbox viruses"]]) .
+	" <i>'Serious' still shows everything else found in the e-mail body if one does go out for a serious hit - it only changes whether advisory-only noise triggers an e-mail by itself.</i>");
 print &ui_table_row("Daily cron scan mode", &ui_select("scan_mode", $cfg{'SCAN_MODE'},
 	[["path", "Single directory"], ["accounts", "Every account (cxs's --allusers)"]]));
 print &ui_table_row("Directory scanned (single-directory mode)", &ui_textbox("scan_path", $cfg{'SCAN_PATH'}, 40, 0, 0, "autocomplete='off'"));
