@@ -60,7 +60,7 @@ def log(msg):
     line = f"{time.strftime('%Y-%m-%d %H:%M:%S')} {msg}"
     print(line, file=sys.stderr, flush=True)
     try:
-        with open(LOG, "a") as f:
+        with open(LOG, "a", errors="backslashreplace") as f:
             f.write(line + "\n")
     except OSError:
         pass
@@ -115,7 +115,7 @@ class ScanHandler(socketserver.BaseRequestHandler):
             log(f"RSS exceeded OPENXS_SCAND_MAX_RSS_MB={MAX_RSS_KB // 1024}MB - exiting so systemd restarts us")
             os._exit(1)
         data = self.request.recv(4096).strip()
-        text = data.decode("utf-8", errors="replace")
+        text = data.decode("utf-8", errors="surrogateescape")  # raw non-UTF-8 path bytes survive
         all_mode = text.startswith("ALL ")
         path = text[4:] if all_mode else text
 
@@ -153,9 +153,13 @@ class ScanHandler(socketserver.BaseRequestHandler):
                 level = _paranoia_level
             import yara
             try:
-                matches = [m for m in rules.match(path, fast=True, externals={"filename": path})
-                           if pmf_scan.paranoia_level_for(m.rule) <= level]
-            except yara.Error:
+                try:
+                    raw = rules.match(path, fast=True, externals={"filename": path})
+                except UnicodeEncodeError:  # non-UTF-8 path: match the bytes, same as pmf_scan.py
+                    with open(path, "rb") as f:
+                        raw = rules.match(data=f.read(), fast=True)
+                matches = [m for m in raw if pmf_scan.paranoia_level_for(m.rule) <= level]
+            except (yara.Error, OSError):
                 # Same race as the getsize() check above, one step later:
                 # the file vanished or got truncated to 0 bytes in between
                 # (temp files, cache rewrites - found live on production,

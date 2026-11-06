@@ -787,7 +787,7 @@ def yara_match_via_daemon(fname, socket_path=None):
         with socket_mod.socket(socket_mod.AF_UNIX, socket_mod.SOCK_STREAM) as s:
             s.settimeout(5)
             s.connect(socket_path)
-            s.sendall(f"ALL {fname}\n".encode())
+            s.sendall(b"ALL " + os.fsencode(fname) + b"\n")
             response = s.recv(65536).decode(errors="replace").strip()
         return json.loads(response)
     except Exception:

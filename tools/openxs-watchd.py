@@ -125,7 +125,7 @@ def log(msg):
     line = f"{time.strftime('%Y-%m-%d %H:%M:%S')} {msg}"
     print(line, flush=True)
     try:
-        with open(LOG, "a") as f:
+        with open(LOG, "a", errors="backslashreplace") as f:
             f.write(line + "\n")
     except OSError:
         pass
@@ -299,12 +299,20 @@ def main():
         sys.exit(3)
     log(f"Starting, watching: {', '.join(watch_paths)}" + (f" (excluding {exclude})" if exclude else ""))
     cmd = inotify_cmd(watch_paths, exclude)
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True)
+    # surrogateescape: a file name with a raw non-UTF-8 byte (legacy
+    # Latin-1/Greek-codepage uploads) used to raise UnicodeDecodeError
+    # here and kill the whole daemon. The escaped str round-trips back to
+    # the original bytes through os/open(), so such files still get scanned.
+    sys.stdout.reconfigure(errors="backslashreplace")
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True, errors="surrogateescape")
     for line in proc.stdout:
         check_rss_guard(max_rss_kb)
         fname = line.rstrip("\n")
         if fname and not rate_limited(fname, rate_count, rate_window, rate_cooldown):
-            scan_one(fname, ignore, custom_rules, path_overrides, global_fast_php_only)
+            try:
+                scan_one(fname, ignore, custom_rules, path_overrides, global_fast_php_only)
+            except Exception as e:  # one bad event must not take real-time monitoring down
+                log(f"ERROR scanning {fname!r}: {e!r}")
 
 
 if __name__ == "__main__":
