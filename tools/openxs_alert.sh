@@ -19,13 +19,33 @@ if [ -f "$CONFIG" ]; then
 fi
 HOST=$(hostname -f)
 
+# The unit's own log since shortly before the failure, minus the
+# per-file RATE-LIMITED noise, is where the real reason is - by now systemd
+# has usually restarted it already, so `systemctl status` alone shows the
+# new instance, not why the old one died.
+LOG=$(journalctl -u "$UNIT" --since "-3min" --no-pager -o short-iso 2>&1 | grep -v "RATE-LIMITED" | tail -60 || true)
+if grep -qiE "oom-kill|oom_memcg|Memory limit" <<<"$LOG"; then
+    CAUSE="the kernel killed it for exceeding its memory limit (MemoryMax)."
+elif grep -q "RSS exceeded" <<<"$LOG"; then
+    CAUSE="it exited itself after crossing its own configured RSS backstop."
+elif grep -q "Traceback" <<<"$LOG"; then
+    CAUSE="an unhandled Python exception (crash) - traceback below."
+else
+    CAUSE="unknown - see the log below."
+fi
+
 {
     echo "$UNIT failed on $HOST at $(date '+%Y-%m-%d %H:%M:%S')."
     echo
-    echo "Likely cause: either the kernel killed it for exceeding its memory"
-    echo "limit (MemoryMax), or it exited itself after crossing its own"
-    echo "configured RSS backstop - systemd's Restart=on-failure should"
-    echo "already have brought it back up. Recent log:"
+    echo "Cause: $CAUSE"
+    echo "systemd's Restart=on-failure should already have brought it back up."
     echo
-    systemctl status "$UNIT" --no-pager -l 2>&1 | tail -20
+    systemctl status "$UNIT" --no-pager 2>&1 | head -5
+    echo
+    echo "Recent log:"
+    if grep -q "Traceback" <<<"$LOG"; then
+        sed -n '/Traceback/,$p' <<<"$LOG" | tail -40
+    else
+        tail -25 <<<"$LOG"
+    fi
 } | mail -s "[$HOST] $UNIT failed" "$EMAIL"
