@@ -41,6 +41,14 @@ RestartPreventExitStatus=3
 # Raised for headroom during that burst, not because steady-state grew.
 MemoryMax=2304M
 MemorySwapMax=0
+# MemoryHigh starts reclaim early and gently (throttling, never a kill).
+# The watch-tree build fills the cgroup with reclaimable dentry/inode slab
+# (found 2026-11-08 on a 26M-file host: anon 42MB, slab 1.5GB, cgroup
+# pinned at MemoryMax). inotify's own allocations are GFP_NOFS and can't
+# reclaim that slab themselves, so sitting at MemoryMax is what produced
+# the inotifywait OOM-kills. Reclaiming from 1536M keeps headroom below
+# the hard line. Real process memory is ~55MB, far below either.
+MemoryHigh=1536M
 
 [Install]
 WantedBy=multi-user.target
