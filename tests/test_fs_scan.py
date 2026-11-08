@@ -190,3 +190,27 @@ def test_similarly_named_current_style_symlink_elsewhere_is_still_flagged(tmp_pa
         assert findings.get(str(link)) == "symlink"
     finally:
         outside.unlink()
+
+
+def test_scan_dirs_finds_shallow_world_writable_without_files_or_depth(tmp_path):
+    incoming = tmp_path / "acct" / "public_ftp" / "incoming"
+    incoming.mkdir(parents=True)
+    incoming.chmod(0o777)
+    deep = tmp_path / "acct" / "a" / "b" / "c" / "d"
+    deep.mkdir(parents=True)
+    deep.chmod(0o777)
+    elf = tmp_path / "acct" / "x"
+    elf.write_bytes(b"\x7fELF....")
+    found = dict(fs_scan.scan_dirs(str(tmp_path), 3))
+    assert found == {str(incoming): "world-writable directory"}
+
+
+def test_scan_prunes_ignored_directories(tmp_path):
+    emails = tmp_path / "var" / "emails" / "2026"
+    emails.mkdir(parents=True)
+    (emails / "bin").write_bytes(b"\x7fELF....")
+    (tmp_path / "keep").mkdir()
+    (tmp_path / "keep" / "bin").write_bytes(b"\x7fELF....")
+    found = dict(fs_scan.scan(str(tmp_path), prune=["var/emails/"]))
+    assert str(tmp_path / "keep" / "bin") in found
+    assert not any("/var/emails/" in p for p in found)
