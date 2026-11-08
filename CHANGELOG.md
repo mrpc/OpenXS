@@ -20,6 +20,13 @@ Release from that section's text.
 ## [Unreleased]
 
 ### Added
+- Alert e-mail puts **new** serious hits (first time seen - a freshly
+  compromised site) in their own block on top and in the subject
+  (`N NEW SERIOUS`), instead of one more line among the same unresolved
+  hits listed every night.
+- `ALERT_MIN_SEVERITY` gains `new` (e-mail only when something is seen for
+  the first time) and `new_serious` (only for a first-seen serious hit or
+  a mailbox virus).
 - `ALERT_MIN_SEVERITY` setting (Settings page: "Send alert e-mail for") -
   `serious` sends the scheduled-scan e-mail only for virus/known-exploit/
   maldet hits, WordPress DB-content backdoors, or mailbox viruses,
@@ -31,6 +38,9 @@ Release from that section's text.
   the send by itself.
 
 ### Fixed
+- Alert e-mail: on a night with no new findings, every old heuristic/fs
+  hit was reported as NEW (an empty `new_findings.txt` was treated as
+  "don't filter").
 - ClamAV upload checks on AppArmor 4.1 (Debian 13): plain
   `attach_disconnected` didn't stop clamd's "disconnected path" denials
   for mod_security's PrivateTmp upload files, so every upload fell back
