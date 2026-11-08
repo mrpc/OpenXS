@@ -29,7 +29,7 @@ def test_split_scan_results_tiers_no_new_findings_file(tmp_path):
     )
     out_prefix = tmp_path / "out"
     counts = run(results, tmp_path / "no_such_file.txt", out_prefix)
-    assert counts == {"serious": "2", "heuristic": "1", "fs": "1"}
+    assert counts == {"serious": "2", "heuristic": "1", "fs": "1", "new_serious": "2"}
     assert "shell.php" in (tmp_path / "out.serious.txt").read_text()
     assert "malware.found" in (tmp_path / "out.serious.txt").read_text()
     assert "a.php" in (tmp_path / "out.heuristic.txt").read_text()
@@ -50,7 +50,7 @@ def test_split_scan_results_filters_heuristic_fs_to_new_only(tmp_path):
     new_findings.write_text("/home/x/a.php\tObfuscatedPhp\n")  # old.php and b.php NOT new
     out_prefix = tmp_path / "out"
     counts = run(results, new_findings, out_prefix)
-    assert counts == {"serious": "1", "heuristic": "1", "fs": "0"}
+    assert counts == {"serious": "1", "heuristic": "1", "fs": "0", "new_serious": "0"}
     assert "a.php" in (tmp_path / "out.heuristic.txt").read_text()
     assert not os.path.exists(tmp_path / "out.fs.txt")
 
@@ -60,5 +60,29 @@ def test_split_scan_results_empty_input_writes_nothing(tmp_path):
     results.write_text("")
     out_prefix = tmp_path / "out"
     counts = run(results, tmp_path / "new_findings.txt", out_prefix)
-    assert counts == {"serious": "0", "heuristic": "0", "fs": "0"}
+    assert counts == {"serious": "0", "heuristic": "0", "fs": "0", "new_serious": "0"}
     assert not os.path.exists(str(out_prefix) + ".serious.txt")
+
+
+def test_split_scan_results_empty_new_findings_file_means_nothing_new(tmp_path):
+    # pmf_scan.py always writes new_findings.txt; empty = a quiet night.
+    # It used to mean "don't filter", reporting every old hit as NEW.
+    results = tmp_path / "scan_results.txt"
+    results.write_text("/home/x/shell.php\tKnown exploit backdoor\n/home/x/a.php\tObfuscatedPhp\n")
+    new_findings = tmp_path / "new_findings.txt"
+    new_findings.write_text("")
+    counts = run(results, new_findings, tmp_path / "out")
+    assert counts == {"serious": "1", "heuristic": "0", "fs": "0", "new_serious": "0"}
+
+
+def test_split_scan_results_new_serious_listed_separately(tmp_path):
+    results = tmp_path / "scan_results.txt"
+    results.write_text(
+        "/home/old/shell.php\tKnown exploit backdoor\n"
+        "/home/fresh/x.php\tWEBSHELL_PHP_Encoded_Big\n"
+    )
+    new_findings = tmp_path / "new_findings.txt"
+    new_findings.write_text("/home/fresh/x.php\tWEBSHELL_PHP_Encoded_Big\n")
+    counts = run(results, new_findings, tmp_path / "out")
+    assert counts == {"serious": "2", "heuristic": "0", "fs": "0", "new_serious": "1"}
+    assert (tmp_path / "out.serious_new.txt").read_text() == "/home/fresh/x.php\tWEBSHELL_PHP_Encoded_Big\n"

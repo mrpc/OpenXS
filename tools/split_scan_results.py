@@ -22,12 +22,17 @@ heuristic/fs are filtered down to only findings present in
 new_findings_path (pmf_scan.py's own openxs_db.new_finding_ids() output,
 first-seen-ever findings) - an unchanged legitimate-but-obfuscated-
 looking plugin file shouldn't nag on every single scheduled scan
-forever. Pass an empty/missing new_findings_path to disable this
-filtering (everything counts as "new").
+forever. A missing new_findings_path disables this filtering (everything
+counts as "new"); an existing but empty one means nothing is new.
+
+serious lines that are also new are additionally written to
+<out_prefix>.serious_new.txt and counted as new_serious, so the e-mail can
+put a freshly compromised site on top instead of burying it among the
+same unresolved hits it lists every night.
 
 Usage: split_scan_results.py <scan_results.txt> <new_findings.txt> <out_prefix>
 Writes <out_prefix>.serious.txt / .heuristic.txt / .fs.txt (only the
-non-empty ones) and prints "serious=N heuristic=N fs=N" to stdout for
+non-empty ones) and prints "serious=N heuristic=N fs=N new_serious=N" for
 the calling shell script to eval.
 """
 import sys
@@ -52,10 +57,13 @@ def main():
         sys.exit(1)
     results_path, new_findings_path, out_prefix = sys.argv[1:4]
 
-    new_lines = _read_lines(new_findings_path)
-    is_new = set(new_lines) if new_lines else None  # None = don't filter at all
+    # Only a MISSING file means "don't filter": pmf_scan.py always writes it,
+    # so an empty one is a night with no new findings - treating that as
+    # "no filter" used to report every old heuristic hit as NEW.
+    has_new = bool(new_findings_path) and os.path.isfile(new_findings_path)
+    is_new = set(_read_lines(new_findings_path)) if has_new else None
 
-    buckets = {"serious": [], "heuristic": [], "fs": []}
+    buckets = {"serious": [], "heuristic": [], "fs": [], "serious_new": []}
     for line in _read_lines(results_path):
         _, rule = line.split("\t", 1)
         category = pmf_scan.categorize(rule)
@@ -63,13 +71,17 @@ def main():
         if tier != "serious" and is_new is not None and line not in is_new:
             continue
         buckets[tier].append(line)
+        if tier == "serious" and (is_new is None or line in is_new):
+            buckets["serious_new"].append(line)
 
     for tier, lines in buckets.items():
         if lines:
             with open(f"{out_prefix}.{tier}.txt", "w") as f:
                 f.write("\n".join(lines) + "\n")
 
-    print(" ".join(f"{tier}={len(lines)}" for tier, lines in buckets.items()))
+    counts = {tier: len(lines) for tier, lines in buckets.items()}
+    counts["new_serious"] = counts.pop("serious_new")
+    print(" ".join(f"{k}={v}" for k, v in counts.items()))
 
 
 if __name__ == "__main__":
