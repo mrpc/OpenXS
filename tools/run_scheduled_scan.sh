@@ -38,6 +38,7 @@ APT_SECURITY_ENABLED="1"
 VMRSS_MAX_MB="2000"
 YARA_PARANOIA_LEVEL="1"
 ALERT_MIN_SEVERITY="all"
+FS_ROLLING_DAYS="7"
 COMPOSER_TRUST_MIN_AGE_DAYS="90"
 COMPOSER_TRUST_MIN_DOWNLOADS="1000"
 COMPOSER_TRUST_L2_MIN_AGE_DAYS="180"
@@ -68,6 +69,7 @@ if [ -f "$CONFIG" ]; then
             VMRSS_MAX_MB) VMRSS_MAX_MB="$value" ;;
             YARA_PARANOIA_LEVEL) YARA_PARANOIA_LEVEL="$value" ;;
             ALERT_MIN_SEVERITY) ALERT_MIN_SEVERITY="$value" ;;
+            FS_ROLLING_DAYS) FS_ROLLING_DAYS="$value" ;;
             COMPOSER_TRUST_MIN_AGE_DAYS) COMPOSER_TRUST_MIN_AGE_DAYS="$value" ;;
             COMPOSER_TRUST_MIN_DOWNLOADS) COMPOSER_TRUST_MIN_DOWNLOADS="$value" ;;
             COMPOSER_TRUST_L2_MIN_AGE_DAYS) COMPOSER_TRUST_L2_MIN_AGE_DAYS="$value" ;;
@@ -131,11 +133,13 @@ for target in "${SCAN_TARGETS[@]}"; do
     fi
 done
 export OPENXS_SCAN_LABEL="$FS_SCAN_ROOT"
-# accounts mode: full fs checks only on the web roots, directory-only
-# checks on the rest of ACCOUNTS_DIR (pmf_scan.py / fs_scan.scan_dirs)
+# accounts mode: full fs checks every night on the web roots, the rest of
+# each account home on a FS_ROLLING_DAYS rotation (pmf_scan.py /
+# fs_scan.rolling_homes; 0 = never outside the web roots)
 if [ "$SCAN_MODE" = "accounts" ]; then
     OPENXS_FS_ROOTS=$(printf '%s\n' "${SCAN_TARGETS[@]}")
     export OPENXS_FS_ROOTS
+    export OPENXS_FS_ROLLING_DAYS="$FS_ROLLING_DAYS"
 fi
 export OPENXS_QUARANTINE_ENABLED="$QUARANTINE_ENABLED"
 export OPENXS_CHANGED_HOURS="$CHANGED_HOURS"

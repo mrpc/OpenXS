@@ -1176,21 +1176,31 @@ def main():
         scan_root = os.environ.get("OPENXS_SCAN_LABEL")
         fs_findings = []
         # OPENXS_FS_ROOTS (newline-separated, set by run_scheduled_scan.sh
-        # in accounts mode): the full per-file fs checks run on the same
-        # web roots the YARA/ClamAV pass covers, and the rest of the
-        # accounts dir only gets the cheap directory-only checks (see
-        # fs_scan.scan_dirs). Unset = the old behavior, full scan of
-        # scan_root.
+        # in accounts mode): the full per-file fs checks run every night on
+        # the same web roots the YARA/ClamAV pass covers; the rest of each
+        # account home is fs-checked on a rolling basis, one night in
+        # OPENXS_FS_ROLLING_DAYS per account (fs_scan.rolling_homes),
+        # skipping panel-disabled sites. Unset = the old behavior, full
+        # scan of scan_root.
         fs_roots = [r for r in os.environ.get("OPENXS_FS_ROOTS", "").split("\n") if r]
         if scan_root and os.path.isdir(scan_root):
             import fs_scan
             prune = [p for p in ignore_patterns[0] if p.endswith("/")]
             if fs_roots:
-                raw = fs_scan.scan_dirs(scan_root, 3)
+                raw = []
                 for fs_root in fs_roots:
                     if os.path.isdir(fs_root):
                         raw += fs_scan.scan(fs_root, prune)
-                raw = list(dict.fromkeys(raw))  # a dir seen by both passes
+                import disabled_sites
+                days = int(os.environ.get("OPENXS_FS_ROLLING_DAYS", "7") or "0")
+                tonight = fs_scan.rolling_homes(scan_root, days, int(time.time() // 86400),
+                                                disabled_sites.disabled_homes())
+                # web roots were just covered above - don't walk them twice
+                skip_web = [r.rstrip("/") + "/" for r in fs_roots]
+                for home in tonight:
+                    raw += fs_scan.scan(home, prune + skip_web)
+                print(f"# fs: {len(fs_roots)} web root(s) in full, {len(tonight)} home(s) "
+                      f"outside the web root on the {days}-day rotation", file=sys.stderr)
             else:
                 raw = fs_scan.scan(scan_root, prune)
             fs_findings = [(p, r) for p, r in raw if not is_ignored(p, *ignore_patterns)]

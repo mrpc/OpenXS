@@ -101,36 +101,24 @@ def _dir_findings(dirpath, st):
     return findings
 
 
-def scan_dirs(root, max_depth):
-    """Directory-only checks (world-writable, hidden dir owned by nobody)
-    down to max_depth levels below root, without listing anything deeper
-    and without opening a single file. For the parts of an accounts dir
-    outside the web roots (home dirs, public_ftp/incoming, .backup): found
-    2026-11-08 that the full per-file scan of all of /home took 67% of an
-    8.5h scheduled scan, and over 3 scans its only findings outside the
-    web roots were 3-5 world-writable dirs at depth 2-3."""
-    findings = []
-
-    def visit(path, depth):
-        try:
-            st = os.lstat(path)
-        except OSError:
-            return
-        if not stat.S_ISDIR(st.st_mode):
-            return
-        findings.extend(_dir_findings(path, st))
-        if depth >= max_depth:
-            return
-        try:
-            entries = list(os.scandir(path))
-        except OSError:
-            return
-        for e in entries:
-            if e.is_dir(follow_symlinks=False):
-                visit(e.path, depth + 1)
-
-    visit(root, 0)
-    return findings
+def rolling_homes(accounts_dir, days, day_index, skip=()):
+    """The account homes whose turn it is tonight for the full fs checks
+    outside their web root: each account gets one night in `days`, chosen
+    by a stable hash of its name (so adding/removing an account never
+    reshuffles the others). Homes in `skip` (panel-disabled sites) are
+    left out. Found 2026-11-08: fs-checking all of /home every night took
+    67% (5.7h) of an 8.5h scan on one server, for nothing found outside
+    the web roots over 3 scans but a few world-writable dirs."""
+    import zlib
+    if days <= 0:
+        return []
+    try:
+        entries = sorted(e.path for e in os.scandir(accounts_dir) if e.is_dir(follow_symlinks=False))
+    except OSError:
+        return []
+    skip = {h.rstrip("/") for h in skip}
+    return [h for h in entries
+            if h not in skip and zlib.crc32(os.path.basename(h).encode()) % days == day_index % days]
 
 
 def scan(root, prune=()):
