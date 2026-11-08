@@ -644,7 +644,11 @@ def record_findings(root, wp_results, revive_results, drupal_results, joomla_res
              + len(joomla_db_results) + len(drupal_db_results) + len(wp_sensitive_plugin_results))
     try:
         import openxs_db
-        openxs_db.record_scan(root, total, findings)
+        # "versions:" prefix: this pass runs right after the full scan of the
+        # same root, and under the bare root its few-thousand-file row
+        # looked like the latest full scan (a "latest scan of /home" read
+        # once reported 0 serious hits that the real scan had found).
+        openxs_db.record_scan(f"versions:{root}", total, findings)
     except Exception as e:
         print(f"# (version scan history not recorded: {e})", file=sys.stderr)
 

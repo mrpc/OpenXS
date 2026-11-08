@@ -38,6 +38,10 @@ Release from that section's text.
   the send by itself.
 
 ### Fixed
+- `version_scan.py` recorded its scan-history row under the same path as
+  the full scan it follows (e.g. `/home`, a few thousand files, 0s), so it
+  looked like the latest full scan. Now recorded as `versions:<root>` and
+  shown as source "Versions" in Findings/Reports.
 - Alert e-mail: on a night with no new findings, every old heuristic/fs
   hit was reported as NEW (an empty `new_findings.txt` was treated as
   "don't filter").
