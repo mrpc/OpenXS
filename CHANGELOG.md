@@ -68,6 +68,13 @@ Release from that section's text.
   `attach_disconnected` appeared, and its grep never matched).
 
 ### Changed
+- Scheduled scan: directory entries in the ignore files (plain lines ending
+  in `/`, e.g. `public_html/var/emails/`) are now pruned in the filelist
+  `find` itself, instead of walking and listing every file below them only
+  for `pmf_scan.py` to drop each one. On a host with 18M ignored data files
+  this was a 2.27GB filelist rebuilt every night. `regex:` entries are
+  still filtered per file (a regex can match a directory without matching
+  every file below it).
 - Sites the hosting panel has disabled (Virtualmin `disabled=...web...`,
   cPanel `/var/cpanel/suspended/<user>`) are skipped by the outdated-
   version check, the mailbox virus scan and the real-time watch (fewer

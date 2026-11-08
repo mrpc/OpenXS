@@ -98,13 +98,36 @@ fi
 # otherwise never even reach YARA/ClamAV, since find would filter it out
 # by name alone before either engine sees its content. FAST_PHP_ONLY=1
 # trades that off for speed on very large sites.
+#
+# Directory entries in the ignore files (plain substring lines ending in
+# "/", e.g. "public_html/var/emails/") are pruned right in find: every
+# file under such a directory would be ignored by pmf_scan.py anyway, so
+# walking and listing them was pure cost (found 2026-11-08: 18M ignored
+# files still walked every night, a 2.27GB filelist). Only these are safe
+# to prune by directory - a regex: line can match a directory without
+# matching every file below it, so those keep being filtered per file.
+PRUNE=()
+for ignore_file in default_ignore "${OPENXS_IGNORE_FILE:-/etc/openxs/ignore}"; do
+    [ -f "$ignore_file" ] || continue
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+            ''|'#'*|md5:*|sha256:*|regex:*) continue ;;
+            */) ;;
+            *) continue ;;
+        esac
+        # substring match on path+"/" == a directory path ending in it;
+        # escape find's glob characters
+        dir_glob=$(printf '%s' "${line%/}" | sed 's/[][*?\\]/\\&/g')
+        PRUNE+=(-path "*$dir_glob" -o)
+    done < "$ignore_file"
+done
 : > filelist.txt
 for target in "${SCAN_TARGETS[@]}"; do
     [ -d "$target" ] || continue
     if [ "$FAST_PHP_ONLY" = "1" ]; then
-        find "$target" -type f -name '*.php' >> filelist.txt
+        find "$target" -type d \( "${PRUNE[@]}" -false \) -prune -o -type f -name '*.php' -print >> filelist.txt
     else
-        find "$target" -type f >> filelist.txt
+        find "$target" -type d \( "${PRUNE[@]}" -false \) -prune -o -type f -print >> filelist.txt
     fi
 done
 export OPENXS_SCAN_LABEL="$FS_SCAN_ROOT"
