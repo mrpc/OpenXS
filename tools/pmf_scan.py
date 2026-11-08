@@ -1179,9 +1179,11 @@ def main():
         # in accounts mode): the full per-file fs checks run every night on
         # the same web roots the YARA/ClamAV pass covers; the rest of each
         # account home is fs-checked on a rolling basis, one night in
-        # OPENXS_FS_ROLLING_DAYS per account (fs_scan.rolling_homes),
-        # skipping panel-disabled sites. Unset = the old behavior, full
-        # scan of scan_root.
+        # OPENXS_ROLLING_SCAN_DAYS per account (fs_scan.rolling_homes).
+        # Panel-disabled sites are already left out of fs_roots except on
+        # their own night (disabled_sites.py tonight), so on that night
+        # they get both passes. Unset = the old behavior, full scan of
+        # scan_root.
         fs_roots = [r for r in os.environ.get("OPENXS_FS_ROOTS", "").split("\n") if r]
         if scan_root and os.path.isdir(scan_root):
             import fs_scan
@@ -1191,10 +1193,8 @@ def main():
                 for fs_root in fs_roots:
                     if os.path.isdir(fs_root):
                         raw += fs_scan.scan(fs_root, prune)
-                import disabled_sites
-                days = int(os.environ.get("OPENXS_FS_ROLLING_DAYS", "7") or "0")
-                tonight = fs_scan.rolling_homes(scan_root, days, int(time.time() // 86400),
-                                                disabled_sites.disabled_homes())
+                days = int(os.environ.get("OPENXS_ROLLING_SCAN_DAYS", "7") or "0")
+                tonight = fs_scan.rolling_homes(scan_root, days, int(time.time() // 86400))
                 # web roots were just covered above - don't walk them twice
                 skip_web = [r.rstrip("/") + "/" for r in fs_roots]
                 for home in tonight:

@@ -101,24 +101,27 @@ def _dir_findings(dirpath, st):
     return findings
 
 
-def rolling_homes(accounts_dir, days, day_index, skip=()):
-    """The account homes whose turn it is tonight for the full fs checks
-    outside their web root: each account gets one night in `days`, chosen
-    by a stable hash of its name (so adding/removing an account never
-    reshuffles the others). Homes in `skip` (panel-disabled sites) are
-    left out. Found 2026-11-08: fs-checking all of /home every night took
-    67% (5.7h) of an 8.5h scan on one server, for nothing found outside
-    the web roots over 3 scans but a few world-writable dirs."""
+def on_rotation(home, days, day_index):
+    """Whether tonight is this account's night in a `days`-night cycle -
+    a stable hash of the account name, so adding/removing an account
+    never reshuffles the others. days <= 0: no rotation (never)."""
     import zlib
     if days <= 0:
-        return []
+        return False
+    return zlib.crc32(os.path.basename(home.rstrip("/")).encode()) % days == day_index % days
+
+
+def rolling_homes(accounts_dir, days, day_index):
+    """The account homes whose turn it is tonight for the full fs checks
+    outside their web root (ROLLING_SCAN_DAYS). Found 2026-11-08:
+    fs-checking all of /home every night took 67% (5.7h) of an 8.5h scan
+    on one server, for nothing found outside the web roots over 3 scans
+    but a few world-writable dirs."""
     try:
         entries = sorted(e.path for e in os.scandir(accounts_dir) if e.is_dir(follow_symlinks=False))
     except OSError:
         return []
-    skip = {h.rstrip("/") for h in skip}
-    return [h for h in entries
-            if h not in skip and zlib.crc32(os.path.basename(h).encode()) % days == day_index % days]
+    return [h for h in entries if on_rotation(h, days, day_index)]
 
 
 def scan(root, prune=()):

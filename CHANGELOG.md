@@ -76,9 +76,12 @@ Release from that section's text.
   - the full fs checks run every night on the same web roots as the
     YARA/ClamAV pass;
   - the rest of each account home is fully fs-checked on a rotation, one
-    night in `FS_ROLLING_DAYS` (default 7, `0` = never). Accounts are
-    assigned to nights by a stable hash of their name, and panel-disabled
-    sites are skipped;
+    night in `ROLLING_SCAN_DAYS` (default 7). Accounts are assigned to
+    nights by a stable hash of their name;
+  - panel-disabled sites are no longer scanned every night. They get their
+    full scan (web root through YARA/ClamAV/fs, plus the rest of the home)
+    on their own night of the same cycle. `0` = no rotation: everything
+    every night, nothing outside the web roots;
   - ignored directories (ignore-file lines ending in `/`) are pruned from
     the fs walk too.
 - Scheduled scan: directory entries in the ignore files (plain lines ending

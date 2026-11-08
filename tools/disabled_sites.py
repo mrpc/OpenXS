@@ -4,10 +4,12 @@ A disabled site isn't served, so some checks are pure noise or waste for
 it: an outdated CMS version can't be exploited over the web, its mail
 isn't delivered, and nothing writes to it (real-time watches only cost
 inotify memory). Those checks (version_scan.py, mailbox_scan.py,
-openxs-watchd.py) skip these homes. The nightly malware scan does NOT:
-the files are still on disk and come back to life if the site is
-re-enabled or the account moved - backdoors in disabled sites are exactly
-what got quarantined on 2026-11-08.
+openxs-watchd.py) skip these homes. The malware scan does not skip them
+outright - the files are still on disk and come back to life if the site
+is re-enabled or the account moved (backdoors in disabled sites are
+exactly what got quarantined on 2026-11-08) - but scans them in full only
+on their own night of the ROLLING_SCAN_DAYS cycle (`tonight` below),
+not every night.
 
 Sources (none present = nothing is disabled, behavior unchanged):
   - Virtualmin: /etc/webmin/virtual-server/domains/<id>, key=value lines;
@@ -18,6 +20,8 @@ Sources (none present = nothing is disabled, behavior unchanged):
 import glob
 import os
 import pwd
+import sys
+import time
 
 VIRTUALMIN_DOMAINS = "/etc/webmin/virtual-server/domains"
 CPANEL_SUSPENDED = "/var/cpanel/suspended"
@@ -78,3 +82,27 @@ def walk(root, homes):
         dirnames[:] = [d for d in dirnames if os.path.join(dirpath, d).rstrip("/") not in homes]
         yield dirpath, dirnames, filenames
 
+
+
+def tonight_targets(targets, days, day_index, homes):
+    """Scan targets to keep tonight: everything not under a disabled home,
+    plus disabled ones on their own night (fs_scan.on_rotation, the same
+    night their home gets its rolling fs pass). days <= 0: no rotation,
+    keep everything."""
+    import fs_scan
+    if days <= 0:
+        return list(targets)
+    keep = []
+    for t in targets:
+        home = next((h for h in homes if t.rstrip("/") == h or t.startswith(h + "/")), None)
+        if home is None or fs_scan.on_rotation(home, days, day_index):
+            keep.append(t)
+    return keep
+
+
+if __name__ == "__main__":
+    # run_scheduled_scan.sh: disabled_sites.py tonight <days> <target>...
+    if len(sys.argv) >= 3 and sys.argv[1] == "tonight":
+        for t in tonight_targets(sys.argv[3:], int(sys.argv[2] or "0"),
+                                 int(time.time() // 86400), disabled_homes()):
+            print(t)

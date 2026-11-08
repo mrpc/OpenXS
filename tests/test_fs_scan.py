@@ -192,16 +192,15 @@ def test_similarly_named_current_style_symlink_elsewhere_is_still_flagged(tmp_pa
         outside.unlink()
 
 
-def test_rolling_homes_covers_every_home_once_per_cycle_and_skips_disabled(tmp_path):
+def test_rolling_homes_covers_every_home_once_per_cycle(tmp_path):
     names = [f"acct{i}" for i in range(20)]
     for n in names:
         (tmp_path / n).mkdir()
     (tmp_path / "file").write_text("x")
-    off = str(tmp_path / "acct3")
     seen = []
     for day in range(7):
-        seen += fs_scan.rolling_homes(str(tmp_path), 7, day, skip=[off])
-    assert sorted(seen) == sorted(str(tmp_path / n) for n in names if n != "acct3")
+        seen += fs_scan.rolling_homes(str(tmp_path), 7, day)
+    assert sorted(seen) == sorted(str(tmp_path / n) for n in names)
     assert fs_scan.rolling_homes(str(tmp_path), 0, 0) == []
 
 
