@@ -38,7 +38,7 @@ APT_SECURITY_ENABLED="1"
 VMRSS_MAX_MB="2000"
 YARA_PARANOIA_LEVEL="1"
 ALERT_MIN_SEVERITY="all"
-FS_ROLLING_DAYS="7"
+ROLLING_SCAN_DAYS="7"
 COMPOSER_TRUST_MIN_AGE_DAYS="90"
 COMPOSER_TRUST_MIN_DOWNLOADS="1000"
 COMPOSER_TRUST_L2_MIN_AGE_DAYS="180"
@@ -69,7 +69,7 @@ if [ -f "$CONFIG" ]; then
             VMRSS_MAX_MB) VMRSS_MAX_MB="$value" ;;
             YARA_PARANOIA_LEVEL) YARA_PARANOIA_LEVEL="$value" ;;
             ALERT_MIN_SEVERITY) ALERT_MIN_SEVERITY="$value" ;;
-            FS_ROLLING_DAYS) FS_ROLLING_DAYS="$value" ;;
+            ROLLING_SCAN_DAYS) ROLLING_SCAN_DAYS="$value" ;;
             COMPOSER_TRUST_MIN_AGE_DAYS) COMPOSER_TRUST_MIN_AGE_DAYS="$value" ;;
             COMPOSER_TRUST_MIN_DOWNLOADS) COMPOSER_TRUST_MIN_DOWNLOADS="$value" ;;
             COMPOSER_TRUST_L2_MIN_AGE_DAYS) COMPOSER_TRUST_L2_MIN_AGE_DAYS="$value" ;;
@@ -87,6 +87,12 @@ cd /opt/php-malware-finder
 # also wading through mail/backups/logs under the same home directory.
 if [ "$SCAN_MODE" = "accounts" ]; then
     SCAN_TARGETS=("$ACCOUNTS_DIR"/*"${ACCOUNTS_SUBPATH:+/$ACCOUNTS_SUBPATH}")
+    # Panel-disabled sites: scanned in full one night in ROLLING_SCAN_DAYS
+    # (their own night of the cycle), not every night. On any failure keep
+    # every target - never silently scan nothing.
+    if tonight=$(python3 disabled_sites.py tonight "$ROLLING_SCAN_DAYS" "${SCAN_TARGETS[@]}"); then
+        mapfile -t SCAN_TARGETS <<<"$tonight"
+    fi
     SCAN_LABEL="$ACCOUNTS_DIR (accounts mode, */$ACCOUNTS_SUBPATH)"
     FS_SCAN_ROOT="$ACCOUNTS_DIR"
 else
@@ -133,13 +139,13 @@ for target in "${SCAN_TARGETS[@]}"; do
     fi
 done
 export OPENXS_SCAN_LABEL="$FS_SCAN_ROOT"
-# accounts mode: full fs checks every night on the web roots, the rest of
-# each account home on a FS_ROLLING_DAYS rotation (pmf_scan.py /
-# fs_scan.rolling_homes; 0 = never outside the web roots)
+# accounts mode: full fs checks every night on tonight's web roots, the
+# rest of each account home on the ROLLING_SCAN_DAYS rotation (pmf_scan.py
+# / fs_scan.rolling_homes; 0 = no rotation)
 if [ "$SCAN_MODE" = "accounts" ]; then
     OPENXS_FS_ROOTS=$(printf '%s\n' "${SCAN_TARGETS[@]}")
     export OPENXS_FS_ROOTS
-    export OPENXS_FS_ROLLING_DAYS="$FS_ROLLING_DAYS"
+    export OPENXS_ROLLING_SCAN_DAYS="$ROLLING_SCAN_DAYS"
 fi
 export OPENXS_QUARANTINE_ENABLED="$QUARANTINE_ENABLED"
 export OPENXS_CHANGED_HOURS="$CHANGED_HOURS"

@@ -54,7 +54,7 @@ FAST_PHP_ONLY=0                    # 1 = only scan *.php (faster, misses disguis
 CHANGED_HOURS=                     # blank = no time filter; N = only files changed in the last N hours
 THROTTLE_LOAD=                     # blank = disabled; pause scanning if load average exceeds this
 QUIET=0                            # suppress the scan summary line (for cron)
-FS_ROLLING_DAYS=7                  # accounts mode: fs-check each account home OUTSIDE its web root one night in N (0 = never)
+ROLLING_SCAN_DAYS=7                # accounts mode: one night in N each account's home gets fs-checked OUTSIDE its web root, and panel-disabled sites get their only (full) scan; 0 = no rotation
 WATCH_PATHS=                       # comma-separated dirs for the watch daemon; blank = every account's web root
 WATCH_EXCLUDE=                     # watch daemon: one regex of paths NOT to watch (e.g. /uploads/), saves inotify watches/RAM
 WATCH_MAX_DIRS=0                   # watch daemon refuses to start (and alerts) above this many dirs; 0 = no limit
