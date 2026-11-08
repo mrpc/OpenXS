@@ -1,7 +1,6 @@
 """Unit tests for disabled_sites.py - which homes the hosting panel has
 disabled, and the walk/exclude helpers that skip them."""
 import os
-import re
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
@@ -40,10 +39,3 @@ def test_walk_skips_disabled_home_and_is_disabled(tmp_path):
     assert not ds.is_disabled(str(tmp_path / "offshore"), homes)
     assert list(ds.walk(str(tmp_path / "off"), homes)) == []
 
-
-def test_exclude_regex_escapes_and_matches_only_under_home():
-    rx = ds.exclude_regex({"/home/a.b", "/home/c"})
-    assert re.search(rx, "/home/a.b/public_html/")
-    assert not re.search(rx, "/home/axb/public_html/")
-    assert not re.search(rx, "/home/cc/")
-    assert ds.exclude_regex(set()) == ""

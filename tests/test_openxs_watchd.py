@@ -123,16 +123,19 @@ def test_mem_does_nothing_when_debug_disabled(monkeypatch, capsys):
     assert capsys.readouterr().out == ""
 
 
-def test_inotify_cmd_adds_exclude_before_paths():
-    cmd = openxs_watchd.inotify_cmd(["/a", "/b"], "/uploads/")
-    assert cmd[-4:] == ["--exclude", "/uploads/", "/a", "/b"]
+def test_inotify_cmd_regex_filter_and_at_exclusions_after_paths():
+    cmd = openxs_watchd.inotify_cmd(["/a", "/b"], "/uploads/", ["/a/uploads"])
+    assert cmd[-5:] == ["--exclude", "/uploads/", "/a", "/b", "@/a/uploads"]
     assert "--exclude" not in openxs_watchd.inotify_cmd(["/a"])
 
 
-def test_count_dirs_skips_excluded_and_stops_at_limit(tmp_path):
+def test_plan_watches_prunes_regex_and_skip_dirs_and_stops_at_limit(tmp_path):
     for i in range(5):
         (tmp_path / "uploads" / str(i)).mkdir(parents=True)
     (tmp_path / "code").mkdir()
-    assert openxs_watchd.count_dirs([str(tmp_path)]) == 8
-    assert openxs_watchd.count_dirs([str(tmp_path)], "/uploads/") == 2
-    assert openxs_watchd.count_dirs([str(tmp_path)], limit=3) == 4
+    (tmp_path / "off" / "x").mkdir(parents=True)
+    t = str(tmp_path)
+    assert openxs_watchd.plan_watches([t]) == (10, [])
+    n, pruned = openxs_watchd.plan_watches([t], "/uploads/", [t + "/off"])
+    assert n == 2 and sorted(pruned) == sorted([t + "/off", t + "/uploads"])
+    assert openxs_watchd.plan_watches([t], limit=3)[0] == 4
