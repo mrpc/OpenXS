@@ -56,6 +56,11 @@ Release from that section's text.
   `attach_disconnected` appeared, and its grep never matched).
 
 ### Changed
+- Sites the hosting panel has disabled (Virtualmin `disabled=...web...`,
+  cPanel `/var/cpanel/suspended/<user>`) are skipped by the outdated-
+  version check, the mailbox virus scan and the real-time watch (fewer
+  inotify watches). The nightly malware scan still covers them: the files
+  stay on disk and come back if the site is re-enabled.
 - `install_clamav.sh` raises clamd's `MaxFileSize`/`MaxScanSize`/
   `StreamMaxLength` to the same PHP-derived upload size ModSecurity's
   body limit uses (`modsec_body_limit.py`), so an upload PHP accepts

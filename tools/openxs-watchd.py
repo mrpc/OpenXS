@@ -290,6 +290,16 @@ def main():
     os.environ.setdefault("OPENXS_CSF_AUTOBAN_TTL", cfg.get("CSF_AUTOBAN_TTL", "3d"))
 
     exclude = cfg.get("WATCH_EXCLUDE", "").strip()
+    # Sites the panel has disabled get no writes - watching them only costs
+    # inotify memory. Fixed at startup; a site disabled later stays watched
+    # until the next restart.
+    import disabled_sites
+    disabled = disabled_sites.disabled_homes()
+    watch_paths = [p for p in watch_paths if not disabled_sites.is_disabled(p, disabled)]
+    if not watch_paths:
+        log("Every watch path belongs to a disabled site - nothing to watch, exiting")
+        sys.exit(0)
+    exclude = "|".join(x for x in (exclude, disabled_sites.exclude_regex(disabled)) if x)
     max_dirs = int(cfg.get("WATCH_MAX_DIRS", "0") or "0")
     if max_dirs and count_dirs(watch_paths, exclude, max_dirs) > max_dirs:
         # exit 3 = RestartPreventExitStatus in the unit: still a failure
