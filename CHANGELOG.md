@@ -38,6 +38,11 @@ Release from that section's text.
   the send by itself.
 
 ### Fixed
+- `openxs-watchd.service`: `MemoryHigh=1536M` below `MemoryMax=2304M`. On
+  very large trees the watch setup fills the cgroup with reclaimable
+  dentry/inode cache and pinned it at `MemoryMax`, where inotify's own
+  `GFP_NOFS` allocations got `inotifywait` OOM-killed. Reclaim now starts
+  earlier, by throttling, never by killing.
 - `version_scan.py` recorded its scan-history row under the same path as
   the full scan it follows (e.g. `/home`, a few thousand files, 0s), so it
   looked like the latest full scan. Now recorded as `versions:<root>` and
