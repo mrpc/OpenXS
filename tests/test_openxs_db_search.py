@@ -29,6 +29,10 @@ def test_derive_source_watch():
     assert db.derive_source("watch:/home/x/shell.php") == "Watch"
 
 
+def test_derive_source_versions():
+    assert db.derive_source("versions:/home") == "Versions"
+
+
 def test_derive_source_default_scan():
     assert db.derive_source("/var/www") == "Scan"
 
