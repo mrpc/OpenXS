@@ -192,17 +192,17 @@ def test_similarly_named_current_style_symlink_elsewhere_is_still_flagged(tmp_pa
         outside.unlink()
 
 
-def test_scan_dirs_finds_shallow_world_writable_without_files_or_depth(tmp_path):
-    incoming = tmp_path / "acct" / "public_ftp" / "incoming"
-    incoming.mkdir(parents=True)
-    incoming.chmod(0o777)
-    deep = tmp_path / "acct" / "a" / "b" / "c" / "d"
-    deep.mkdir(parents=True)
-    deep.chmod(0o777)
-    elf = tmp_path / "acct" / "x"
-    elf.write_bytes(b"\x7fELF....")
-    found = dict(fs_scan.scan_dirs(str(tmp_path), 3))
-    assert found == {str(incoming): "world-writable directory"}
+def test_rolling_homes_covers_every_home_once_per_cycle_and_skips_disabled(tmp_path):
+    names = [f"acct{i}" for i in range(20)]
+    for n in names:
+        (tmp_path / n).mkdir()
+    (tmp_path / "file").write_text("x")
+    off = str(tmp_path / "acct3")
+    seen = []
+    for day in range(7):
+        seen += fs_scan.rolling_homes(str(tmp_path), 7, day, skip=[off])
+    assert sorted(seen) == sorted(str(tmp_path / n) for n in names if n != "acct3")
+    assert fs_scan.rolling_homes(str(tmp_path), 0, 0) == []
 
 
 def test_scan_prunes_ignored_directories(tmp_path):

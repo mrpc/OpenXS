@@ -70,14 +70,17 @@ Release from that section's text.
 ### Changed
 - Scheduled scan, accounts mode: the filesystem checks (symlinks, SUID,
   stray binaries, world-writable dirs...) ran over the whole accounts dir
-  (all of `/home`, including Maildirs, backups and caches), opening every
-  file there for its magic bytes. They took 67% (5.7h) of an 8.5h scan on
-  a large server, and over 3 scans found nothing outside the web roots
-  but a few world-writable dirs. The full checks now run on the same web
-  roots as the YARA/ClamAV pass. The rest of the accounts dir only gets
-  directory-only checks down to 3 levels (e.g. `public_ftp/incoming`,
-  `.backup`), without opening any file. Ignored directories
-  (ignore-file lines ending in `/`) are pruned from the fs walk too.
+  every night (all of `/home`, including Maildirs, backups and caches),
+  opening every file there for its magic bytes. On a large server that was
+  67% (5.7h) of an 8.5h scan. Now:
+  - the full fs checks run every night on the same web roots as the
+    YARA/ClamAV pass;
+  - the rest of each account home is fully fs-checked on a rotation, one
+    night in `FS_ROLLING_DAYS` (default 7, `0` = never). Accounts are
+    assigned to nights by a stable hash of their name, and panel-disabled
+    sites are skipped;
+  - ignored directories (ignore-file lines ending in `/`) are pruned from
+    the fs walk too.
 - Scheduled scan: directory entries in the ignore files (plain lines ending
   in `/`, e.g. `public_html/var/emails/`) are now pruned in the filelist
   `find` itself, instead of walking and listing every file below them only
