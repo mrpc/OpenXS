@@ -23,4 +23,8 @@ if command -v systemctl >/dev/null 2>&1; then
     systemctl enable --now clamav-daemon clamav-freshclam 2>/dev/null || true
 fi
 
+# AppArmor attach_disconnected.path + upload-sized clamd limits (see
+# clamd_tune.py). Non-fatal: inspectfile.sh still works via --stream.
+python3 "$(dirname "$0")/clamd_tune.py" || echo "==> WARNING: clamd_tune.py failed"
+
 echo "==> ClamAV ready: $CLAMDSCAN_BIN"
