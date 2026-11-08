@@ -17,6 +17,14 @@ def test_virtualmin_web_disabled_only(tmp_path):
     assert ds.disabled_homes(str(d), str(tmp_path / "none")) == {"/home/off"}
 
 
+def test_virtualmin_disabled_alias_sharing_live_home_is_not_disabled(tmp_path):
+    d = tmp_path / "domains"
+    d.mkdir()
+    (d / "1").write_text("dom=live.gr\nhome=/home/live\n")
+    (d / "2").write_text("dom=old-alias.gr\nalias=1\nhome=/home/live\ndisabled=web\n")
+    assert ds.disabled_homes(str(d), str(tmp_path / "none")) == set()
+
+
 def test_no_panel_means_nothing_disabled(tmp_path):
     assert ds.disabled_homes(str(tmp_path / "a"), str(tmp_path / "b")) == set()
 
