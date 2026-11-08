@@ -190,3 +190,26 @@ def test_similarly_named_current_style_symlink_elsewhere_is_still_flagged(tmp_pa
         assert findings.get(str(link)) == "symlink"
     finally:
         outside.unlink()
+
+
+def test_rolling_homes_covers_every_home_once_per_cycle(tmp_path):
+    names = [f"acct{i}" for i in range(20)]
+    for n in names:
+        (tmp_path / n).mkdir()
+    (tmp_path / "file").write_text("x")
+    seen = []
+    for day in range(7):
+        seen += fs_scan.rolling_homes(str(tmp_path), 7, day)
+    assert sorted(seen) == sorted(str(tmp_path / n) for n in names)
+    assert fs_scan.rolling_homes(str(tmp_path), 0, 0) == []
+
+
+def test_scan_prunes_ignored_directories(tmp_path):
+    emails = tmp_path / "var" / "emails" / "2026"
+    emails.mkdir(parents=True)
+    (emails / "bin").write_bytes(b"\x7fELF....")
+    (tmp_path / "keep").mkdir()
+    (tmp_path / "keep" / "bin").write_bytes(b"\x7fELF....")
+    found = dict(fs_scan.scan(str(tmp_path), prune=["var/emails/"]))
+    assert str(tmp_path / "keep" / "bin") in found
+    assert not any("/var/emails/" in p for p in found)
