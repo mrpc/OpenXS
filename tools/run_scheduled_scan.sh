@@ -189,32 +189,48 @@ eval "$(python3 split_scan_results.py scan_results.txt new_findings.txt scan_res
 serious="${serious:-0}"
 heuristic="${heuristic:-0}"
 fs="${fs:-0}"
+new_serious="${new_serious:-0}"
 
-# ALERT_MIN_SEVERITY=serious: skip the email entirely when the only
-# things found are advisory-only noise (routine heuristic/fs hits,
-# pending apt updates, outdated core, whitelist/integrity drift) -
-# someone who only wants to be interrupted for something that actually
-# needs acting on now. db_hit_count (WordPress DB-content backdoors) and
-# mailbox_count (actual virus in a mailbox) count as "serious" here too,
-# same as the YARA/ClamAV/maldet bucket - both are real malicious
-# content, not an advisory. The default ("all") keeps today's behavior:
-# any non-zero category sends.
+# ALERT_MIN_SEVERITY decides what can trigger the e-mail by itself:
+#   all         - anything found (default, the original behavior)
+#   serious     - a serious hit (virus/known exploit/maldet), a WordPress
+#                 DB-content backdoor or a mailbox virus, even if already
+#                 reported before - unresolved real malware keeps nagging
+#   new         - only findings seen for the first time (any tier) or a
+#                 mailbox virus (mailbox_scan.py only looks at recent mail)
+#   new_serious - only a first-seen serious hit or a mailbox virus
+# The "new" modes ignore states that repeat every night until someone acts
+# (outdated core, apt updates, drift/integrity, DB-content hits) - they'd
+# otherwise never be quiet. Whatever triggers it, the e-mail body still
+# shows everything.
 should_alert=0
-if [ "$ALERT_MIN_SEVERITY" = "serious" ]; then
-    [ "$serious" -gt 0 ] && should_alert=1
-    [ "$db_hit_count" -gt 0 ] && should_alert=1
-    [ "$mailbox_count" -gt 0 ] && should_alert=1
-else
-    if [ "$hits" -gt 0 ] || [ "$drift_count" -gt 0 ] || [ "$fim_count" -gt 0 ] || [ "$version_count" -gt 0 ] || [ "$apt_count" -gt 0 ] || [ "$mailbox_count" -gt 0 ] || [ "$db_hit_count" -gt 0 ]; then
-        should_alert=1
-    fi
-fi
+case "$ALERT_MIN_SEVERITY" in
+    serious)
+        [ "$serious" -gt 0 ] && should_alert=1
+        [ "$db_hit_count" -gt 0 ] && should_alert=1
+        [ "$mailbox_count" -gt 0 ] && should_alert=1 ;;
+    new)
+        [ $((new_serious + heuristic + fs + mailbox_count)) -gt 0 ] && should_alert=1 ;;
+    new_serious)
+        [ $((new_serious + mailbox_count)) -gt 0 ] && should_alert=1 ;;
+    *)
+        if [ "$hits" -gt 0 ] || [ "$drift_count" -gt 0 ] || [ "$fim_count" -gt 0 ] || [ "$version_count" -gt 0 ] || [ "$apt_count" -gt 0 ] || [ "$mailbox_count" -gt 0 ] || [ "$db_hit_count" -gt 0 ]; then
+            should_alert=1
+        fi ;;
+esac
 
 if [ "$should_alert" -eq 1 ]; then
+    new_serious_subject=""
+    [ "$new_serious" -gt 0 ] && new_serious_subject="$new_serious NEW SERIOUS, "
     {
+        if [ "$new_serious" -gt 0 ]; then
+            echo "=== $new_serious NEW SERIOUS hit(s) - first time seen, likely a freshly compromised site ==="
+            sort scan_results.serious_new.txt
+            echo ""
+        fi
         if [ "$serious" -gt 0 ]; then
-            echo "=== $serious SERIOUS hit(s) (virus/known exploit/maldet) on $HOST ($SCAN_LABEL) ==="
-            cat scan_results.serious.txt
+            echo "=== $serious SERIOUS hit(s) in total (virus/known exploit/maldet) on $HOST ($SCAN_LABEL), including ones already reported - still there, still need cleaning ==="
+            sort scan_results.serious.txt
             echo ""
         fi
         if [ "$heuristic" -gt 0 ] || [ "$fs" -gt 0 ]; then
@@ -250,5 +266,5 @@ if [ "$should_alert" -eq 1 ]; then
             echo "=== Mailbox virus scan: $mailbox_count infected file(s) ==="
             echo "$mailbox_output"
         fi
-    } | mail -s "[$HOST] OpenXS: $serious serious, $heuristic heuristic, $fs fs-hygiene, $drift_count drift, $fim_count integrity, $version_count outdated, $db_hit_count db-content, $apt_count apt-security, $mailbox_count mail-virus" "$EMAIL"
+    } | mail -s "[$HOST] OpenXS: ${new_serious_subject}$serious serious, $heuristic heuristic, $fs fs-hygiene, $drift_count drift, $fim_count integrity, $version_count outdated, $db_hit_count db-content, $apt_count apt-security, $mailbox_count mail-virus" "$EMAIL"
 fi
