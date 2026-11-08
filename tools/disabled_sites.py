@@ -78,12 +78,3 @@ def walk(root, homes):
         dirnames[:] = [d for d in dirnames if os.path.join(dirpath, d).rstrip("/") not in homes]
         yield dirpath, dirnames, filenames
 
-
-def exclude_regex(homes):
-    """POSIX ERE (inotifywait --exclude) matching anything under a disabled
-    home, or "" if none."""
-    if not homes:
-        return ""
-    def ere(s):
-        return "".join("\\" + c if c in ".[]()*+?{}|^$\\" else c for c in s)
-    return "^(" + "|".join(ere(h) for h in sorted(homes)) + ")/"
