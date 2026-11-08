@@ -30,6 +30,23 @@ Release from that section's text.
   in that e-mail's body - this only changes what's allowed to trigger
   the send by itself.
 
+### Fixed
+- ClamAV upload checks on AppArmor 4.1 (Debian 13): plain
+  `attach_disconnected` didn't stop clamd's "disconnected path" denials
+  for mod_security's PrivateTmp upload files, so every upload fell back
+  to `--stream`. New `tools/clamd_tune.py`, run by `install_clamav.sh`
+  (and so by the Settings "Re-apply recommended config" button), adds
+  `attach_disconnected.path=/` to clamd's profile and reloads it,
+  restoring the original if the parser rejects it. The Settings warning
+  now detects this case (it used to go quiet as soon as the word
+  `attach_disconnected` appeared, and its grep never matched).
+
+### Changed
+- `install_clamav.sh` raises clamd's `MaxFileSize`/`MaxScanSize`/
+  `StreamMaxLength` to the same PHP-derived upload size ModSecurity's
+  body limit uses (`modsec_body_limit.py`), so an upload PHP accepts
+  isn't silently skipped by clamd. Never lowers an existing higher value.
+
 ## [v0.3.0] - 2026-11-03
 
 ### Signatures

@@ -368,15 +368,18 @@ return $out ne "" ? 1 : 0;
 
 sub openxs_clamav_apparmor_issue
 {
-# True only when the profile exists, lacks the attach_disconnected fix
-# (see servers/prodserver.pramnoshosting.gr.md, 2026-10-24), AND the
-# resulting denial has actually fired recently - so this never warns
-# about a system that will simply never hit the pattern.
+# True only when the profile exists, lacks attach_disconnected.path=/
+# (plain attach_disconnected isn't enough on AppArmor 4.1 - see
+# tools/clamd_tune.py), AND the resulting denial has actually fired -
+# so this never warns about a system that will never hit the pattern.
+# Grep order matters: the kernel line has info="...disconnected path"
+# BEFORE profile="/usr/sbin/clamd", so 'clamd.*disconnected path' never
+# matches.
 my $profile = '/etc/apparmor.d/usr.sbin.clamd';
 return 0 if (!-f $profile);
-my $has_fix = `grep -c attach_disconnected '$profile' 2>/dev/null`;
+my $has_fix = `grep -c 'attach_disconnected.path' '$profile' 2>/dev/null`;
 return 0 if ($has_fix + 0 > 0);
-my $denied = `dmesg -T 2>/dev/null | grep -c 'clamd.*disconnected path'`;
+my $denied = `dmesg 2>/dev/null | grep 'disconnected path' | grep -c clamd`;
 return $denied + 0 > 0 ? 1 : 0;
 }
 
