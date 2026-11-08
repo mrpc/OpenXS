@@ -17,13 +17,17 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pmf_scan
+import disabled_sites
 
 MAIL_SUBDIRS = {"cur", "new", "tmp"}  # standard maildir format, including nested IMAP subfolders
 
 
-def find_maildirs(accounts_dir):
+def find_maildirs(accounts_dir, disabled_homes=None):
+    """Skips sites the panel has disabled - no mail is delivered there."""
+    if disabled_homes is None:
+        disabled_homes = disabled_sites.disabled_homes()
     maildirs = []
-    for dirpath, dirnames, _ in os.walk(accounts_dir):
+    for dirpath, dirnames, _ in disabled_sites.walk(accounts_dir, disabled_homes):
         if "Maildir" in dirnames:
             maildirs.append(os.path.join(dirpath, "Maildir"))
             dirnames.remove("Maildir")  # don't walk into it here - iter_mail_files does that separately
