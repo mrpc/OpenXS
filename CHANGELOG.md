@@ -38,6 +38,13 @@ Release from that section's text.
   the send by itself.
 
 ### Fixed
+- `WATCH_EXCLUDE` never actually reduced inotify watches or memory:
+  inotifywait's `--exclude` only filters events, and `-r` still put a
+  watch on every matching directory (verified with inotify-tools 4.23, and
+  live: 118k watches before and after excluding 18M-file trees). watchd now
+  resolves the regex to the matching directories at startup and passes
+  them as inotifywait `@<dir>` exclusions, which do prevent the watches.
+  The same applies to the disabled-site homes from the previous change.
 - `openxs-watchd.service`: `MemoryHigh=1536M` below `MemoryMax=2304M`. On
   very large trees the watch setup fills the cgroup with reclaimable
   dentry/inode cache and pinned it at `MemoryMax`, where inotify's own

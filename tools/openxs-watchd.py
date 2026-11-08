@@ -218,36 +218,45 @@ def scan_one(fname, ignore, custom_rules, path_overrides, global_fast_php_only):
     _mem("after-db-record", fname)
 
 
-def inotify_cmd(watch_paths, exclude=""):
-    """WATCH_EXCLUDE is one POSIX extended regex matched against full
-    paths; with -r inotifywait never adds watches under a matching dir,
-    which is the point - a per-photo uploads tree once cost 340k watches
-    and >2GB of cgroup memory before a single event arrived."""
+def inotify_cmd(watch_paths, exclude="", skip_dirs=()):
+    """skip_dirs are passed as inotifywait's "@<dir>" exclusions - the only
+    thing that keeps -r from putting a watch on a directory. --exclude
+    (WATCH_EXCLUDE) only filters EVENTS: verified 2026-11-08 with
+    inotify-tools 4.23 (7 watches with or without --exclude, 3 with @),
+    and live on a 26M-file host where it left all 118k watches in place.
+    It's still passed, for files/dirs matching it that appear later inside
+    a watched directory (-r adds watches for new dirs on its own)."""
     cmd = ["inotifywait", "-m", "-r", "-e", "create,modify,moved_to", "--format", "%w%f"]
     if exclude:
         cmd += ["--exclude", exclude]
-    return cmd + watch_paths
+    # ponytail: one argv entry per skipped dir; switch to --fromfile if a
+    # regex ever resolves to tens of thousands of directories.
+    return cmd + watch_paths + ["@" + d for d in skip_dirs]
 
 
-def count_dirs(watch_paths, exclude="", limit=0):
-    """Directories inotifywait -r would put a watch on, stopping early
-    once past `limit` (no point walking all 350k). Off by default: even
-    116k dirs set up fine - the cgroup's MemoryCurrent climbs to
-    MemoryMax during setup, but that's reclaimable dentry/inode slab,
-    not real memory (anon stayed ~37MB, no OOM-kill)."""
+def plan_watches(watch_paths, exclude="", skip=(), limit=0):
+    """(directories inotifywait -r would watch, directories to pass as @
+    exclusions). Walks the tree once, pruning at every directory under a
+    `skip` path or matching the WATCH_EXCLUDE regex (inotifywait matches
+    dirs with a trailing slash, so the regex is tried that way too), so
+    the excluded trees themselves are never walked. Stops counting once
+    past `limit` (no point walking all 350k) - the exclusion list is
+    incomplete then, but the caller refuses to start anyway."""
     import re
     rx = re.compile(exclude) if exclude else None
-    n = 0
+    skip = {s.rstrip("/") for s in skip}
+    n, pruned = 0, []
     for top in watch_paths:
         for root, dirs, _ in os.walk(top):
-            # inotifywait matches dirs with a trailing slash
-            if rx and rx.search(root.rstrip("/") + "/"):
+            root = root.rstrip("/")
+            if root in skip or (rx and rx.search(root + "/")):
+                pruned.append(root)
                 dirs[:] = []
                 continue
             n += 1
             if limit and n > limit:
-                return n
-    return n
+                return n, pruned
+    return n, pruned
 
 
 def main():
@@ -299,16 +308,19 @@ def main():
     if not watch_paths:
         log("Every watch path belongs to a disabled site - nothing to watch, exiting")
         sys.exit(0)
-    exclude = "|".join(x for x in (exclude, disabled_sites.exclude_regex(disabled)) if x)
     max_dirs = int(cfg.get("WATCH_MAX_DIRS", "0") or "0")
-    if max_dirs and count_dirs(watch_paths, exclude, max_dirs) > max_dirs:
-        # exit 3 = RestartPreventExitStatus in the unit: still a failure
-        # (OnFailure alert fires) but no restart loop re-walking the tree
-        log(f"More than {max_dirs} directories to watch (WATCH_MAX_DIRS) - refusing to start. Set WATCH_EXCLUDE "
-            f"for the big upload/cache trees, or raise WATCH_MAX_DIRS (0 = no limit).")
-        sys.exit(3)
+    skip_dirs = sorted(disabled)
+    if exclude or max_dirs:
+        n_dirs, skip_dirs = plan_watches(watch_paths, exclude, disabled, max_dirs)
+        if max_dirs and n_dirs > max_dirs:
+            # exit 3 = RestartPreventExitStatus in the unit: still a failure
+            # (OnFailure alert fires) but no restart loop re-walking the tree
+            log(f"More than {max_dirs} directories to watch (WATCH_MAX_DIRS) - refusing to start. Set WATCH_EXCLUDE "
+                f"for the big upload/cache trees, or raise WATCH_MAX_DIRS (0 = no limit).")
+            sys.exit(3)
+        log(f"{n_dirs} directories to watch, {len(skip_dirs)} excluded tree(s)")
     log(f"Starting, watching: {', '.join(watch_paths)}" + (f" (excluding {exclude})" if exclude else ""))
-    cmd = inotify_cmd(watch_paths, exclude)
+    cmd = inotify_cmd(watch_paths, exclude, skip_dirs)
     # surrogateescape: a file name with a raw non-UTF-8 byte (legacy
     # Latin-1/Greek-codepage uploads) used to raise UnicodeDecodeError
     # here and kill the whole daemon. The escaped str round-trips back to
