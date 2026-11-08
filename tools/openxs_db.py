@@ -697,6 +697,8 @@ def derive_source(scan_path):
         return "Migrated"
     if scan_path.startswith("watch:"):
         return "Watch"
+    if scan_path.startswith("versions:"):
+        return "Versions"
     return "Scan"
 
 
