@@ -24,7 +24,7 @@ CPANEL_SUSPENDED = "/var/cpanel/suspended"
 
 
 def _virtualmin_homes(domains_dir):
-    homes = set()
+    homes, active = set(), set()
     for path in glob.glob(os.path.join(domains_dir, "*")):
         cfg = {}
         try:
@@ -35,9 +35,16 @@ def _virtualmin_homes(domains_dir):
                         cfg[k] = v
         except OSError:
             continue
-        if "web" in cfg.get("disabled", "").split(",") and cfg.get("home"):
-            homes.add(cfg["home"].rstrip("/"))
-    return homes
+        home = cfg.get("home", "").rstrip("/")
+        if not home:
+            continue
+        if "web" in cfg.get("disabled", "").split(","):
+            homes.add(home)
+        else:
+            active.add(home)
+    # Alias/sub-domain files carry their own disabled= but can share a home
+    # with a live domain - never skip a home any active domain still uses.
+    return homes - active
 
 
 def _cpanel_homes(suspended_dir):
