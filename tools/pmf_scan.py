@@ -1175,10 +1175,25 @@ def main():
             pass
         scan_root = os.environ.get("OPENXS_SCAN_LABEL")
         fs_findings = []
+        # OPENXS_FS_ROOTS (newline-separated, set by run_scheduled_scan.sh
+        # in accounts mode): the full per-file fs checks run on the same
+        # web roots the YARA/ClamAV pass covers, and the rest of the
+        # accounts dir only gets the cheap directory-only checks (see
+        # fs_scan.scan_dirs). Unset = the old behavior, full scan of
+        # scan_root.
+        fs_roots = [r for r in os.environ.get("OPENXS_FS_ROOTS", "").split("\n") if r]
         if scan_root and os.path.isdir(scan_root):
             import fs_scan
-            fs_findings = [(p, r) for p, r in fs_scan.scan(scan_root)
-                           if not is_ignored(p, *ignore_patterns)]
+            prune = [p for p in ignore_patterns[0] if p.endswith("/")]
+            if fs_roots:
+                raw = fs_scan.scan_dirs(scan_root, 3)
+                for fs_root in fs_roots:
+                    if os.path.isdir(fs_root):
+                        raw += fs_scan.scan(fs_root, prune)
+                raw = list(dict.fromkeys(raw))  # a dir seen by both passes
+            else:
+                raw = fs_scan.scan(scan_root, prune)
+            fs_findings = [(p, r) for p, r in raw if not is_ignored(p, *ignore_patterns)]
         for fname, rule in fs_findings:
             print(f"{fname}\t{rule}")
             findings.append((fname, rule))

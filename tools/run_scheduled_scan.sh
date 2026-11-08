@@ -131,6 +131,12 @@ for target in "${SCAN_TARGETS[@]}"; do
     fi
 done
 export OPENXS_SCAN_LABEL="$FS_SCAN_ROOT"
+# accounts mode: full fs checks only on the web roots, directory-only
+# checks on the rest of ACCOUNTS_DIR (pmf_scan.py / fs_scan.scan_dirs)
+if [ "$SCAN_MODE" = "accounts" ]; then
+    OPENXS_FS_ROOTS=$(printf '%s\n' "${SCAN_TARGETS[@]}")
+    export OPENXS_FS_ROOTS
+fi
 export OPENXS_QUARANTINE_ENABLED="$QUARANTINE_ENABLED"
 export OPENXS_CHANGED_HOURS="$CHANGED_HOURS"
 export OPENXS_THROTTLE_LOAD="$THROTTLE_LOAD"

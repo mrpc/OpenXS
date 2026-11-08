@@ -86,25 +86,69 @@ def magic_kind(path):
     return None
 
 
-def scan(root):
+def _dir_findings(dirpath, st):
+    findings = []
+    if stat.S_ISDIR(st.st_mode) and st.st_mode & stat.S_IWOTH:
+        findings.append((dirpath, "world-writable directory"))
+    if os.path.basename(dirpath).startswith("."):
+        try:
+            import pwd
+            owner = pwd.getpwuid(st.st_uid).pw_name
+        except Exception:
+            owner = None
+        if owner == "nobody":
+            findings.append((dirpath, "hidden directory owned by nobody"))
+    return findings
+
+
+def scan_dirs(root, max_depth):
+    """Directory-only checks (world-writable, hidden dir owned by nobody)
+    down to max_depth levels below root, without listing anything deeper
+    and without opening a single file. For the parts of an accounts dir
+    outside the web roots (home dirs, public_ftp/incoming, .backup): found
+    2026-11-08 that the full per-file scan of all of /home took 67% of an
+    8.5h scheduled scan, and over 3 scans its only findings outside the
+    web roots were 3-5 world-writable dirs at depth 2-3."""
+    findings = []
+
+    def visit(path, depth):
+        try:
+            st = os.lstat(path)
+        except OSError:
+            return
+        if not stat.S_ISDIR(st.st_mode):
+            return
+        findings.extend(_dir_findings(path, st))
+        if depth >= max_depth:
+            return
+        try:
+            entries = list(os.scandir(path))
+        except OSError:
+            return
+        for e in entries:
+            if e.is_dir(follow_symlinks=False):
+                visit(e.path, depth + 1)
+
+    visit(root, 0)
+    return findings
+
+
+def scan(root, prune=()):
+    """prune: ignore-file directory entries (plain substrings ending in
+    "/") - a directory whose path+"/" contains one is never walked, the
+    same pruning the scheduled scan's find does (every file below it would
+    be ignored anyway)."""
     findings = []
     real_root = os.path.realpath(root)
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        if prune:
+            dirnames[:] = [d for d in dirnames
+                           if not any(p in os.path.join(dirpath, d) + "/" for p in prune)]
         try:
             st = os.stat(dirpath)
         except OSError:
             continue
-        if stat.S_ISDIR(st.st_mode) and st.st_mode & stat.S_IWOTH:
-            findings.append((dirpath, "world-writable directory"))
-        base = os.path.basename(dirpath)
-        if base.startswith("."):
-            try:
-                import pwd
-                owner = pwd.getpwuid(st.st_uid).pw_name
-            except Exception:
-                owner = None
-            if owner == "nobody":
-                findings.append((dirpath, "hidden directory owned by nobody"))
+        findings.extend(_dir_findings(dirpath, st))
         for name in filenames:
             path = os.path.join(dirpath, name)
             try:
