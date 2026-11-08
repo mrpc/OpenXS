@@ -86,25 +86,60 @@ def magic_kind(path):
     return None
 
 
-def scan(root):
+def _dir_findings(dirpath, st):
+    findings = []
+    if stat.S_ISDIR(st.st_mode) and st.st_mode & stat.S_IWOTH:
+        findings.append((dirpath, "world-writable directory"))
+    if os.path.basename(dirpath).startswith("."):
+        try:
+            import pwd
+            owner = pwd.getpwuid(st.st_uid).pw_name
+        except Exception:
+            owner = None
+        if owner == "nobody":
+            findings.append((dirpath, "hidden directory owned by nobody"))
+    return findings
+
+
+def on_rotation(home, days, day_index):
+    """Whether tonight is this account's night in a `days`-night cycle -
+    a stable hash of the account name, so adding/removing an account
+    never reshuffles the others. days <= 0: no rotation (never)."""
+    import zlib
+    if days <= 0:
+        return False
+    return zlib.crc32(os.path.basename(home.rstrip("/")).encode()) % days == day_index % days
+
+
+def rolling_homes(accounts_dir, days, day_index):
+    """The account homes whose turn it is tonight for the full fs checks
+    outside their web root (ROLLING_SCAN_DAYS). Found 2026-11-08:
+    fs-checking all of /home every night took 67% (5.7h) of an 8.5h scan
+    on one server, for nothing found outside the web roots over 3 scans
+    but a few world-writable dirs."""
+    try:
+        entries = sorted(e.path for e in os.scandir(accounts_dir) if e.is_dir(follow_symlinks=False))
+    except OSError:
+        return []
+    return [h for h in entries if on_rotation(h, days, day_index)]
+
+
+def scan(root, prune=()):
+    """prune: ignore-file directory entries (plain substrings ending in
+    "/") - a directory whose path+"/" contains one is never walked, the
+    same pruning the scheduled scan's find does (every file below it would
+    be ignored anyway)."""
     findings = []
     real_root = os.path.realpath(root)
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        if prune:
+            dirnames[:] = [d for d in dirnames
+                           if not any(p in os.path.join(dirpath, d) + "/" for p in prune)]
         try:
             st = os.stat(dirpath)
         except OSError:
             continue
-        if stat.S_ISDIR(st.st_mode) and st.st_mode & stat.S_IWOTH:
-            findings.append((dirpath, "world-writable directory"))
-        base = os.path.basename(dirpath)
-        if base.startswith("."):
-            try:
-                import pwd
-                owner = pwd.getpwuid(st.st_uid).pw_name
-            except Exception:
-                owner = None
-            if owner == "nobody":
-                findings.append((dirpath, "hidden directory owned by nobody"))
+        findings.extend(_dir_findings(dirpath, st))
         for name in filenames:
             path = os.path.join(dirpath, name)
             try:

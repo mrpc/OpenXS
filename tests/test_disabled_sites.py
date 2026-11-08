@@ -39,3 +39,13 @@ def test_walk_skips_disabled_home_and_is_disabled(tmp_path):
     assert not ds.is_disabled(str(tmp_path / "offshore"), homes)
     assert list(ds.walk(str(tmp_path / "off"), homes)) == []
 
+
+
+def test_tonight_targets_disabled_only_on_their_night():
+    homes = {"/home/off"}
+    targets = ["/home/on/public_html", "/home/off/public_html"]
+    nights = [d for d in range(7) if "/home/off/public_html" in ds.tonight_targets(targets, 7, d, homes)]
+    assert len(nights) == 1
+    for d in range(7):
+        assert "/home/on/public_html" in ds.tonight_targets(targets, 7, d, homes)
+    assert ds.tonight_targets(targets, 0, 3, homes) == targets

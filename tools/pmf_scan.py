@@ -1175,10 +1175,35 @@ def main():
             pass
         scan_root = os.environ.get("OPENXS_SCAN_LABEL")
         fs_findings = []
+        # OPENXS_FS_ROOTS (newline-separated, set by run_scheduled_scan.sh
+        # in accounts mode): the full per-file fs checks run every night on
+        # the same web roots the YARA/ClamAV pass covers; the rest of each
+        # account home is fs-checked on a rolling basis, one night in
+        # OPENXS_ROLLING_SCAN_DAYS per account (fs_scan.rolling_homes).
+        # Panel-disabled sites are already left out of fs_roots except on
+        # their own night (disabled_sites.py tonight), so on that night
+        # they get both passes. Unset = the old behavior, full scan of
+        # scan_root.
+        fs_roots = [r for r in os.environ.get("OPENXS_FS_ROOTS", "").split("\n") if r]
         if scan_root and os.path.isdir(scan_root):
             import fs_scan
-            fs_findings = [(p, r) for p, r in fs_scan.scan(scan_root)
-                           if not is_ignored(p, *ignore_patterns)]
+            prune = [p for p in ignore_patterns[0] if p.endswith("/")]
+            if fs_roots:
+                raw = []
+                for fs_root in fs_roots:
+                    if os.path.isdir(fs_root):
+                        raw += fs_scan.scan(fs_root, prune)
+                days = int(os.environ.get("OPENXS_ROLLING_SCAN_DAYS", "7") or "0")
+                tonight = fs_scan.rolling_homes(scan_root, days, int(time.time() // 86400))
+                # web roots were just covered above - don't walk them twice
+                skip_web = [r.rstrip("/") + "/" for r in fs_roots]
+                for home in tonight:
+                    raw += fs_scan.scan(home, prune + skip_web)
+                print(f"# fs: {len(fs_roots)} web root(s) in full, {len(tonight)} home(s) "
+                      f"outside the web root on the {days}-day rotation", file=sys.stderr)
+            else:
+                raw = fs_scan.scan(scan_root, prune)
+            fs_findings = [(p, r) for p, r in raw if not is_ignored(p, *ignore_patterns)]
         for fname, rule in fs_findings:
             print(f"{fname}\t{rule}")
             findings.append((fname, rule))
