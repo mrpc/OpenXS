@@ -25,6 +25,19 @@ import sys
 import time
 import urllib.request
 
+import disabled_sites
+
+_DISABLED_HOMES = None
+
+
+def _walk(root):
+    """os.walk() that skips sites the hosting panel has disabled - an
+    outdated version on a site nobody can reach isn't a risk, just noise."""
+    global _DISABLED_HOMES
+    if _DISABLED_HOMES is None:
+        _DISABLED_HOMES = disabled_sites.disabled_homes()
+    return disabled_sites.walk(root, _DISABLED_HOMES)
+
 WP_VERSION_RE = re.compile(r"""\$wp_version\s*=\s*['"]([^'"]+)['"]""")
 LATEST_VERSION_URL = "https://api.wordpress.org/core/version-check/1.7/"
 REVIVE_VERSION_RE = re.compile(r"""define\s*\(\s*['"]VERSION['"]\s*,\s*['"]([^'"]+)['"]\s*\)""")
@@ -60,7 +73,7 @@ PACKAGE_CACHE_TTL = 7 * 24 * 3600  # re-check a package at most once a week
 def find_wordpress_installs(root):
     """Yields (wp_root_dir, installed_version) for every WordPress install
     found under root."""
-    for dirpath, dirnames, filenames in os.walk(root):
+    for dirpath, dirnames, filenames in _walk(root):
         if os.path.basename(dirpath) == "wp-includes" and "version.php" in filenames:
             try:
                 with open(os.path.join(dirpath, "version.php"), errors="replace") as f:
@@ -90,7 +103,7 @@ def find_revive_installs(root):
     install found under root. constants.php alone is too generic a
     filename to key off safely - also requires adview.php alongside it,
     one of Revive's own top-level delivery scripts."""
-    for dirpath, dirnames, filenames in os.walk(root):
+    for dirpath, dirnames, filenames in _walk(root):
         if "constants.php" in filenames and "adview.php" in filenames:
             try:
                 with open(os.path.join(dirpath, "constants.php"), errors="replace") as f:
@@ -130,7 +143,7 @@ def find_drupal_installs(root):
     install found under root. bootstrap.inc alone is too generic a
     filename to key off safely - also requires modules/ and sites/
     alongside it, Drupal's own top-level directory layout."""
-    for dirpath, dirnames, filenames in os.walk(root):
+    for dirpath, dirnames, filenames in _walk(root):
         if (os.path.basename(dirpath) == "includes" and "bootstrap.inc" in filenames
                 and os.path.isdir(os.path.join(os.path.dirname(dirpath), "modules"))
                 and os.path.isdir(os.path.join(os.path.dirname(dirpath), "sites"))):
@@ -179,7 +192,7 @@ def find_joomla_installs(root):
     5.x) with its own <version>X.Y.Z</version>, unlike the internal
     version-class file whose format/location changed across major
     versions (JVersion properties pre-4.0, Version:: constants 4.0+)."""
-    for dirpath, dirnames, filenames in os.walk(root):
+    for dirpath, dirnames, filenames in _walk(root):
         manifest = os.path.join(dirpath, JOOMLA_MANIFEST_RELPATH)
         if os.path.isdir(os.path.join(dirpath, "administrator")) and os.path.isfile(manifest):
             try:
@@ -320,7 +333,7 @@ def find_joomla_db_scan_roots(root):
     Mambo/Joomla 1.0, found live on a real site in our fleet - see
     joomla_db_scan.py's docstring)."""
     import joomla_db_scan
-    for dirpath, dirnames, filenames in os.walk(root):
+    for dirpath, dirnames, filenames in _walk(root):
         if "configuration.php" in filenames and os.path.isdir(os.path.join(dirpath, "administrator")):
             if joomla_db_scan.parse_joomla_config(dirpath):
                 yield dirpath
@@ -501,7 +514,7 @@ def check_wp_themes(wp_results):
 
 
 def find_composer_locks(root):
-    for dirpath, dirnames, filenames in os.walk(root):
+    for dirpath, dirnames, filenames in _walk(root):
         if "composer.lock" in filenames:
             yield os.path.join(dirpath, "composer.lock")
             dirnames[:] = [d for d in dirnames if d != "vendor"]  # nested vendor/*/composer.lock isn't ours to report on
