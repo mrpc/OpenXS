@@ -126,7 +126,14 @@ if (-d '/etc/postfix') {
 		&ui_textbox("sasl_watch_map", $cfg{'SASL_WATCH_MAP'}, 30, 0, 0, "autocomplete='off'") .
 		" and postmap it <i>(off by default). Only takes effect when main.cf lists " .
 		"<code>check_sasl_access hash:" . &html_escape($cfg{'SASL_WATCH_MAP'}) . "</code> first in smtpd_sender_restrictions " .
-		"(and in the restriction class the submission/smtps services use). Undo: delete the line, run postmap.</i>");
+		"(and in the restriction class the submission/smtps services use). It stays blocked until you unblock it below.</i><br>" .
+		&ui_checkbox("sasl_watch_unblock_on_pwchange", "1", "Unblock by itself once the account's password changes",
+			$cfg{'SASL_WATCH_UNBLOCK_ON_PWCHANGE'} eq '1') .
+		" <i>(off by default: whoever stole the password can usually change it themselves, e.g. through Usermin)</i><br>" .
+		&ui_checkbox("sasl_watch_notify", "1", "Tell the account (and its domain's contact address) it was blocked and to change its password",
+			$cfg{'SASL_WATCH_NOTIFY'} eq '1') .
+		" <i>template: <a href='edit_file.cgi?f=sasl_blocked_notice'>/etc/openxs/sasl_blocked_notice.txt</a> (subject on the first line, {user} is replaced; " .
+		"blank = built-in Greek/English text). No links on purpose - whoever has the password can read that mailbox too.</i>");
 	}
 print &ui_table_row("File integrity monitoring - watched paths", "<a href='edit_file.cgi?f=fim_paths'>Edit /etc/openxs/fim_paths &raquo;</a> ".
 	"<i>one file or directory per line, e.g. /etc/passwd or your framework's core folder - hashed and checked for drift ".
@@ -214,6 +221,26 @@ print &ui_table_row("CSF auto-ban (watch daemon, high-confidence findings only)"
 print &ui_table_end();
 print &ui_submit("Save", "save");
 print &ui_form_end();
+
+# Outside the Settings form: each row is its own small form.
+if (-d '/etc/postfix') {
+	my @blocked;
+	if (open(my $fh, '-|', 'python3', "$pmf_dir/sasl_watch.py", 'list')) {
+		while (<$fh>) { chomp; push(@blocked, [split(/\t/, $_, 4)]); }
+		close($fh);
+		}
+	if (@blocked) {
+		my $t = "<table><tr><th>Account</th><th>Blocked since</th><th>Unblocked until</th><th>Reason</th><th></th></tr>";
+		foreach my $b (@blocked) {
+			my ($u, $since, $until, $reason) = map { &html_escape($_) } @$b;
+			$t .= "<tr><td>$u</td><td>$since</td><td>$until</td><td>$reason</td><td>" .
+				&ui_form_start("sasl_unblock.cgi", "post") . &ui_hidden("user", $b->[0]) .
+				&ui_submit("Unblock") . " or for " . &ui_textbox("hours", "", 3) . " hours " . &ui_submit("Unblock temporarily", "temp") .
+				&ui_form_end() . "</td></tr>";
+			}
+		print &ui_subheading("Blocked mail accounts"), $t, "</table>\n";
+		}
+	}
 
 # Components/integrations - installs, updates, on/off toggles. Moved
 # here from the dashboard (2026-10-24, explicit request): the front

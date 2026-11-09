@@ -207,7 +207,16 @@ whose IPs don't count. `SASL_WATCH_AUTOBLOCK=1` (off by default) also adds
 the user to `SASL_WATCH_MAP` (`/etc/postfix/sasl_blocked`) - list it as
 `check_sasl_access hash:/etc/postfix/sasl_blocked` first in
 `smtpd_sender_restrictions` (and the submission/smtps restriction class)
-for that to take effect. `MAIL_LOG` overrides `/var/log/mail.log`.
+for that to take effect. A blocked account gets a short notice (itself
+plus its Virtualmin domain's contact address, local sendmail; template
+`/etc/openxs/sasl_blocked_notice.txt`, `SASL_WATCH_NOTIFY=0` to turn off)
+and stays blocked until unblocked by hand (`SASL_WATCH_UNBLOCK_ON_PWCHANGE=1`
+releases it once its `/etc/shadow` password changes - off by default, the
+thief can usually change it too). `x` and
+`x@domain` logins of the same Unix user (saslauthd `-r`) count, block and
+unblock as one account. By hand:
+`sasl_watch.py list`, `sasl_watch.py unblock <user> [--hours N]` (also on
+the Settings page). `MAIL_LOG` overrides `/var/log/mail.log`.
 
 ## Testing
 

@@ -30,12 +30,14 @@ our %editable_files = (
 	'modsec_mode' => '/etc/openxs/modsec_mode',
 	'modsec_rule_exclusions' => '/etc/openxs/modsec_rule_exclusions',
 	'db_scan_exclude' => '/etc/openxs/db_scan_exclude',
+	'sasl_blocked_notice' => '/etc/openxs/sasl_blocked_notice.txt',
 );
 
 # One short format description per editable file, shown above its
 # textarea in edit_file.cgi - so the expected shape is visible right
 # where you're about to type it, not only in a Settings-page link.
 our %editable_file_help = (
+	'sasl_blocked_notice' => "Notice sent to a mail account when it gets auto-blocked: subject on the first line, then the body. {user} is replaced with the account name. Leave empty for the built-in Greek/English text. Don't put links in it - whoever has the stolen password can read this mailbox too.",
 	'ignore' => "One path or substring per line - any file whose path contains this text is skipped entirely. Blank lines and '#' comments are ignored.",
 	'rules' => "One extra regular expression per line, matched against file content in addition to the YARA ruleset. Blank lines and '#' comments are ignored.",
 	'path_settings' => "One override per line: <code>&lt;path prefix&gt; key=value,key2=value2</code> - e.g. <code>/home/bigsite/uploads fast_php_only=1</code>. ".
@@ -616,7 +618,7 @@ my %cfg = ( 'EMAIL' => 'root@localhost', 'SCAN_PATH' => '/var/www', 'QUARANTINE_
             # sasl_watch.py's own defaults - auto-block off, like CSF auto-ban.
             'SASL_WATCH_MAX_IPS' => '10', 'SASL_WATCH_MAX_MSGS_PER_HOUR' => '100',
             'SASL_WATCH_MAX_BOUNCE_PCT' => '30', 'SASL_WATCH_EXEMPT_HOSTS' => 'mail-*.google.com',
-            'SASL_WATCH_AUTOBLOCK' => '0', 'SASL_WATCH_MAP' => '/etc/postfix/sasl_blocked' );
+            'SASL_WATCH_AUTOBLOCK' => '0', 'SASL_WATCH_NOTIFY' => '1', 'SASL_WATCH_UNBLOCK_ON_PWCHANGE' => '0', 'SASL_WATCH_MAP' => '/etc/postfix/sasl_blocked' );
 if (open(my $fh, '<', $config_file)) {
 	while (<$fh>) {
 		chomp;
