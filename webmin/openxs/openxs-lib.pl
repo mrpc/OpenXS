@@ -18,9 +18,8 @@ our $modsec_rule = '/etc/modsecurity/openxs.conf';
 our $csf_regex = '/etc/csf/regex.custom.pm';
 our $ui_disabled_file = '/etc/openxs/disableui';
 # virtualmin-authfwd (forwards only authenticated mail): suggested on the Mail
-# accounts page when Gmail rejects forwarded spam. Empty = repo not public
-# yet, so no link - set to https://github.com/mrpc/virtualmin-authfwd then.
-our $authfwd_repo_url = '';
+# accounts page when Gmail rejects forwarded spam. Empty = no link.
+our $authfwd_repo_url = 'https://github.com/mrpc/virtualmin-authfwd';
 
 # Files editable from edit_file.cgi - an explicit allow-list, never an
 # arbitrary path from the request, since this UI can write as root.
