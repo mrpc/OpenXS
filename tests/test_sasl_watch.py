@@ -17,7 +17,7 @@ def test_many_ips_flags_user_but_not_exempt_gmail_or_old_lines():
     lines = [sasl("Nov  9 11:30:00", f"Q{i}", "unknown", f"10.0.0.{i}", "victim") for i in range(11)]
     lines += [sasl("2026-11-09T11:00:00.1+02:00", f"G{i}", f"mail-x{i}.google.com", f"209.85.0.{i}", "info@ex.gr") for i in range(50)]
     lines += [sasl("Nov  7 11:00:00", f"O{i}", "unknown", f"10.1.0.{i}", "old") for i in range(50)]
-    findings, _, _ = s.analyze(lines, CONF, NOW)
+    findings, _, _, _ = s.analyze(lines, CONF, NOW)
     assert list(findings) == ["victim"]
     assert "11 different IPs" in findings["victim"][0]
 
@@ -26,7 +26,7 @@ def test_rate_bounce_and_dead_milter():
     lines = [sasl("Nov  9 11:30:00", f"Q{i}", "a.b", "10.0.0.1", "u") for i in range(101)]
     lines += [f"Nov  9 11:31:00 mx postfix/smtp[2]: Q{i}: to=<x@y>, relay=r, status={'bounced' if i < 40 else 'sent'} (x)\n" for i in range(100)]
     lines.append("Nov  9 11:59:00 mx postfix/smtpd[3]: warning: connect to Milter service unix:/run/greylist.sock: Connection refused\n")
-    findings, milters, _ = s.analyze(lines, CONF, NOW)
+    findings, milters, _, _ = s.analyze(lines, CONF, NOW)
     assert len(findings["u"]) == 2  # 101 msgs/h + 40% bounced
     assert list(milters) == ["unix:/run/greylist.sock"]
 
@@ -41,6 +41,7 @@ def test_block_user_is_idempotent(tmp_path, monkeypatch):
 
 def _setup(tmp_path, monkeypatch, shadow_hash="$6$a"):
     monkeypatch.setattr(s, "STATE_FILE", str(tmp_path / "state.json"))
+    monkeypatch.setattr(s, "REPORT_FILE", str(tmp_path / "report.json"))
     monkeypatch.setattr(s, "SHADOW_FILE", str(tmp_path / "shadow"))
     monkeypatch.setattr(s, "_postmap", lambda p: None)
     sent = []
@@ -102,8 +103,26 @@ def test_realm_variants_fold_into_one_account_and_unblock_together(tmp_path, mon
     assert s.account("victim@ex.gr") == "victim"   # saslauthd -r realm
     assert s.account("box@ex.gr") == "box@ex.gr"   # Virtualmin user@domain Unix user
     lines = [sasl("Nov  9 11:30:00", f"Q{i}", "unknown", f"10.0.0.{i}", "victim" if i % 2 else "victim@ex.gr") for i in range(12)]
-    findings, _, variants = s.analyze(lines, CONF, NOW)
+    findings, _, variants, _ = s.analyze(lines, CONF, NOW)
     assert list(findings) == ["victim"] and variants["victim"] == {"victim", "victim@ex.gr"}
     (tmp_path / "map").write_text("victim REJECT x\nvictim@ex.gr REJECT x\nother REJECT x\n")
     assert s.cmd_unblock("victim@ex.gr", 0, conf, now=NOW) == "victim unblocked"
     assert s._map_users(conf["SASL_WATCH_MAP"]) == ["other"]
+
+
+def test_stats_and_failed_logins_and_manual_block(tmp_path, monkeypatch):
+    conf, sent = _setup(tmp_path, monkeypatch)
+    monkeypatch.setattr(s.subprocess, "run", lambda *a, **k: type("R", (), {"stdout": ""})())
+    lines = [sasl("Nov  9 11:30:00", "Q1", "unknown", "10.0.0.1", "a"),
+             sasl("Nov  9 11:31:00", "Q2", "mail-x.google.com", "209.85.0.1", "a"),
+             "Nov  9 11:32:00 mx postfix/smtpd[9]: warning: unknown[10.9.9.9]: SASL LOGIN authentication failed: UGFzc3dvcmQ6, sasl_username=b@x.gr\n"]
+    _, _, _, st = s.analyze(lines, CONF, NOW)
+    a = st["accounts"]["a"]
+    assert (a["msgs"], a["ips"], a["exempt_msgs"], a["msgs_1h"]) == (2, 1, 1, 2)
+    assert st["failed"] == {"b@x.gr": {"count": 1, "ips": 1}}
+    (tmp_path / "map").write_text("")
+    s._save_state({})
+    assert s.cmd_block("someone", conf, now=NOW).startswith("someone blocked")
+    assert s._map_users(conf["SASL_WATCH_MAP"]) == ["someone"]
+    s.run(now=NOW, conf=conf)
+    assert "generated" in s.json.load(open(tmp_path / "report.json"))

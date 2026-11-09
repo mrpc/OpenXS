@@ -20,6 +20,12 @@ Release from that section's text.
 ## [Unreleased]
 
 ### Added
+- Webmin **Mail accounts** page (next to Findings, when Postfix is
+  installed): blocked accounts with unblock / temporary unblock, last 24h of
+  authenticated sending per account (messages, distinct and top IPs,
+  delivered/bounced, last alert) with a manual Block, the login names most
+  targeted by failed AUTH, and milter status. Reads a report the collector
+  writes every 5 minutes. `sasl_watch.py block <user>`.
 - Compromised SASL/SMTP account alert (`sasl_watch.py`, every 5 minutes):
   too many distinct login IPs in 24h, too many messages per hour, or a high
   bounce ratio for one SASL user - the successful-login botnet pattern
