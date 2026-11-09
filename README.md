@@ -196,6 +196,19 @@ QUARANTINE_ENABLED=0
 
 Editable from the Webmin dashboard, or by hand.
 
+Compromised mail account watch (`sasl_watch.py`, runs every 5 minutes from
+the collector cron): reads Postfix's `mail.log` and e-mails when a SASL
+user logs in from more than `SASL_WATCH_MAX_IPS` (10) IPs in 24h, submits
+more than `SASL_WATCH_MAX_MSGS_PER_HOUR` (100) messages in an hour, or has
+over `SASL_WATCH_MAX_BOUNCE_PCT` (30) % of its mail bounce - plus when a
+milter refuses connections. `SASL_WATCH_EXEMPT_HOSTS` (default
+`mail-*.google.com`, for Gmail "send mail as") lists reverse hostnames
+whose IPs don't count. `SASL_WATCH_AUTOBLOCK=1` (off by default) also adds
+the user to `SASL_WATCH_MAP` (`/etc/postfix/sasl_blocked`) - list it as
+`check_sasl_access hash:/etc/postfix/sasl_blocked` first in
+`smtpd_sender_restrictions` (and the submission/smtps restriction class)
+for that to take effect. `MAIL_LOG` overrides `/var/log/mail.log`.
+
 ## Testing
 
 ```sh
