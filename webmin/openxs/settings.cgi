@@ -111,6 +111,23 @@ if (-d '/etc/modsecurity') {
 		"value, e.g. to match a CDN/WAF's own per-request limit (Cloudflare Free/Pro: 104857600 = 100M) that ".
 		"raising PHP's own limit further can never get past anyway. Blank = no cap, use the derived value as-is.</i>");
 	}
+if (-d '/etc/postfix') {
+	print &ui_table_row("Compromised mail account alert (every 5 min, from mail.log)",
+		"alert when one SASL user logs in from more than " . &ui_textbox("sasl_watch_max_ips", $cfg{'SASL_WATCH_MAX_IPS'}, 4) .
+		" IPs in 24h, sends more than " . &ui_textbox("sasl_watch_max_msgs_per_hour", $cfg{'SASL_WATCH_MAX_MSGS_PER_HOUR'}, 5) .
+		" messages in an hour, or has more than " . &ui_textbox("sasl_watch_max_bounce_pct", $cfg{'SASL_WATCH_MAX_BOUNCE_PCT'}, 3) .
+		" % of its mail bounce<br>" .
+		"don't count IPs whose reverse hostname matches " . &ui_textbox("sasl_watch_exempt_hosts", $cfg{'SASL_WATCH_EXEMPT_HOSTS'}, 40, 0, 0, "autocomplete='off'") .
+		" <i>(space-separated wildcards - the default covers Gmail's \"send mail as\", which logs in from many Google IPs)</i><br>" .
+		"<i>A stolen password used by a botnet shows up as many <b>successful</b> logins from different IPs - lfd only counts failed ones. " .
+		"Also alerts when a milter in smtpd_milters refuses connections (its rate limits/greylisting silently stop applying).</i>");
+	print &ui_table_row("...auto-block the account",
+		&ui_checkbox("sasl_watch_autoblock", "1", "Add it as REJECT to", $cfg{'SASL_WATCH_AUTOBLOCK'} eq '1') . " " .
+		&ui_textbox("sasl_watch_map", $cfg{'SASL_WATCH_MAP'}, 30, 0, 0, "autocomplete='off'") .
+		" and postmap it <i>(off by default). Only takes effect when main.cf lists " .
+		"<code>check_sasl_access hash:" . &html_escape($cfg{'SASL_WATCH_MAP'}) . "</code> first in smtpd_sender_restrictions " .
+		"(and in the restriction class the submission/smtps services use). Undo: delete the line, run postmap.</i>");
+	}
 print &ui_table_row("File integrity monitoring - watched paths", "<a href='edit_file.cgi?f=fim_paths'>Edit /etc/openxs/fim_paths &raquo;</a> ".
 	"<i>one file or directory per line, e.g. /etc/passwd or your framework's core folder - hashed and checked for drift ".
 	"(Dashboard's 'Baseline now' / 'Check now', or automatically with the daily scheduled scan).</i>");
