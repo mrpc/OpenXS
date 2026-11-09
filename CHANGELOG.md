@@ -20,6 +20,10 @@ Release from that section's text.
 ## [Unreleased]
 
 ### Added
+- Mail accounts page: warns when forwarded mail is rejected as
+  unauthenticated (Gmail `550 5.7.26` on `orig_to=` lines) in the last 24h,
+  with the forwarding mailboxes, and points to virtualmin-authfwd (local
+  module link if installed).
 - `/etc/openxs/composer_trusted_packages`: server-local Composer vendor
   prefixes, merged with the shipped `tools/composer_trusted_packages`.
 - OpenXS now appears in Webmin's **Backup Configuration Files** module
