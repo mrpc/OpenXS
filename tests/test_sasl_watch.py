@@ -17,7 +17,7 @@ def test_many_ips_flags_user_but_not_exempt_gmail_or_old_lines():
     lines = [sasl("Nov  9 11:30:00", f"Q{i}", "unknown", f"10.0.0.{i}", "victim") for i in range(11)]
     lines += [sasl("2026-11-09T11:00:00.1+02:00", f"G{i}", f"mail-x{i}.google.com", f"209.85.0.{i}", "info@ex.gr") for i in range(50)]
     lines += [sasl("Nov  7 11:00:00", f"O{i}", "unknown", f"10.1.0.{i}", "old") for i in range(50)]
-    findings, _ = s.analyze(lines, CONF, NOW)
+    findings, _, _ = s.analyze(lines, CONF, NOW)
     assert list(findings) == ["victim"]
     assert "11 different IPs" in findings["victim"][0]
 
@@ -26,7 +26,7 @@ def test_rate_bounce_and_dead_milter():
     lines = [sasl("Nov  9 11:30:00", f"Q{i}", "a.b", "10.0.0.1", "u") for i in range(101)]
     lines += [f"Nov  9 11:31:00 mx postfix/smtp[2]: Q{i}: to=<x@y>, relay=r, status={'bounced' if i < 40 else 'sent'} (x)\n" for i in range(100)]
     lines.append("Nov  9 11:59:00 mx postfix/smtpd[3]: warning: connect to Milter service unix:/run/greylist.sock: Connection refused\n")
-    findings, milters = s.analyze(lines, CONF, NOW)
+    findings, milters, _ = s.analyze(lines, CONF, NOW)
     assert len(findings["u"]) == 2  # 101 msgs/h + 40% bounced
     assert list(milters) == ["unix:/run/greylist.sock"]
 
@@ -34,8 +34,8 @@ def test_rate_bounce_and_dead_milter():
 def test_block_user_is_idempotent(tmp_path, monkeypatch):
     monkeypatch.setattr(s.subprocess, "run", lambda *a, **k: type("R", (), {"stdout": "check_sasl_access hash:" + str(tmp_path / "m")})())
     m = tmp_path / "m"
-    s.block_user("u@x.gr", str(m))
-    assert "WARNING" not in s.block_user("u@x.gr", str(m))
+    s.block_user(["u@x.gr"], str(m))
+    assert "WARNING" not in s.block_user(["u@x.gr"], str(m))
     assert m.read_text().count("u@x.gr REJECT") == 1
 
 
@@ -81,6 +81,19 @@ def test_notice_goes_to_mailbox_and_domain_contact(tmp_path, monkeypatch):
     d.mkdir()
     (d / "123").write_text("dom=ex.gr\nuser=exgr\nemailto=owner@other.gr\n")
     monkeypatch.setattr(s, "VIRTUALMIN_DOMAINS_DIR", str(d))
-    assert s.notice_recipients("info@ex.gr", CONF) == ["info@ex.gr", "owner@other.gr"]
-    assert s.notice_recipients("exgr", CONF) == ["owner@other.gr"]
-    assert s.notice_recipients("nobody", CONF) == [CONF["EMAIL"]]
+    assert s.notice_recipients(["info@ex.gr"], CONF) == ["info@ex.gr", "owner@other.gr"]
+    assert s.notice_recipients(["exgr"], CONF) == ["owner@other.gr"]
+    assert s.notice_recipients(["nobody"], CONF) == [CONF["EMAIL"]]
+
+
+def test_realm_variants_fold_into_one_account_and_unblock_together(tmp_path, monkeypatch):
+    conf, sent = _setup(tmp_path, monkeypatch)
+    (tmp_path / "shadow").write_text("victim:$6$a:1::\nbox@ex.gr:$6$b:1::\n")
+    assert s.account("victim@ex.gr") == "victim"   # saslauthd -r realm
+    assert s.account("box@ex.gr") == "box@ex.gr"   # Virtualmin user@domain Unix user
+    lines = [sasl("Nov  9 11:30:00", f"Q{i}", "unknown", f"10.0.0.{i}", "victim" if i % 2 else "victim@ex.gr") for i in range(12)]
+    findings, _, variants = s.analyze(lines, CONF, NOW)
+    assert list(findings) == ["victim"] and variants["victim"] == {"victim", "victim@ex.gr"}
+    (tmp_path / "map").write_text("victim REJECT x\nvictim@ex.gr REJECT x\nother REJECT x\n")
+    assert s.cmd_unblock("victim@ex.gr", 0, conf, now=NOW) == "victim unblocked"
+    assert s._map_users(conf["SASL_WATCH_MAP"]) == ["other"]

@@ -9,7 +9,9 @@ until the spam bounces start piling up somewhere. Found live: weeks of
 that, then one IP doing tens of thousands of logins in a day, noticed
 only via a third party's rate limit on the bounces.
 
-Per SASL user, it alerts when any of these trips (windows are rolling):
+Per account it alerts when any of these trips (windows are rolling). Login
+names are folded into the local account they authenticate as, so 'x' and
+'x@domain' (saslauthd -r) count together and are blocked/unblocked together:
   - distinct client IPs in 24h > SASL_WATCH_MAX_IPS - IPs whose
     (forward-confirmed - Postfix prints "unknown" otherwise) reverse
     hostname matches SASL_WATCH_EXEMPT_HOSTS don't count, e.g. Gmail's
@@ -114,9 +116,14 @@ def _log_lines(mail_log, now):
 
 
 def analyze(lines, conf, now, not_before=None):
-    """Returns ({user: [reason, ...]}, {milter_service: last_seen_ts}).
-    not_before: {user: ts} - that user's older lines are ignored (just unblocked)."""
+    """Returns ({account: [reason, ...]}, {milter_service: last_seen_ts},
+    {account: {login names seen}}). Login names are folded into the local
+    account they authenticate as (see account()), so 'x' and 'x@domain'
+    logins add up. not_before: {account: ts} - older lines are ignored
+    (just unblocked)."""
     not_before = not_before or {}
+    shadow = _shadow()
+    variants = defaultdict(set)
     exempt = [p for p in re.split(r"[\s,]+", conf["SASL_WATCH_EXEMPT_HOSTS"]) if p]
     ips = defaultdict(set)
     hourly = defaultdict(int)
@@ -131,10 +138,11 @@ def analyze(lines, conf, now, not_before=None):
             continue
         m = _SASL_RE.search(line)
         if m:
-            user = m.group("user")
+            user = account(m.group("user"), shadow)
             if ts < not_before.get(user, 0):
                 continue
             qid_user[m.group("qid")] = user
+            variants[user].add(m.group("user"))
             if not any(fnmatch.fnmatch(m.group("host").lower(), p.lower()) for p in exempt):
                 ips[user].add(m.group("ip"))
             if now - ts <= 3600:
@@ -164,7 +172,7 @@ def analyze(lines, conf, now, not_before=None):
         total = d["sent"] + d["bounced"]
         if total >= BOUNCE_MIN_SAMPLE and 100.0 * d["bounced"] / total > max_bounce:
             findings[user].append(f"{d['bounced']} of {total} deliveries bounced in 24h ({100.0 * d['bounced'] / total:.0f}%, limit {max_bounce:g}%)")
-    return dict(findings), milters
+    return dict(findings), milters, {u: variants[u] for u in findings}
 
 
 SHADOW_FILE = "/etc/shadow"
@@ -187,6 +195,27 @@ the password is changed. Receiving email is not affected.
 """
 
 
+def _shadow():
+    """{name: password hash} from /etc/shadow, {} when unreadable."""
+    try:
+        with open(SHADOW_FILE, encoding="utf-8", errors="replace") as f:
+            return {name: rest.split(":", 1)[0] for name, _, rest in (line.partition(":") for line in f)}
+    except OSError:
+        return {}
+
+
+def account(login, shadow=None):
+    """The local account a SASL login name authenticates as: the name itself
+    when it's a Unix user (Virtualmin has both 'x' and 'x@domain' style
+    users), else the part before @ when that is one (saslauthd -r appends
+    the realm: 'x@domain' logs in as 'x'), else the name unchanged."""
+    shadow = _shadow() if shadow is None else shadow
+    if login in shadow or "@" not in login:
+        return login
+    local = login.split("@", 1)[0]
+    return local if local in shadow else login
+
+
 def _map_users(map_path):
     try:
         with open(map_path, encoding="utf-8") as f:
@@ -199,31 +228,37 @@ def _postmap(map_path):
     subprocess.run(["postmap", map_path], check=True, capture_output=True, timeout=30)
 
 
-def block_user(user, map_path):
-    """Adds `user REJECT ...` to the check_sasl_access map and postmaps it.
-    Returns a one-line description of what happened, never raises."""
+def block_user(names, map_path):
+    """Adds `name REJECT ...` for each login name of one account to the
+    check_sasl_access map and postmaps it. Returns a one-line description
+    of what happened, never raises."""
     try:
-        if user not in _map_users(map_path):
+        present = _map_users(map_path)
+        missing = [n for n in sorted(names) if n not in present]
+        if missing:
             existing = open(map_path, encoding="utf-8").read() if os.path.exists(map_path) else ""
             with open(map_path, "a", encoding="utf-8") as f:
                 if existing and not existing.endswith("\n"):
                     f.write("\n")
-                f.write(f"{user} REJECT Account suspended (possible compromise) - contact the server admin\n")
+                for n in missing:
+                    f.write(f"{n} REJECT Account suspended (possible compromise) - contact the server admin\n")
         _postmap(map_path)
         restrictions = subprocess.run(["postconf", "-h", "smtpd_sender_restrictions"],
                                       capture_output=True, text=True, timeout=10).stdout
         note = "" if map_path in restrictions else (
             f" WARNING: {map_path} is not in smtpd_sender_restrictions, so the block has no effect yet.")
-        return f"AUTO-BLOCKED: added to {map_path} (undo: sasl_watch.py unblock {user}).{note}"
+        return f"AUTO-BLOCKED: {', '.join(sorted(names))} in {map_path} (undo: sasl_watch.py unblock {min(names)}).{note}"
     except Exception as e:
         return f"AUTO-BLOCK FAILED: {e}"
 
 
-def remove_from_map(user, map_path):
+def remove_from_map(acct, map_path):
+    """Removes every login name of that account."""
+    shadow = _shadow()
     with open(map_path, encoding="utf-8") as f:
         lines = f.readlines()
     with open(map_path, "w", encoding="utf-8") as f:
-        f.writelines(line for line in lines if line.split()[:1] != [user])
+        f.writelines(line for line in lines if not line.split() or account(line.split()[0], shadow) != acct)
     _postmap(map_path)
 
 
@@ -231,15 +266,8 @@ def password_fingerprint(user):
     """sha256 of the user's /etc/shadow hash (never the hash itself, so the
     state file stays harmless), or None when the SASL name isn't a local
     account - then a password change can't be detected."""
-    try:
-        with open(SHADOW_FILE, encoding="utf-8", errors="replace") as f:
-            for line in f:
-                name, _, rest = line.partition(":")
-                if name == user:
-                    return hashlib.sha256(rest.split(":", 1)[0].encode()).hexdigest()
-    except OSError:
-        pass
-    return None
+    h = _shadow().get(account(user))
+    return hashlib.sha256(h.encode()).hexdigest() if h is not None else None
 
 
 def _domain_contacts(user):
@@ -268,13 +296,16 @@ def _domain_contacts(user):
     return []
 
 
-def notice_recipients(user, conf):
-    rcpts = [user] if "@" in user else []
-    rcpts += [a for a in _domain_contacts(user) if a not in rcpts]
+def notice_recipients(names, conf):
+    rcpts = []
+    for n in sorted(names):
+        for a in ([n] if "@" in n else []) + _domain_contacts(n):
+            if a not in rcpts:
+                rcpts.append(a)
     return rcpts or [conf["EMAIL"]]
 
 
-def notify_user(user, conf):
+def notify_user(user, names, conf):
     """Local delivery through sendmail (pickup, never SASL). Returns the
     recipients, or an error string."""
     try:
@@ -282,7 +313,7 @@ def notify_user(user, conf):
     except OSError:
         template = DEFAULT_NOTICE
     subject, _, body = template.replace("{user}", user).partition("\n")
-    rcpts = notice_recipients(user, conf)
+    rcpts = notice_recipients(names, conf)
     msg = (f"To: {', '.join(rcpts)}\nSubject: {subject.strip()}\nMIME-Version: 1.0\n"
            f"Content-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit\n\n{body.lstrip(chr(10))}")
     try:
@@ -312,28 +343,37 @@ def _send(conf, subject, body):
                    input=body, text=True, timeout=60, check=False)
 
 
+def _map_accounts(map_path):
+    """{account: [login names in the map]}."""
+    shadow = _shadow()
+    out = defaultdict(list)
+    for n in _map_users(map_path):
+        out[account(n, shadow)].append(n)
+    return dict(out)
+
+
 def _manage_blocked(state, conf, now):
-    """Releases blocked users whose password changed, re-blocks expired
+    """Releases blocked accounts whose password changed, re-blocks expired
     temporary unblocks whose password didn't. Entries added to the map by
     hand are adopted on first sight, so they get released the same way."""
     blocked = state.setdefault("blocked", {})
-    for user in _map_users(conf["SASL_WATCH_MAP"]):
-        if user not in blocked:
-            blocked[user] = {"since": now, "reason": "manual", "pw": password_fingerprint(user)}
-    for user, b in list(blocked.items()):
-        fp = password_fingerprint(user)
+    for acct, names in _map_accounts(conf["SASL_WATCH_MAP"]).items():
+        if acct not in blocked:
+            blocked[acct] = {"since": now, "reason": "manual", "pw": password_fingerprint(acct), "names": names}
+    for acct, b in list(blocked.items()):
+        fp = password_fingerprint(acct)
         if b.get("pw") and fp and fp != b["pw"]:
-            remove_from_map(user, conf["SASL_WATCH_MAP"])
-            del blocked[user]
-            state.setdefault("not_before", {})[user] = now
-            _send(conf, f"mail account {user} unblocked (password changed)",
-                  f"The password of '{user}' changed, so it was removed from {conf['SASL_WATCH_MAP']}.\n")
+            remove_from_map(acct, conf["SASL_WATCH_MAP"])
+            del blocked[acct]
+            state.setdefault("not_before", {})[acct] = now
+            _send(conf, f"mail account {acct} unblocked (password changed)",
+                  f"The password of '{acct}' changed, so it was removed from {conf['SASL_WATCH_MAP']}.\n")
         elif b.get("until") and now >= b["until"]:
-            result = block_user(user, conf["SASL_WATCH_MAP"])
+            result = block_user(b.get("names") or [acct], conf["SASL_WATCH_MAP"])
             if result.startswith("AUTO-BLOCKED"):
                 del b["until"]
-            _send(conf, f"mail account {user} blocked again (temporary unblock expired)",
-                  f"The temporary unblock of '{user}' expired and its password hasn't changed.\n{result}\n")
+            _send(conf, f"mail account {acct} blocked again (temporary unblock expired)",
+                  f"The temporary unblock of '{acct}' expired and its password hasn't changed.\n{result}\n")
 
 
 def run(now=None, conf=None):
@@ -345,34 +385,35 @@ def run(now=None, conf=None):
     state = _load_state()
     before = json.dumps(state, sort_keys=True)
     _manage_blocked(state, conf, now)
-    blocked = state.get("blocked", {})
-    findings, milters = analyze(_log_lines(conf["MAIL_LOG"], now), conf, now, state.get("not_before", {}))
+    blocked = state["blocked"]
+    findings, milters, variants = analyze(_log_lines(conf["MAIL_LOG"], now), conf, now, state.get("not_before", {}))
     sent = 0
-    for user, reasons in findings.items():
-        key = f"user:{user}"
-        if user in blocked and not blocked[user].get("until"):
+    for acct, reasons in findings.items():
+        key = f"user:{acct}"
+        if acct in blocked and not blocked[acct].get("until"):
             continue  # already blocked: its botnet logins keep showing up, nothing new to say
         if now - state.get(key, 0) < REPEAT_SECONDS:
             continue
-        body = [f"SASL user '{user}' looks compromised (possible stolen password used for spam):", ""]
+        names = sorted(variants[acct] | {acct})
+        body = [f"SASL account '{acct}' looks compromised (possible stolen password used for spam):", ""]
         body += [f"  - {r}" for r in reasons]
-        body += ["", "Check: grep 'sasl_username=" + user + "' " + conf["MAIL_LOG"]]
-        if user in blocked:
-            body += ["", f"Not re-blocked: temporarily unblocked until {time.strftime('%Y-%m-%d %H:%M', time.localtime(blocked[user]['until']))}."]
+        body += ["", f"Login names seen: {', '.join(sorted(variants[acct]))}",
+                 "Check: grep 'sasl_username=" + acct + "' " + conf["MAIL_LOG"]]
+        if acct in blocked:
+            body += ["", f"Not re-blocked: temporarily unblocked until {time.strftime('%Y-%m-%d %H:%M', time.localtime(blocked[acct]['until']))}."]
         elif conf["SASL_WATCH_AUTOBLOCK"] == "1":
-            result = block_user(user, conf["SASL_WATCH_MAP"])
+            result = block_user(names, conf["SASL_WATCH_MAP"])
             body += ["", result]
             if result.startswith("AUTO-BLOCKED"):
-                blocked[user] = {"since": now, "reason": "; ".join(reasons), "pw": password_fingerprint(user)}
-                state["blocked"] = blocked
-                if blocked[user]["pw"] is None:
+                blocked[acct] = {"since": now, "reason": "; ".join(reasons), "pw": password_fingerprint(acct), "names": names}
+                if blocked[acct]["pw"] is None:
                     body += ["Not a local account, so a password change can't be detected: unblock by hand."]
                 if conf["SASL_WATCH_NOTIFY"] == "1":
-                    body += [notify_user(user, conf)]
+                    body += [notify_user(acct, names, conf)]
         else:
             body += ["", "Not blocked (SASL_WATCH_AUTOBLOCK=0). Change the password; to stop it sending meanwhile, add",
-                     f"'{user} REJECT' to {conf['SASL_WATCH_MAP']} (check_sasl_access) and postmap it."]
-        _send(conf, f"possible compromised mail account {user}", "\n".join(body) + "\n")
+                     f"'<name> REJECT' for each of {', '.join(names)} to {conf['SASL_WATCH_MAP']} (check_sasl_access) and postmap it."]
+        _send(conf, f"possible compromised mail account {acct}", "\n".join(body) + "\n")
         state[key] = now
         sent += 1
     for svc, ts in milters.items():
@@ -387,37 +428,41 @@ def run(now=None, conf=None):
         sent += 1
     if json.dumps(state, sort_keys=True) != before:
         _save_state(state)
-    return f"{len(findings)} suspicious SASL user(s), {len(milters)} dead milter(s), {sent} alert(s) sent"
+    return f"{len(findings)} suspicious SASL account(s), {len(milters)} dead milter(s), {sent} alert(s) sent"
 
 
 def cmd_list(conf):
-    """One tab-separated line per blocked user: user, since, until, reason.
-    Users put in the map by hand show as 'manual'."""
+    """One tab-separated line per blocked account: account, since, until,
+    reason. Map entries not seen by a run yet show as 'manual'."""
     blocked = _load_state().get("blocked", {})
     fmt = lambda ts: time.strftime("%Y-%m-%d %H:%M", time.localtime(ts)) if ts else ""
-    users = _map_users(conf["SASL_WATCH_MAP"])
-    users += [u for u in blocked if u not in users]  # temporarily unblocked
-    for u in users:
-        b = blocked.get(u, {})
-        print("\t".join([u, fmt(b.get("since")), fmt(b.get("until")), b.get("reason", "manual")]))
+    accts = list(_map_accounts(conf["SASL_WATCH_MAP"]))
+    accts += [a for a in blocked if a not in accts]  # temporarily unblocked
+    for a in accts:
+        b = blocked.get(a, {})
+        print("\t".join([a, fmt(b.get("since")), fmt(b.get("until")), b.get("reason", "manual")]))
 
 
 def cmd_unblock(user, hours, conf, now=None):
+    """user: any login name of the account - all of its names are unblocked."""
     now = now if now is not None else time.time()
+    acct = account(user)
     state = _load_state()
     blocked = state.setdefault("blocked", {})
-    if user not in _map_users(conf["SASL_WATCH_MAP"]) and user not in blocked:
-        return f"{user} is not blocked"
-    remove_from_map(user, conf["SASL_WATCH_MAP"])
+    in_map = _map_accounts(conf["SASL_WATCH_MAP"])
+    if acct not in in_map and acct not in blocked:
+        return f"{acct} is not blocked"
+    remove_from_map(acct, conf["SASL_WATCH_MAP"])
     if hours:
-        b = blocked.setdefault(user, {"since": now, "reason": "manual", "pw": password_fingerprint(user)})
+        b = blocked.setdefault(acct, {"since": now, "reason": "manual", "pw": password_fingerprint(acct)})
+        b.setdefault("names", in_map.get(acct) or [acct])
         b["until"] = now + hours * 3600
-        msg = f"{user} unblocked for {hours:g}h - blocked again then unless its password changed"
+        msg = f"{acct} unblocked for {hours:g}h - blocked again then unless its password changed"
     else:
-        blocked.pop(user, None)
-        msg = f"{user} unblocked"
+        blocked.pop(acct, None)
+        msg = f"{acct} unblocked"
     # Don't let the same 24h of log lines re-block it on the next run.
-    state.setdefault("not_before", {})[user] = now
+    state.setdefault("not_before", {})[acct] = now
     _save_state(state)
     return msg
 
