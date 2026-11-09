@@ -27,9 +27,9 @@ Release from that section's text.
   auto-block through a `check_sasl_access` map. Also alerts when a milter
   refuses connections (its rate limits stop applying silently).
 - SASL auto-block: notice to the blocked account and its domain's contact
-  address (editable template), automatic release once the account's
-  password changes, `sasl_watch.py list` / `unblock <user> [--hours N]`
-  (temporary unblock re-blocks unless the password changed), and a blocked
+  address (editable template), `sasl_watch.py list` / `unblock <user>
+  [--hours N]` (temporary unblock re-blocks afterwards), optional release
+  on password change (`SASL_WATCH_UNBLOCK_ON_PWCHANGE`, off), and a blocked
   accounts table with unblock buttons on the Settings page.
 - Alert e-mail puts **new** serious hits (first time seen - a freshly
   compromised site) in their own block on top and in the subject

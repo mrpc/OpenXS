@@ -100,6 +100,7 @@ if (defined($in{'sasl_watch_exempt_hosts'})) {
 if (defined($in{'sasl_watch_map'}) && $in{'sasl_watch_map'} =~ m{^(/[A-Za-z0-9._/-]+)$}) {
 	$cfg{'SASL_WATCH_MAP'} = $1;
 	}
+$cfg{'SASL_WATCH_UNBLOCK_ON_PWCHANGE'} = (defined($in{'sasl_watch_unblock_on_pwchange'}) && $in{'sasl_watch_unblock_on_pwchange'} eq '1') ? '1' : '0';
 $cfg{'SASL_WATCH_NOTIFY'} = (defined($in{'sasl_watch_notify'}) && $in{'sasl_watch_notify'} eq '1') ? '1' : '0';
 $cfg{'SASL_WATCH_AUTOBLOCK'} = (defined($in{'sasl_watch_autoblock'}) && $in{'sasl_watch_autoblock'} eq '1') ? '1' : '0';
 

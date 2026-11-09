@@ -210,7 +210,9 @@ the user to `SASL_WATCH_MAP` (`/etc/postfix/sasl_blocked`) - list it as
 for that to take effect. A blocked account gets a short notice (itself
 plus its Virtualmin domain's contact address, local sendmail; template
 `/etc/openxs/sasl_blocked_notice.txt`, `SASL_WATCH_NOTIFY=0` to turn off)
-and is released by itself once its `/etc/shadow` password changes. `x` and
+and stays blocked until unblocked by hand (`SASL_WATCH_UNBLOCK_ON_PWCHANGE=1`
+releases it once its `/etc/shadow` password changes - off by default, the
+thief can usually change it too). `x` and
 `x@domain` logins of the same Unix user (saslauthd `-r`) count, block and
 unblock as one account. By hand:
 `sasl_watch.py list`, `sasl_watch.py unblock <user> [--hours N]` (also on

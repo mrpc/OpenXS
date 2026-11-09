@@ -67,8 +67,18 @@ def test_temporary_unblock_reblocks_after_expiry(tmp_path, monkeypatch):
     assert "until" not in s._load_state()["blocked"]["victim"]
 
 
-def test_password_change_releases_block(tmp_path, monkeypatch):
+def test_password_change_alone_keeps_block_by_default(tmp_path, monkeypatch):
     conf, sent = _setup(tmp_path, monkeypatch)
+    monkeypatch.setattr(s.subprocess, "run", lambda *a, **k: type("R", (), {"stdout": ""})())
+    s.cmd_unblock("victim", 2, conf, now=NOW)
+    (tmp_path / "shadow").write_text("victim:$6$new:1::\n")
+    s.run(now=NOW + 3 * 3600, conf=conf)
+    assert s._map_users(conf["SASL_WATCH_MAP"]) == ["victim"]
+
+
+def test_password_change_releases_block_when_enabled(tmp_path, monkeypatch):
+    conf, sent = _setup(tmp_path, monkeypatch)
+    conf["SASL_WATCH_UNBLOCK_ON_PWCHANGE"] = "1"
     (tmp_path / "shadow").write_text("victim:$6$new:1::\n")
     s.run(now=NOW, conf=conf)
     assert s._map_users(conf["SASL_WATCH_MAP"]) == []
