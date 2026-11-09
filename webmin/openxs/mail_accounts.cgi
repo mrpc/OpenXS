@@ -47,6 +47,20 @@ if (%dead) {
 print "<p>Milters (smtpd_milters): " . (@milters ? join(", ", map { "<code>" . &mx_h($_) . "</code>" } @milters) : "none") .
 	(%dead ? "" : " - none refused a connection in the last hour.") . "</p>\n";
 
+# Forwarded spam rejected as unauthenticated (Gmail 550 5.7.26 on orig_to= lines)
+my $fwd = $r->{'fwd_unauth_rejected'} || {};
+if ($fwd->{'count'}) {
+	my $top = join(", ", map { "<code>" . &mx_h($_->[0]) . "</code> (" . int($_->[1]) . ")" } @{$fwd->{'top'} || []});
+	my $fix = &foreign_available("virtualmin-authfwd")
+		? "Set it up per mailbox in <a href='../virtualmin-authfwd/index.cgi'>Authenticated forwarding</a>."
+		: $authfwd_repo_url
+		? "<a href='" . &mx_h($authfwd_repo_url) . "' target='_blank'>virtualmin-authfwd</a> forwards only DKIM-pass or local mail and stops this."
+		: "Forward only authenticated (DKIM-pass) mail, or stop forwarding those mailboxes.";
+	print "<div style='background:#fff4e5;border:1px solid #e0a800;border-radius:4px;padding:8px;margin:6px 0'>" .
+		"<b>Forwarded spam is being rejected as unauthenticated</b>: <b>" . int($fwd->{'count'}) .
+		"</b> in 24h (550 5.7.26), which hurts this server's IP reputation. Forwarding mailboxes: $top. $fix</div>\n";
+	}
+
 # Blocked accounts
 my @blocked;
 if (open(my $fh, '-|', 'python3', "$pmf_dir/sasl_watch.py", 'list')) {

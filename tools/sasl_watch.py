@@ -78,6 +78,9 @@ _TS_RE = re.compile(r"^(?:(?P<iso>\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)\S*|(?P<bsd>[A-
 _SASL_RE = re.compile(r"postfix/\S*smtpd\[\d+\]: (?P<qid>\w+): client=(?P<host>[^\[\s]*)\[(?P<ip>[^\]]+)\].*?sasl_username=(?P<user>[^,\s]+)")
 _STATUS_RE = re.compile(r"postfix/\S+\[\d+\]: (?P<qid>\w+): to=<.*?status=(?P<status>sent|bounced)\b")
 _FAILED_RE = re.compile(r"\[(?P<ip>[^\]]+)\]: SASL \S+ authentication failed:.*?sasl_username=(?P<user>[^,\s]+)")
+# Gmail's "550-5.7.26 unauthenticated" on a FORWARDED message (orig_to=):
+# spam relayed by a .forward / Virtualmin forward, which hurts this IP.
+_FWD_REJECT_RE = re.compile(r"orig_to=<(?P<orig>[^>]*)>.*status=bounced.*\b550[- ]5\.7\.26\b")
 _MILTER_RE = re.compile(r"warning: connect to Milter service (?P<svc>\S+?): Connection refused")
 
 
@@ -144,6 +147,7 @@ def analyze(lines, conf, now, not_before=None):
     qid_user = {}
     delivered = defaultdict(lambda: {"sent": 0, "bounced": 0})
     milters = {}
+    fwd_rejected = Counter()
     for line in lines:
         if "sasl_username=" not in line and "status=" not in line and "Milter service" not in line:
             continue
@@ -168,6 +172,9 @@ def analyze(lines, conf, now, not_before=None):
             continue
         m = _STATUS_RE.search(line)
         if m:
+            f = _FWD_REJECT_RE.search(line)
+            if f:
+                fwd_rejected[f.group("orig")] += 1
             if m.group("qid") in qid_user:
                 delivered[qid_user[m.group("qid")]][m.group("status")] += 1
             continue
@@ -202,6 +209,7 @@ def analyze(lines, conf, now, not_before=None):
             "last_seen": last_seen[u], "reasons": findings.get(u, []),
         } for u in msgs},
         "failed": {n: {"count": sum(c.values()), "ips": len(c)} for n, c in failed.items()},
+        "fwd_unauth_rejected": {"count": sum(fwd_rejected.values()), "top": fwd_rejected.most_common(5)},
     }
     return dict(findings), milters, {u: variants[u] for u in findings}, stats
 

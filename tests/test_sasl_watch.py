@@ -126,3 +126,16 @@ def test_stats_and_failed_logins_and_manual_block(tmp_path, monkeypatch):
     assert s._map_users(conf["SASL_WATCH_MAP"]) == ["someone"]
     s.run(now=NOW, conf=conf)
     assert "generated" in s.json.load(open(tmp_path / "report.json"))
+
+
+def test_forwarded_unauthenticated_rejects_counted():
+    def bounce(qid, orig, code):
+        return (f"Nov  9 11:40:00 mx postfix/smtp[5]: {qid}: to=<x@gmail.com>, {orig}relay=gmail-smtp-in.l.google.com[1.2.3.4]:25, "
+                f"delay=1, dsn=5.7.26, status=bounced (host gmail-smtp-in.l.google.com[1.2.3.4] said: {code} "
+                "This mail has been blocked because the sender is unauthenticated.)\n")
+    lines = [bounce("F1", "orig_to=<info@ex.gr>, ", "550-5.7.26"), bounce("F2", "orig_to=<info@ex.gr>, ", "550-5.7.26"),
+             bounce("F3", "orig_to=<sales@ex.gr>, ", "550-5.7.26"),
+             bounce("D1", "", "550-5.7.26"),                        # direct, not forwarded
+             bounce("F4", "orig_to=<info@ex.gr>, ", "550-5.7.1")]  # other reason
+    _, _, _, st = s.analyze(lines, CONF, NOW)
+    assert st["fwd_unauth_rejected"] == {"count": 3, "top": [("info@ex.gr", 2), ("sales@ex.gr", 1)]}
