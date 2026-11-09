@@ -20,6 +20,12 @@ Release from that section's text.
 ## [Unreleased]
 
 ### Added
+- Compromised SASL/SMTP account alert (`sasl_watch.py`, every 5 minutes):
+  too many distinct login IPs in 24h, too many messages per hour, or a high
+  bounce ratio for one SASL user - the successful-login botnet pattern
+  lfd never sees, since it only counts failed AUTH. Optional, off-by-default
+  auto-block through a `check_sasl_access` map. Also alerts when a milter
+  refuses connections (its rate limits stop applying silently).
 - Alert e-mail puts **new** serious hits (first time seen - a freshly
   compromised site) in their own block on top and in the subject
   (`N NEW SERIOUS`), instead of one more line among the same unresolved

@@ -85,6 +85,23 @@ if (defined($in{'csf_autoban_enabled'}) && $in{'csf_autoban_enabled'} eq '1' && 
 $cfg{'CSF_AUTOBAN_ENABLED'} = (defined($in{'csf_autoban_enabled'}) && $in{'csf_autoban_enabled'} eq '1') ? '1' : '0';
 $cfg{'CSF_AUTOBAN_TTL'} = &one_line($in{'csf_autoban_ttl'}) if (defined($in{'csf_autoban_ttl'}) && $in{'csf_autoban_ttl'} ne '');
 
+foreach my $k ('sasl_watch_max_ips', 'sasl_watch_max_msgs_per_hour', 'sasl_watch_max_bounce_pct') {
+	if (defined($in{$k}) && $in{$k} ne "") {
+		my $v = $in{$k};
+		$v =~ s/[^0-9]//g;
+		$cfg{uc($k)} = $v if ($v ne "");
+		}
+	}
+if (defined($in{'sasl_watch_exempt_hosts'})) {
+	my $v = &one_line($in{'sasl_watch_exempt_hosts'});
+	$v =~ s/[^A-Za-z0-9.*?\-, ]//g;
+	$cfg{'SASL_WATCH_EXEMPT_HOSTS'} = $v;
+	}
+if (defined($in{'sasl_watch_map'}) && $in{'sasl_watch_map'} =~ m{^(/[A-Za-z0-9._/-]+)$}) {
+	$cfg{'SASL_WATCH_MAP'} = $1;
+	}
+$cfg{'SASL_WATCH_AUTOBLOCK'} = (defined($in{'sasl_watch_autoblock'}) && $in{'sasl_watch_autoblock'} eq '1') ? '1' : '0';
+
 if (defined($in{'modsec_body_limit_ceiling'})) {
 	my $v = $in{'modsec_body_limit_ceiling'};
 	$v =~ s/[^0-9]//g;
