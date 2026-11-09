@@ -20,6 +20,8 @@ Release from that section's text.
 ## [Unreleased]
 
 ### Added
+- `/etc/openxs/composer_trusted_packages`: server-local Composer vendor
+  prefixes, merged with the shipped `tools/composer_trusted_packages`.
 - OpenXS now appears in Webmin's **Backup Configuration Files** module
   (`backup_config.pl`): backs up `/etc/openxs/*` and the `/etc/cron.d/openxs-*`
   schedules; on restore it regenerates the ModSecurity configs, reloads Apache

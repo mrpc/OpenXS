@@ -34,6 +34,15 @@ def test_whitelist_prefix_match():
     assert not ct.is_whitelisted("evil/typosquat", patterns)
 
 
+def test_whitelist_merges_local_file(tmp_path):
+    shipped = tmp_path / "shipped"
+    shipped.write_text("# comment\nsymfony/*\n")
+    local = tmp_path / "local"
+    local.write_text("acme/*\n")
+    patterns = ct._load_whitelist((str(shipped), str(local), str(tmp_path / "missing")))
+    assert patterns == ["symfony/*", "acme/*"]
+
+
 def test_level_1_whitelisted_package_trusted_without_lookup(monkeypatch):
     def boom(*a, **k):
         raise AssertionError("should not hit the network for a whitelisted package")

@@ -37,20 +37,24 @@ import urllib.request
 
 PACKAGIST_INFO_URL = "https://packagist.org/packages/{name}.json"
 WHITELIST_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "composer_trusted_packages")
+# Same format, server-local: your own/private vendor prefixes that don't
+# belong in the shipped list (and aren't on Packagist to earn trust there).
+LOCAL_WHITELIST_PATH = "/etc/openxs/composer_trusted_packages"
 STATS_CACHE_DB = os.environ.get("OPENXS_COMPOSER_STATS_CACHE_DB", "/var/lib/openxs/composer_trust_stats.db")
 STATS_CACHE_TTL = 7 * 24 * 3600  # downloads/age only matter at a coarse level here - re-check at most once a week
 
 
-def _load_whitelist(path=WHITELIST_PATH):
+def _load_whitelist(paths=(WHITELIST_PATH, LOCAL_WHITELIST_PATH)):
     patterns = []
-    try:
-        with open(path) as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#"):
-                    patterns.append(line)
-    except OSError:
-        pass
+    for path in paths:
+        try:
+            with open(path) as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#"):
+                        patterns.append(line)
+        except OSError:
+            pass
     return patterns
 
 
