@@ -139,3 +139,20 @@ def test_plan_watches_prunes_regex_and_skip_dirs_and_stops_at_limit(tmp_path):
     n, pruned = openxs_watchd.plan_watches([t], "/uploads/", [t + "/off"])
     assert n == 2 and sorted(pruned) == sorted([t + "/off", t + "/uploads"])
     assert openxs_watchd.plan_watches([t], limit=3)[0] == 4
+
+
+def test_main_exits_nonzero_when_inotifywait_dies(tmp_path, monkeypatch):
+    conf = tmp_path / "openxs.conf"
+    conf.write_text(f"WATCH_PATHS={tmp_path}\n")
+    monkeypatch.setenv("OPENXS_CONFIG", str(conf))
+    monkeypatch.setattr(openxs_watchd, "LOG", str(tmp_path / "watchd.log"))
+
+    class DeadInotify:
+        stdout = iter([])  # stream ends at once, as when a watched path vanished
+        def wait(self):
+            return 1
+
+    monkeypatch.setattr(openxs_watchd.subprocess, "Popen", lambda *a, **k: DeadInotify())
+    with pytest.raises(SystemExit) as e:
+        openxs_watchd.main()
+    assert e.value.code == 1
