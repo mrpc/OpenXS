@@ -26,6 +26,11 @@ Release from that section's text.
   lfd never sees, since it only counts failed AUTH. Optional, off-by-default
   auto-block through a `check_sasl_access` map. Also alerts when a milter
   refuses connections (its rate limits stop applying silently).
+- SASL auto-block: notice to the blocked account and its domain's contact
+  address (editable template), automatic release once the account's
+  password changes, `sasl_watch.py list` / `unblock <user> [--hours N]`
+  (temporary unblock re-blocks unless the password changed), and a blocked
+  accounts table with unblock buttons on the Settings page.
 - Alert e-mail puts **new** serious hits (first time seen - a freshly
   compromised site) in their own block on top and in the subject
   (`N NEW SERIOUS`), instead of one more line among the same unresolved

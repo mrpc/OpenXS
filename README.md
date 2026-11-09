@@ -207,7 +207,12 @@ whose IPs don't count. `SASL_WATCH_AUTOBLOCK=1` (off by default) also adds
 the user to `SASL_WATCH_MAP` (`/etc/postfix/sasl_blocked`) - list it as
 `check_sasl_access hash:/etc/postfix/sasl_blocked` first in
 `smtpd_sender_restrictions` (and the submission/smtps restriction class)
-for that to take effect. `MAIL_LOG` overrides `/var/log/mail.log`.
+for that to take effect. A blocked account gets a short notice (itself
+plus its Virtualmin domain's contact address, local sendmail; template
+`/etc/openxs/sasl_blocked_notice.txt`, `SASL_WATCH_NOTIFY=0` to turn off)
+and is released by itself once its `/etc/shadow` password changes. By hand:
+`sasl_watch.py list`, `sasl_watch.py unblock <user> [--hours N]` (also on
+the Settings page). `MAIL_LOG` overrides `/var/log/mail.log`.
 
 ## Testing
 

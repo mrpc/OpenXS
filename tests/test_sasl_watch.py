@@ -37,3 +37,50 @@ def test_block_user_is_idempotent(tmp_path, monkeypatch):
     s.block_user("u@x.gr", str(m))
     assert "WARNING" not in s.block_user("u@x.gr", str(m))
     assert m.read_text().count("u@x.gr REJECT") == 1
+
+
+def _setup(tmp_path, monkeypatch, shadow_hash="$6$a"):
+    monkeypatch.setattr(s, "STATE_FILE", str(tmp_path / "state.json"))
+    monkeypatch.setattr(s, "SHADOW_FILE", str(tmp_path / "shadow"))
+    monkeypatch.setattr(s, "_postmap", lambda p: None)
+    sent = []
+    monkeypatch.setattr(s, "_send", lambda c, sub, b: sent.append(sub))
+    (tmp_path / "shadow").write_text(f"victim:{shadow_hash}:1::\n")
+    log = tmp_path / "mail.log"
+    log.write_text("")
+    conf = dict(s.DEFAULTS, MAIL_LOG=str(log), SASL_WATCH_MAP=str(tmp_path / "map"), SASL_WATCH_AUTOBLOCK="1")
+    (tmp_path / "map").write_text("victim REJECT x\n")
+    state = {"blocked": {"victim": {"since": NOW, "reason": "r", "pw": s.password_fingerprint("victim")}}}
+    s._save_state(state)
+    return conf, sent
+
+
+def test_temporary_unblock_reblocks_after_expiry(tmp_path, monkeypatch):
+    conf, sent = _setup(tmp_path, monkeypatch)
+    monkeypatch.setattr(s.subprocess, "run", lambda *a, **k: type("R", (), {"stdout": ""})())
+    assert "for 2h" in s.cmd_unblock("victim", 2, conf, now=NOW)
+    assert s._map_users(conf["SASL_WATCH_MAP"]) == []
+    s.run(now=NOW + 3600, conf=conf)
+    assert s._map_users(conf["SASL_WATCH_MAP"]) == []
+    s.run(now=NOW + 3 * 3600, conf=conf)
+    assert s._map_users(conf["SASL_WATCH_MAP"]) == ["victim"]
+    assert "until" not in s._load_state()["blocked"]["victim"]
+
+
+def test_password_change_releases_block(tmp_path, monkeypatch):
+    conf, sent = _setup(tmp_path, monkeypatch)
+    (tmp_path / "shadow").write_text("victim:$6$new:1::\n")
+    s.run(now=NOW, conf=conf)
+    assert s._map_users(conf["SASL_WATCH_MAP"]) == []
+    assert "victim" not in s._load_state()["blocked"]
+    assert any("password changed" in x for x in sent)
+
+
+def test_notice_goes_to_mailbox_and_domain_contact(tmp_path, monkeypatch):
+    d = tmp_path / "domains"
+    d.mkdir()
+    (d / "123").write_text("dom=ex.gr\nuser=exgr\nemailto=owner@other.gr\n")
+    monkeypatch.setattr(s, "VIRTUALMIN_DOMAINS_DIR", str(d))
+    assert s.notice_recipients("info@ex.gr", CONF) == ["info@ex.gr", "owner@other.gr"]
+    assert s.notice_recipients("exgr", CONF) == ["owner@other.gr"]
+    assert s.notice_recipients("nobody", CONF) == [CONF["EMAIL"]]
