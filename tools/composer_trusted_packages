@@ -6,7 +6,8 @@
 # pay a Packagist API round-trip on every scan, not as the main defense
 # (that's the age/downloads reputation check for everything else).
 # One prefix per line, "vendor/*" or "vendor/exact-package". # comments
-# and blank lines ignored.
+# and blank lines ignored. Server-local additions (your own/private
+# vendors): /etc/openxs/composer_trusted_packages, same format.
 symfony/*
 guzzlehttp/*
 doctrine/*
@@ -15,7 +16,6 @@ monolog/monolog
 phpunit/phpunit
 composer/*
 mrpc/*
-pramnoshosting/*
 
 # Found live 2026-10-26 scanning real vendor/ findings on two servers in
 # our own fleet - established, well-known packages that already clear

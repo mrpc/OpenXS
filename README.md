@@ -130,7 +130,7 @@ code matches the checksum too.
 
 Mitigated (not eliminated) by `composer_trust.py`: a package also needs
 to be trusted - via `tools/composer_trusted_packages` (common ecosystem
-prefixes, auto-trusted) or Packagist's own age/downloads reputation
+prefixes, auto-trusted; add your own in `/etc/openxs/composer_trusted_packages`) or Packagist's own age/downloads reputation
 stats (configurable thresholds) - before a checksum match suppresses
 anything for it. `OPENXS_YARA_PARANOIA_LEVEL` controls how strict that
 bar is, up to disabling Composer-checksum suppression entirely at
