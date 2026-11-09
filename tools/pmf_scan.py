@@ -793,6 +793,22 @@ def yara_match_via_daemon(fname, socket_path=None):
     except Exception:
         return None
 
+def _run_detector(cmd, label, n_files, timeout=600):
+    """Runs an external detector and returns its stdout as text. On a
+    timeout the child is killed and whatever it printed so far is still
+    returned (hits it already reported are real), with a warning on
+    stderr so scan.log shows the pass was cut short instead of claiming
+    "0 additional hit(s)". Found live 2026-11-09: on a 7.5M-file server
+    both ClamAV and maldet hit the 600s limit every night (601.2s/601.1s
+    in # Timing:) and silently returned nothing."""
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout).stdout
+    except subprocess.TimeoutExpired as e:
+        print(f"# WARNING: {label} timed out after {timeout}s on {n_files} file(s) - results are partial",
+              file=sys.stderr)
+        out = e.stdout or ""
+        return out.decode("utf-8", "surrogateescape") if isinstance(out, bytes) else out
+
 def clamav_scan(filenames):
     """Runs the given (already-filtered) list of files through clamd (cxs's
     'virusscan' equivalent). Returns a list of (path, signature) tuples.
@@ -805,11 +821,11 @@ def clamav_scan(filenames):
         with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as tf:
             tf.write("\n".join(filenames))
             tmp_path = tf.name
-        out = subprocess.run(
+        out = _run_detector(
             ["clamdscan", "--fdpass", "--no-summary", "--infected",
              f"--file-list={tmp_path}"],
-            capture_output=True, text=True, timeout=600,
-        ).stdout
+            "ClamAV", len(filenames),
+        )
     except Exception:
         return []
     finally:
@@ -867,10 +883,10 @@ def maldet_scan(filenames):
         with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as tf:
             tf.write("\n".join(filenames))
             tmp_path = tf.name
-        out = subprocess.run(
+        out = _run_detector(
             [maldet_bin, "-co", "quarantine_hits=0,scan_clamscan=0,email_alert=0", "-f", tmp_path],
-            capture_output=True, text=True, timeout=600,
-        ).stdout
+            "maldet", len(filenames),
+        )
     except Exception:
         return []
     finally:
