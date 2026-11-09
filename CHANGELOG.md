@@ -20,6 +20,11 @@ Release from that section's text.
 ## [Unreleased]
 
 ### Added
+- OpenXS now appears in Webmin's **Backup Configuration Files** module
+  (`backup_config.pl`): backs up `/etc/openxs/*` and the `/etc/cron.d/openxs-*`
+  schedules; on restore it regenerates the ModSecurity configs, reloads Apache
+  (only if `apache2ctl -t` passes) and restarts the daemons that were running.
+  Scan data under `/var/lib/openxs` is not included.
 - Webmin **Mail accounts** page (next to Findings, when Postfix is
   installed): blocked accounts with unblock / temporary unblock, last 24h of
   authenticated sending per account (messages, distinct and top IPs,
