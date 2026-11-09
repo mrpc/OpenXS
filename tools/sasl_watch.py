@@ -30,11 +30,13 @@ class the submission/smtps services in master.cf use) - the alert says
 so when it isn't referenced. With SASL_WATCH_NOTIFY=1 (default) the
 account itself and its Virtualmin domain's contact address get a short
 notice (template: /etc/openxs/sasl_blocked_notice.txt, subject on line 1).
-A blocked local account is released by itself once its /etc/shadow
-password changes. By hand:
+A blocked account stays blocked until the admin unblocks it - a password
+change alone doesn't release it by default, since whoever stole the password
+can change it themselves (e.g. through Usermin). SASL_WATCH_UNBLOCK_ON_PWCHANGE=1
+releases a local account once its /etc/shadow password changes. By hand:
   sasl_watch.py list
-  sasl_watch.py unblock <user> [--hours N]   (--hours: re-blocked after N
-                                              hours unless the password changed)
+  sasl_watch.py unblock <user> [--hours N]   (--hours: blocked again after
+                                              N hours)
 
 Same alert is repeated at most once per REPEAT_SECONDS per user/milter.
 Still runnable standalone: python3 sasl_watch.py (no arguments = one run)"""
@@ -60,6 +62,7 @@ DEFAULTS = {
     "SASL_WATCH_AUTOBLOCK": "0",
     "SASL_WATCH_MAP": "/etc/postfix/sasl_blocked",
     "SASL_WATCH_NOTIFY": "1",
+    "SASL_WATCH_UNBLOCK_ON_PWCHANGE": "0",
 }
 DAY = 86400
 REPEAT_SECONDS = DAY
@@ -184,14 +187,14 @@ NOTICE_TEMPLATE_FILE = "/etc/openxs/sasl_blocked_notice.txt"
 DEFAULT_NOTICE = """Ο λογαριασμός σας μπλοκαρίστηκε για αποστολή / Your account was blocked from sending
 
 Λόγω ύποπτης κίνησης, ο λογαριασμός {user} μπλοκαρίστηκε για αποστολή email.
-Ο κωδικός του φαίνεται να έχει διαρρεύσει. Αλλάξτε τον το συντομότερο από τον
-πίνακα ελέγχου σας ή επικοινωνήστε με τον διαχειριστή του server. Μετά την
-αλλαγή του κωδικού η αποστολή ενεργοποιείται ξανά. Η λήψη email δεν επηρεάζεται.
+Ο κωδικός του φαίνεται να έχει διαρρεύσει. Αλλάξτε τον το συντομότερο και
+επικοινωνήστε με τον διαχειριστή του server για να ενεργοποιηθεί ξανά η
+αποστολή. Η λήψη email δεν επηρεάζεται.
 
 Due to suspicious activity, sending email from {user} has been blocked. Its
-password appears to have leaked. Please change it as soon as possible from your
-control panel, or contact the server administrator. Sending is re-enabled once
-the password is changed. Receiving email is not affected.
+password appears to have leaked. Please change it as soon as possible and
+contact the server administrator to have sending re-enabled. Receiving email
+is not affected.
 """
 
 
@@ -353,16 +356,18 @@ def _map_accounts(map_path):
 
 
 def _manage_blocked(state, conf, now):
-    """Releases blocked accounts whose password changed, re-blocks expired
-    temporary unblocks whose password didn't. Entries added to the map by
-    hand are adopted on first sight, so they get released the same way."""
+    """Re-blocks expired temporary unblocks. With
+    SASL_WATCH_UNBLOCK_ON_PWCHANGE=1, first releases accounts whose password
+    changed (temporarily unblocked ones included). Entries added to the map
+    by hand are adopted on first sight, so they're handled the same way."""
+    on_pwchange = conf["SASL_WATCH_UNBLOCK_ON_PWCHANGE"] == "1"
     blocked = state.setdefault("blocked", {})
     for acct, names in _map_accounts(conf["SASL_WATCH_MAP"]).items():
         if acct not in blocked:
             blocked[acct] = {"since": now, "reason": "manual", "pw": password_fingerprint(acct), "names": names}
     for acct, b in list(blocked.items()):
         fp = password_fingerprint(acct)
-        if b.get("pw") and fp and fp != b["pw"]:
+        if on_pwchange and b.get("pw") and fp and fp != b["pw"]:
             remove_from_map(acct, conf["SASL_WATCH_MAP"])
             del blocked[acct]
             state.setdefault("not_before", {})[acct] = now
@@ -406,7 +411,7 @@ def run(now=None, conf=None):
             body += ["", result]
             if result.startswith("AUTO-BLOCKED"):
                 blocked[acct] = {"since": now, "reason": "; ".join(reasons), "pw": password_fingerprint(acct), "names": names}
-                if blocked[acct]["pw"] is None:
+                if conf["SASL_WATCH_UNBLOCK_ON_PWCHANGE"] == "1" and blocked[acct]["pw"] is None:
                     body += ["Not a local account, so a password change can't be detected: unblock by hand."]
                 if conf["SASL_WATCH_NOTIFY"] == "1":
                     body += [notify_user(acct, names, conf)]
@@ -457,7 +462,7 @@ def cmd_unblock(user, hours, conf, now=None):
         b = blocked.setdefault(acct, {"since": now, "reason": "manual", "pw": password_fingerprint(acct)})
         b.setdefault("names", in_map.get(acct) or [acct])
         b["until"] = now + hours * 3600
-        msg = f"{acct} unblocked for {hours:g}h - blocked again then unless its password changed"
+        msg = f"{acct} unblocked for {hours:g}h, blocked again after that"
     else:
         blocked.pop(acct, None)
         msg = f"{acct} unblocked"

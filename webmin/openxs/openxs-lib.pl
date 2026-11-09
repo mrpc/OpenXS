@@ -618,7 +618,7 @@ my %cfg = ( 'EMAIL' => 'root@localhost', 'SCAN_PATH' => '/var/www', 'QUARANTINE_
             # sasl_watch.py's own defaults - auto-block off, like CSF auto-ban.
             'SASL_WATCH_MAX_IPS' => '10', 'SASL_WATCH_MAX_MSGS_PER_HOUR' => '100',
             'SASL_WATCH_MAX_BOUNCE_PCT' => '30', 'SASL_WATCH_EXEMPT_HOSTS' => 'mail-*.google.com',
-            'SASL_WATCH_AUTOBLOCK' => '0', 'SASL_WATCH_NOTIFY' => '1', 'SASL_WATCH_MAP' => '/etc/postfix/sasl_blocked' );
+            'SASL_WATCH_AUTOBLOCK' => '0', 'SASL_WATCH_NOTIFY' => '1', 'SASL_WATCH_UNBLOCK_ON_PWCHANGE' => '0', 'SASL_WATCH_MAP' => '/etc/postfix/sasl_blocked' );
 if (open(my $fh, '<', $config_file)) {
 	while (<$fh>) {
 		chomp;

@@ -126,7 +126,10 @@ if (-d '/etc/postfix') {
 		&ui_textbox("sasl_watch_map", $cfg{'SASL_WATCH_MAP'}, 30, 0, 0, "autocomplete='off'") .
 		" and postmap it <i>(off by default). Only takes effect when main.cf lists " .
 		"<code>check_sasl_access hash:" . &html_escape($cfg{'SASL_WATCH_MAP'}) . "</code> first in smtpd_sender_restrictions " .
-		"(and in the restriction class the submission/smtps services use). A local account is released by itself once its password changes.</i><br>" .
+		"(and in the restriction class the submission/smtps services use). It stays blocked until you unblock it below.</i><br>" .
+		&ui_checkbox("sasl_watch_unblock_on_pwchange", "1", "Unblock by itself once the account's password changes",
+			$cfg{'SASL_WATCH_UNBLOCK_ON_PWCHANGE'} eq '1') .
+		" <i>(off by default: whoever stole the password can usually change it themselves, e.g. through Usermin)</i><br>" .
 		&ui_checkbox("sasl_watch_notify", "1", "Tell the account (and its domain's contact address) it was blocked and to change its password",
 			$cfg{'SASL_WATCH_NOTIFY'} eq '1') .
 		" <i>template: <a href='edit_file.cgi?f=sasl_blocked_notice'>/etc/openxs/sasl_blocked_notice.txt</a> (subject on the first line, {user} is replaced; " .

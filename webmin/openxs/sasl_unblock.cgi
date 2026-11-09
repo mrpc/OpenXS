@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 # sasl_unblock.cgi
 # Removes one account from sasl_watch.py's check_sasl_access map - for
-# good, or for N hours (blocked again then unless its password changed).
+# good, or for N hours (blocked again after that).
 
 require './openxs-lib.pl';
 &ReadParse();
