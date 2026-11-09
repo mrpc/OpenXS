@@ -35,6 +35,7 @@ change alone doesn't release it by default, since whoever stole the password
 can change it themselves (e.g. through Usermin). SASL_WATCH_UNBLOCK_ON_PWCHANGE=1
 releases a local account once its /etc/shadow password changes. By hand:
   sasl_watch.py list
+  sasl_watch.py block <user>
   sasl_watch.py unblock <user> [--hours N]   (--hours: blocked again after
                                               N hours)
 
@@ -48,10 +49,13 @@ import re
 import subprocess
 import sys
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 CONFIG_FILE = os.environ.get("OPENXS_CONFIG", "/etc/openxs/openxs.conf")
 STATE_FILE = os.environ.get("OPENXS_SASL_WATCH_STATE", "/var/lib/openxs/sasl_watch.json")
+# Last run's per-account numbers, for the Webmin "Mail accounts" page - a
+# file read there instead of re-parsing mail.log on every page view.
+REPORT_FILE = os.environ.get("OPENXS_SASL_WATCH_REPORT", "/var/lib/openxs/sasl_watch_report.json")
 DEFAULTS = {
     "EMAIL": "root@localhost",
     "MAIL_LOG": "/var/log/mail.log",
@@ -73,6 +77,7 @@ BOUNCE_MIN_SAMPLE = 20
 _TS_RE = re.compile(r"^(?:(?P<iso>\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)\S*|(?P<bsd>[A-Z][a-z]{2} [ \d]\d \d\d:\d\d:\d\d))\s")
 _SASL_RE = re.compile(r"postfix/\S*smtpd\[\d+\]: (?P<qid>\w+): client=(?P<host>[^\[\s]*)\[(?P<ip>[^\]]+)\].*?sasl_username=(?P<user>[^,\s]+)")
 _STATUS_RE = re.compile(r"postfix/\S+\[\d+\]: (?P<qid>\w+): to=<.*?status=(?P<status>sent|bounced)\b")
+_FAILED_RE = re.compile(r"\[(?P<ip>[^\]]+)\]: SASL \S+ authentication failed:.*?sasl_username=(?P<user>[^,\s]+)")
 _MILTER_RE = re.compile(r"warning: connect to Milter service (?P<svc>\S+?): Connection refused")
 
 
@@ -120,7 +125,9 @@ def _log_lines(mail_log, now):
 
 def analyze(lines, conf, now, not_before=None):
     """Returns ({account: [reason, ...]}, {milter_service: last_seen_ts},
-    {account: {login names seen}}). Login names are folded into the local
+    {account: {login names seen}}, stats). stats: {"accounts": {account:
+    numbers for the report}, "failed": {login name: {"count", "ips"}}}.
+    Login names are folded into the local
     account they authenticate as (see account()), so 'x' and 'x@domain'
     logins add up. not_before: {account: ts} - older lines are ignored
     (just unblocked)."""
@@ -128,7 +135,11 @@ def analyze(lines, conf, now, not_before=None):
     shadow = _shadow()
     variants = defaultdict(set)
     exempt = [p for p in re.split(r"[\s,]+", conf["SASL_WATCH_EXEMPT_HOSTS"]) if p]
-    ips = defaultdict(set)
+    ips = defaultdict(Counter)
+    msgs = Counter()
+    exempt_msgs = Counter()
+    last_seen = {}
+    failed = defaultdict(Counter)
     hourly = defaultdict(int)
     qid_user = {}
     delivered = defaultdict(lambda: {"sent": 0, "bounced": 0})
@@ -146,8 +157,12 @@ def analyze(lines, conf, now, not_before=None):
                 continue
             qid_user[m.group("qid")] = user
             variants[user].add(m.group("user"))
+            msgs[user] += 1
+            last_seen[user] = max(ts, last_seen.get(user, 0))
             if not any(fnmatch.fnmatch(m.group("host").lower(), p.lower()) for p in exempt):
-                ips[user].add(m.group("ip"))
+                ips[user][m.group("ip")] += 1
+            else:
+                exempt_msgs[user] += 1
             if now - ts <= 3600:
                 hourly[user] += 1
             continue
@@ -155,6 +170,10 @@ def analyze(lines, conf, now, not_before=None):
         if m:
             if m.group("qid") in qid_user:
                 delivered[qid_user[m.group("qid")]][m.group("status")] += 1
+            continue
+        m = _FAILED_RE.search(line)
+        if m:
+            failed[m.group("user")][m.group("ip")] += 1
             continue
         m = _MILTER_RE.search(line)
         if m and now - ts <= 3600:
@@ -175,7 +194,16 @@ def analyze(lines, conf, now, not_before=None):
         total = d["sent"] + d["bounced"]
         if total >= BOUNCE_MIN_SAMPLE and 100.0 * d["bounced"] / total > max_bounce:
             findings[user].append(f"{d['bounced']} of {total} deliveries bounced in 24h ({100.0 * d['bounced'] / total:.0f}%, limit {max_bounce:g}%)")
-    return dict(findings), milters, {u: variants[u] for u in findings}
+    stats = {
+        "accounts": {u: {
+            "names": sorted(variants[u]), "msgs": msgs[u], "msgs_1h": hourly[u],
+            "ips": len(ips[u]), "top_ips": ips[u].most_common(5), "exempt_msgs": exempt_msgs[u],
+            "sent": delivered[u]["sent"], "bounced": delivered[u]["bounced"],
+            "last_seen": last_seen[u], "reasons": findings.get(u, []),
+        } for u in msgs},
+        "failed": {n: {"count": sum(c.values()), "ips": len(c)} for n, c in failed.items()},
+    }
+    return dict(findings), milters, {u: variants[u] for u in findings}, stats
 
 
 SHADOW_FILE = "/etc/shadow"
@@ -391,7 +419,7 @@ def run(now=None, conf=None):
     before = json.dumps(state, sort_keys=True)
     _manage_blocked(state, conf, now)
     blocked = state["blocked"]
-    findings, milters, variants = analyze(_log_lines(conf["MAIL_LOG"], now), conf, now, state.get("not_before", {}))
+    findings, milters, variants, stats = analyze(_log_lines(conf["MAIL_LOG"], now), conf, now, state.get("not_before", {}))
     sent = 0
     for acct, reasons in findings.items():
         key = f"user:{acct}"
@@ -433,6 +461,12 @@ def run(now=None, conf=None):
         sent += 1
     if json.dumps(state, sort_keys=True) != before:
         _save_state(state)
+    stats.update(generated=now, milters=milters,
+                 last_alert={k[5:]: v for k, v in state.items() if k.startswith("user:")})
+    os.makedirs(os.path.dirname(REPORT_FILE), exist_ok=True)
+    with open(REPORT_FILE + ".tmp", "w") as f:
+        json.dump(stats, f)
+    os.replace(REPORT_FILE + ".tmp", REPORT_FILE)
     return f"{len(findings)} suspicious SASL account(s), {len(milters)} dead milter(s), {sent} alert(s) sent"
 
 
@@ -472,11 +506,30 @@ def cmd_unblock(user, hours, conf, now=None):
     return msg
 
 
+def cmd_block(user, conf, now=None):
+    """Manual block of every known login name of the account."""
+    now = now if now is not None else time.time()
+    acct = account(user)
+    state = _load_state()
+    blocked = state.setdefault("blocked", {})
+    if acct in blocked and not blocked[acct].get("until"):
+        return f"{acct} is already blocked"
+    names = sorted({user, acct} | set(blocked.get(acct, {}).get("names", [])))
+    result = block_user(names, conf["SASL_WATCH_MAP"])
+    if result.startswith("AUTO-BLOCKED"):
+        blocked[acct] = {"since": now, "reason": "manual", "pw": password_fingerprint(acct), "names": names}
+        _save_state(state)
+        return f"{acct} blocked ({', '.join(names)})" + result.split(")", 1)[1].rstrip(".")
+    return result
+
+
 def main(argv):
     import argparse
     ap = argparse.ArgumentParser(description="Compromised SASL account watch (see module docstring).")
     sub = ap.add_subparsers(dest="cmd")
     sub.add_parser("list", help="blocked accounts: user, since, temporary-unblock end, reason")
+    bl = sub.add_parser("block", help="block an account by hand (all its login names)")
+    bl.add_argument("user")
     u = sub.add_parser("unblock", help="remove from the map (for good, or for --hours)")
     u.add_argument("user")
     u.add_argument("--hours", type=float, default=0)
@@ -484,6 +537,8 @@ def main(argv):
     conf = load_config()
     if args.cmd == "list":
         cmd_list(conf)
+    elif args.cmd == "block":
+        print(cmd_block(args.user, conf))
     elif args.cmd == "unblock":
         print(cmd_unblock(args.user, args.hours, conf))
     else:

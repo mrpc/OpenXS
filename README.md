@@ -215,8 +215,10 @@ releases it once its `/etc/shadow` password changes - off by default, the
 thief can usually change it too). `x` and
 `x@domain` logins of the same Unix user (saslauthd `-r`) count, block and
 unblock as one account. By hand:
-`sasl_watch.py list`, `sasl_watch.py unblock <user> [--hours N]` (also on
-the Settings page). `MAIL_LOG` overrides `/var/log/mail.log`.
+`sasl_watch.py list`, `block <user>`, `unblock <user> [--hours N]`. The
+Webmin **Mail accounts** page shows the same plus the last 24h per account
+(messages, distinct/top IPs, bounces, last alert), the login names most
+targeted by failed AUTH, and milter status, with Block/Unblock buttons. `MAIL_LOG` overrides `/var/log/mail.log`.
 
 ## Testing
 
