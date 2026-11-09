@@ -929,3 +929,35 @@ def test_is_unmodified_composer_package_file_false_when_not_on_packagist(tmp_pat
     monkeypatch.setattr(composer_trust, "is_trusted", lambda name, paranoia_level=None: True)
     monkeypatch.setattr(composer_package_checksums, "fetch_checksums", lambda name, version, dist_url=None, cache_key=None: None)
     assert not pmf_scan.is_unmodified_composer_package_file(str(target))
+
+
+def test_clamav_scan_timeout_keeps_partial_hits_and_warns(monkeypatch, capsys):
+    # Found live 2026-11-09: on a 7.5M-file server clamdscan hit the 600s
+    # timeout every night; the TimeoutExpired was swallowed and the pass
+    # reported "0 additional hit(s)", dropping even the hits clamdscan had
+    # already printed before it was killed.
+    monkeypatch.setattr(pmf_scan.shutil, "which", lambda name: "/usr/bin/clamdscan")
+
+    def fake_run(args, **kwargs):
+        raise pmf_scan.subprocess.TimeoutExpired(args, kwargs.get("timeout"),
+                                                 output=b"/tmp/a.php: Eicar-Signature FOUND\n")
+
+    monkeypatch.setattr(pmf_scan.subprocess, "run", fake_run)
+    assert pmf_scan.clamav_scan(["/tmp/a.php", "/tmp/b.php"]) == [("/tmp/a.php", "Eicar-Signature")]
+    err = capsys.readouterr().err
+    assert "ClamAV timed out after 600s on 2 file(s)" in err
+
+
+def test_maldet_scan_timeout_still_reads_hits_logged_so_far(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(pmf_scan.shutil, "which", lambda name: "/usr/local/sbin/maldet" if name == "maldet" else None)
+
+    def fake_run(args, **kwargs):
+        raise pmf_scan.subprocess.TimeoutExpired(args, kwargs.get("timeout"),
+                                                 output=b"maldet(4242): {scan} signatures loaded: 1000\n")
+
+    monkeypatch.setattr(pmf_scan.subprocess, "run", fake_run)
+    event_log = tmp_path / "event_log"
+    event_log.write_text("Nov 09 2026 maldet(4242): {hit} malware hit {HEX}x.y found for /tmp/a.php\n")
+    monkeypatch.setattr(pmf_scan, "MALDET_EVENT_LOG", str(event_log))
+    assert pmf_scan.maldet_scan(["/tmp/a.php"]) == [("/tmp/a.php", "{HEX}x.y")]
+    assert "maldet timed out after 600s" in capsys.readouterr().err
