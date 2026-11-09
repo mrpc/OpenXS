@@ -18,9 +18,11 @@ running."""
 import sys
 
 import openxs_modsec_record
+import sasl_watch
 
 JOBS = [
     ("modsec", openxs_modsec_record.run),
+    ("sasl", sasl_watch.run),
 ]
 
 
