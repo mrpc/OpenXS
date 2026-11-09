@@ -19,6 +19,11 @@ Release from that section's text.
 
 ## [Unreleased]
 
+### Fixed
+- Watch daemon now exits non-zero when inotifywait stops (e.g. a watched
+  path vanished during watch setup), so systemd restarts it. It used to
+  exit 0 and real-time monitoring stayed off until someone noticed.
+
 ### Added
 - Mail accounts page: warns when forwarded mail is rejected as
   unauthenticated (Gmail `550 5.7.26` on `orig_to=` lines) in the last 24h,

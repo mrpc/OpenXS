@@ -335,6 +335,14 @@ def main():
                 scan_one(fname, ignore, custom_rules, path_overrides, global_fast_php_only)
             except Exception as e:  # one bad event must not take real-time monitoring down
                 log(f"ERROR scanning {fname!r}: {e!r}")
+    # inotifywait only stops on an error (e.g. a watched path vanished while
+    # it was setting up its watches). Returning here used to exit 0, so
+    # Restart=on-failure never restarted us: real-time monitoring silently
+    # stayed off. Exit non-zero instead - systemd restarts us and the path
+    # list is rebuilt from what exists now.
+    rc = proc.wait()
+    log(f"inotifywait exited (rc={rc}) - exiting so systemd restarts the watch")
+    sys.exit(1)
 
 
 if __name__ == "__main__":
