@@ -197,7 +197,7 @@ QUARANTINE_ENABLED=0
 Editable from the Webmin dashboard, or by hand.
 
 Compromised mail account watch (`sasl_watch.py`, runs every 5 minutes from
-the collector cron): reads Postfix's `mail.log` and e-mails when a SASL
+the collector cron; on the Settings page when Postfix is installed): reads Postfix's `mail.log` and e-mails when a SASL
 user logs in from more than `SASL_WATCH_MAX_IPS` (10) IPs in 24h, submits
 more than `SASL_WATCH_MAX_MSGS_PER_HOUR` (100) messages in an hour, or has
 over `SASL_WATCH_MAX_BOUNCE_PCT` (30) % of its mail bounce - plus when a

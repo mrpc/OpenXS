@@ -68,7 +68,8 @@ def load_config(path=None):
         with open(path or CONFIG_FILE, encoding="utf-8", errors="replace") as f:
             for line in f:
                 key, sep, value = line.strip().partition("=")
-                if sep and key in conf and value:
+                # A blank exempt list is a real choice (from the Settings page), other blanks mean "default".
+                if sep and key in conf and (value or key == "SASL_WATCH_EXEMPT_HOSTS"):
                     conf[key] = value
     except OSError:
         pass

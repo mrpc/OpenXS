@@ -612,7 +612,11 @@ my %cfg = ( 'EMAIL' => 'root@localhost', 'SCAN_PATH' => '/var/www', 'QUARANTINE_
             # exact, unambiguous watch-daemon correlation (never the
             # batch scan - see csf_autoban.py's own docstring).
             'CSF_AUTOBAN_ENABLED' => '0', 'CSF_AUTOBAN_TTL' => '3d',
-            'MODSEC_BODY_LIMIT_CEILING' => '' );
+            'MODSEC_BODY_LIMIT_CEILING' => '',
+            # sasl_watch.py's own defaults - auto-block off, like CSF auto-ban.
+            'SASL_WATCH_MAX_IPS' => '10', 'SASL_WATCH_MAX_MSGS_PER_HOUR' => '100',
+            'SASL_WATCH_MAX_BOUNCE_PCT' => '30', 'SASL_WATCH_EXEMPT_HOSTS' => 'mail-*.google.com',
+            'SASL_WATCH_AUTOBLOCK' => '0', 'SASL_WATCH_MAP' => '/etc/postfix/sasl_blocked' );
 if (open(my $fh, '<', $config_file)) {
 	while (<$fh>) {
 		chomp;
