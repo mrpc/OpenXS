@@ -961,3 +961,54 @@ def test_maldet_scan_timeout_still_reads_hits_logged_so_far(tmp_path, monkeypatc
     monkeypatch.setattr(pmf_scan, "MALDET_EVENT_LOG", str(event_log))
     assert pmf_scan.maldet_scan(["/tmp/a.php"]) == [("/tmp/a.php", "{HEX}x.y")]
     assert "maldet timed out after 600s" in capsys.readouterr().err
+
+
+def test_clamav_scan_file_list_keeps_non_utf8_paths(monkeypatch):
+    # Found live 2026-11-10: a raw non-UTF-8 byte in one path (surrogateescape'd
+    # by iter_files) made the strict-UTF-8 temp file write raise, and the whole
+    # ClamAV pass silently returned [] every night.
+    monkeypatch.setattr(pmf_scan.shutil, "which", lambda name: "/usr/bin/clamdscan")
+    odd = b"/tmp/theme_\xe1\xf1/a.php".decode("utf-8", "surrogateescape")
+    seen = {}
+
+    def fake_run(args, **kwargs):
+        list_path = next(a for a in args if a.startswith("--file-list=")).split("=", 1)[1]
+        with open(list_path, "rb") as f:
+            seen["list"] = f.read()
+        return pmf_scan.subprocess.CompletedProcess(
+            args, 1, stdout=(odd + ": Eicar-Signature FOUND\n"), stderr="")
+
+    monkeypatch.setattr(pmf_scan.subprocess, "run", fake_run)
+    assert pmf_scan.clamav_scan([odd, "/tmp/b.php"]) == [(odd, "Eicar-Signature")]
+    assert seen["list"] == b"/tmp/theme_\xe1\xf1/a.php\n/tmp/b.php"
+
+
+def test_maldet_scan_file_list_keeps_non_utf8_paths(tmp_path, monkeypatch):
+    monkeypatch.setattr(pmf_scan.shutil, "which", lambda name: "/usr/local/sbin/maldet" if name == "maldet" else None)
+    odd_bytes = b"/tmp/theme_\xe1\xf1/a.php"
+    odd = odd_bytes.decode("utf-8", "surrogateescape")
+    seen = {}
+
+    def fake_run(args, **kwargs):
+        with open(args[-1], "rb") as f:
+            seen["list"] = f.read()
+        return pmf_scan.subprocess.CompletedProcess(
+            args, 0, stdout="maldet(4242): {scan} signatures loaded: 1000\n", stderr="")
+
+    monkeypatch.setattr(pmf_scan.subprocess, "run", fake_run)
+    event_log = tmp_path / "event_log"
+    event_log.write_bytes(b"Nov 10 2026 maldet(4242): {hit} malware hit {HEX}x.y found for " + odd_bytes + b"\n")
+    monkeypatch.setattr(pmf_scan, "MALDET_EVENT_LOG", str(event_log))
+    assert pmf_scan.maldet_scan([odd]) == [(odd, "{HEX}x.y")]
+    assert seen["list"] == odd_bytes
+
+
+def test_clamav_scan_unexpected_error_warns(monkeypatch, capsys):
+    monkeypatch.setattr(pmf_scan.shutil, "which", lambda name: "/usr/bin/clamdscan")
+
+    def fake_run(args, **kwargs):
+        raise OSError("boom")
+
+    monkeypatch.setattr(pmf_scan.subprocess, "run", fake_run)
+    assert pmf_scan.clamav_scan(["/tmp/a.php"]) == []
+    assert "# WARNING: ClamAV pass failed (OSError: boom)" in capsys.readouterr().err

@@ -802,7 +802,8 @@ def _run_detector(cmd, label, n_files, timeout=600):
     both ClamAV and maldet hit the 600s limit every night (601.2s/601.1s
     in # Timing:) and silently returned nothing."""
     try:
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout).stdout
+        return subprocess.run(cmd, capture_output=True, text=True, errors="surrogateescape",
+                              timeout=timeout).stdout
     except subprocess.TimeoutExpired as e:
         print(f"# WARNING: {label} timed out after {timeout}s on {n_files} file(s) - results are partial",
               file=sys.stderr)
@@ -818,7 +819,13 @@ def clamav_scan(filenames):
         return []
     import tempfile
     try:
-        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as tf:
+        # surrogateescape: iter_files() reads filelist.txt that way, so a
+        # path with a raw non-UTF-8 byte is written back as those same
+        # bytes. Found live 2026-11-10: with strict encoding, one such
+        # path (449 on one server) raised UnicodeEncodeError here and the
+        # whole pass silently returned [] - every night, for every file.
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False,
+                                         errors="surrogateescape") as tf:
             tf.write("\n".join(filenames))
             tmp_path = tf.name
         out = _run_detector(
@@ -826,7 +833,8 @@ def clamav_scan(filenames):
              f"--file-list={tmp_path}"],
             "ClamAV", len(filenames),
         )
-    except Exception:
+    except Exception as e:
+        print(f"# WARNING: ClamAV pass failed ({type(e).__name__}: {e}) - no ClamAV results", file=sys.stderr)
         return []
     finally:
         try:
@@ -880,14 +888,17 @@ def maldet_scan(filenames):
         return []
     import tempfile
     try:
-        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as tf:
+        # surrogateescape: same reason as in clamav_scan().
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False,
+                                         errors="surrogateescape") as tf:
             tf.write("\n".join(filenames))
             tmp_path = tf.name
         out = _run_detector(
             [maldet_bin, "-co", "quarantine_hits=0,scan_clamscan=0,email_alert=0", "-f", tmp_path],
             "maldet", len(filenames),
         )
-    except Exception:
+    except Exception as e:
+        print(f"# WARNING: maldet pass failed ({type(e).__name__}: {e}) - no maldet results", file=sys.stderr)
         return []
     finally:
         try:
@@ -901,7 +912,7 @@ def maldet_scan(filenames):
     pid_marker = f"maldet({m.group(1)}): {{hit}}"
     findings = []
     try:
-        with open(MALDET_EVENT_LOG) as f:
+        with open(MALDET_EVENT_LOG, errors="surrogateescape") as f:
             for line in f:
                 if pid_marker not in line:
                     continue
