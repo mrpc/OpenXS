@@ -70,8 +70,9 @@ if (open(my $fh, '-|', 'python3', "$pmf_dir/sasl_watch.py", 'list')) {
 my %is_blocked = map { $_->[0] => 1 } grep { $_->[2] eq '' } @blocked;
 print &ui_subheading("Blocked accounts (" . scalar(@blocked) . ")");
 if (@blocked) {
-	print "<p><i>Listed in " . &mx_h($cfg{'SASL_WATCH_MAP'}) . " (check_sasl_access) - they can still log in and read mail, " .
-		"but can't send. Change the password before unblocking: whoever stole it can usually change it too.</i></p>\n";
+	print "<p><i>Listed in " . &mx_h($cfg{'SASL_WATCH_MAP'}) . " (check_sasl_access) - they can't send, and are also locked out of " .
+		"IMAP/POP and Usermin (incoming mail is still delivered). Change the password before unblocking: " .
+		"whoever stole it can usually change it too.</i></p>\n";
 	print &ui_columns_start(["Account", "Blocked since", "Temporarily unblocked until", "Reason", ""]);
 	foreach my $b (@blocked) {
 		my ($u, $since, $until, $reason) = @$b;
