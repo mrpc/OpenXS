@@ -848,6 +848,46 @@ def clamav_scan(filenames):
             findings.append((m.group(1), m.group(2)))
     return findings
 
+# Above this many files, ClamAV/maldet only get the recently changed ones.
+# Measured 2026-11-10 on an 880k-file server: clamdscan does ~17 files/s
+# on a random sample of the list (--multiscan made no difference), so a
+# full pass is ~14h there and days at 7.5M files - far past the 600s
+# timeout. The files changed in the last 48h (35.7k, mostly PHP) took 503s.
+# YARA still covers every file every night; old files only miss the newer
+# ClamAV/maldet signatures.
+# ponytail: old files on large servers never get ClamAV/maldet again;
+# a rolling pass over the rest (cursor + time budget) is the upgrade path.
+DETECTOR_FULL_MAX = 5000  # ~300s at ~17 files/s, inside the 600s timeout
+DETECTOR_RECENT_HOURS = 48  # a nightly scan, plus slack for one missed night
+
+
+def detector_files(filenames):
+    """The subset of the scan's files that ClamAV/maldet get. Small lists
+    pass whole. Large ones keep files changed in the last
+    DETECTOR_RECENT_HOURS, by mtime OR ctime - ctime can't be set from
+    userland, so a dropper backdating mtime with touch still gets caught.
+    Newest first, so if the 600s timeout still fires (100k changed files
+    on a 7.5M-file server), the partial results cover the freshest ones.
+    A file that can't be stat'ed is kept (a detector is the one to judge)."""
+    if len(filenames) <= DETECTOR_FULL_MAX:
+        return filenames
+    now = time.time()
+    cutoff = now - DETECTOR_RECENT_HOURS * 3600
+    recent = []
+    for fname in filenames:
+        try:
+            st = os.stat(fname)
+            changed = max(st.st_mtime, st.st_ctime)
+        except OSError:
+            changed = now
+        if changed >= cutoff:
+            recent.append((changed, fname))
+    recent.sort(key=lambda t: t[0], reverse=True)
+    print(f"# ClamAV/maldet: {len(recent)} of {len(filenames)} file(s) - only those changed "
+          f"in the last {DETECTOR_RECENT_HOURS}h (more than {DETECTOR_FULL_MAX} files)",
+          file=sys.stderr)
+    return [fname for _, fname in recent]
+
 MALDET_EVENT_LOG = "/usr/local/maldetect/logs/event_log"
 
 def maldet_scan(filenames):
@@ -1159,8 +1199,9 @@ def main():
                 pf.write("clamav\t0")
         except OSError:
             pass
-        print(f"# Running ClamAV on {len(scanned_files)} flagged files...", file=sys.stderr)
-        clam_findings = clamav_scan(scanned_files)
+        detector_list = detector_files(scanned_files)
+        print(f"# Running ClamAV on {len(detector_list)} flagged files...", file=sys.stderr)
+        clam_findings = clamav_scan(detector_list)
         print(f"# ClamAV done, {len(clam_findings)} additional hit(s)", file=sys.stderr)
         t_clamav_done = time.perf_counter()
         already_flagged = {f for f, _ in findings}
@@ -1183,7 +1224,7 @@ def main():
                 pf.write("maldet\t0")
         except OSError:
             pass
-        maldet_findings = maldet_scan(scanned_files)
+        maldet_findings = maldet_scan(detector_list)
         t_maldet_done = time.perf_counter()
         for fname, sig in maldet_findings:
             print(f"{fname}\t{sig} (maldet)")

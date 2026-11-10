@@ -1012,3 +1012,34 @@ def test_clamav_scan_unexpected_error_warns(monkeypatch, capsys):
     monkeypatch.setattr(pmf_scan.subprocess, "run", fake_run)
     assert pmf_scan.clamav_scan(["/tmp/a.php"]) == []
     assert "# WARNING: ClamAV pass failed (OSError: boom)" in capsys.readouterr().err
+
+
+def test_detector_files_small_list_passes_whole(monkeypatch):
+    monkeypatch.setattr(pmf_scan, "DETECTOR_FULL_MAX", 3)
+    files = ["/a", "/b", "/c"]
+    assert pmf_scan.detector_files(files) is files
+
+
+def test_detector_files_large_list_keeps_recent_mtime_or_ctime(tmp_path, monkeypatch, capsys):
+    # A dropper that backdates mtime with touch still has a fresh ctime.
+    monkeypatch.setattr(pmf_scan, "DETECTOR_FULL_MAX", 1)
+    old = tmp_path / "old.php"
+    fresh = tmp_path / "fresh.php"
+    old.write_text("x")
+    fresh.write_text("x")
+    week_ago = time.time() - 7 * 86400
+    os.utime(fresh, (week_ago, week_ago))  # backdated mtime, ctime stays now
+    real_stat = os.stat
+
+    def fake_stat(p, *a, **kw):
+        st = real_stat(p, *a, **kw)
+        if p == str(old):  # both mtime and ctime old
+            return os.stat_result((st.st_mode, st.st_ino, st.st_dev, st.st_nlink, st.st_uid,
+                                   st.st_gid, st.st_size, week_ago, week_ago, week_ago))
+        return st
+
+    monkeypatch.setattr(pmf_scan.os, "stat", fake_stat)
+    gone = str(tmp_path / "gone.php")
+    # newest first: the missing file counts as "now", fresh's ctime is a bit older
+    assert pmf_scan.detector_files([str(old), str(fresh), gone]) == [gone, str(fresh)]
+    assert "ClamAV/maldet: 2 of 3 file(s)" in capsys.readouterr().err
