@@ -169,6 +169,16 @@ HIGH_CONFIDENCE_RULE_NAMES = {
     # caution above - we know exactly what they match and why.
     "WEBSHELL_PHP_Stateless_XOR_Rot13_Dropper",
     "WEBSHELL_PHP_Destruct_Temp_Include_Dropper",
+    # Named, known webshells (strings from the tool itself, not a code
+    # shape). Fleet-wide history checked 2026-11-10 across all 6 servers:
+    # 11 files, all true positives - b374k 3.2.3 copies dropped as fake
+    # wp-includes files with a 2014 mtime, a WSO shell, a "Madtools.sk"
+    # shell in wp-admin/css/, an eval(gzuncompress(base64)) appended to a
+    # Google verification .html served as PHP. Not one was quarantined:
+    # all were yara_heuristic.
+    "WEBSHELL_PHP_By_String_Known_Webshell",
+    "SEKOIA_Tool_Webshell_B374K_Strings",
+    "SEKOIA_Webshell_Wso_Webshell_Strings",
 }
 
 QUARANTINE_LOG = "/var/log/openxs-quarantine.log"

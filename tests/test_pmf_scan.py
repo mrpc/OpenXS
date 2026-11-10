@@ -1043,3 +1043,12 @@ def test_detector_files_large_list_keeps_recent_mtime_or_ctime(tmp_path, monkeyp
     # newest first: the missing file counts as "now", fresh's ctime is a bit older
     assert pmf_scan.detector_files([str(old), str(fresh), gone]) == [gone, str(fresh)]
     assert "ClamAV/maldet: 2 of 3 file(s)" in capsys.readouterr().err
+
+
+def test_known_webshell_rules_are_high_confidence():
+    # Found 2026-11-10: these sat as yara_heuristic, so live b374k copies
+    # were flagged every night and never auto-quarantined.
+    for rule in ("WEBSHELL_PHP_By_String_Known_Webshell", "SEKOIA_Tool_Webshell_B374K_Strings",
+                 "SEKOIA_Webshell_Wso_Webshell_Strings"):
+        assert pmf_scan.categorize(rule) == "yara_exploit"
+    assert pmf_scan.categorize("ObfuscatedPhp") == "yara_heuristic"
