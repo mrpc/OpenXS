@@ -171,7 +171,7 @@ HIGH_CONFIDENCE_RULE_NAMES = {
     "WEBSHELL_PHP_Destruct_Temp_Include_Dropper",
     # Named, known webshells (strings from the tool itself, not a code
     # shape). Fleet-wide history checked 2026-11-10 across all 6 servers:
-    # 16 files, all true positives - b374k 3.2.3 copies dropped as fake
+    # 11 files, all true positives - b374k 3.2.3 copies dropped as fake
     # wp-includes files with a 2014 mtime, a WSO shell, a "Madtools.sk"
     # shell in wp-admin/css/, an eval(gzuncompress(base64)) appended to a
     # Google verification .html served as PHP. Not one was quarantined:
