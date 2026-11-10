@@ -27,9 +27,22 @@ SASL_WATCH_MAP (a check_sasl_access map, default /etc/postfix/sasl_blocked)
 and runs postmap. That only has an effect when main.cf actually uses the
 map (first in smtpd_sender_restrictions, and in whatever restriction
 class the submission/smtps services in master.cf use) - the alert says
-so when it isn't referenced. With SASL_WATCH_NOTIFY=1 (default) the
-account itself and its Virtualmin domain's contact address get a short
-notice (template: /etc/openxs/sasl_blocked_notice.txt, subject on line 1).
+so when it isn't referenced. A block also locks the account's other ways
+in, since a stolen mailbox password works there too (found live: the
+same botnet logging into IMAP from 35 IPs, and into Usermin to read mail
+and set a password-recovery address):
+  - IMAP/POP: listed in DOVECOT_DENY_FILE (a deny=yes passwd-file passdb
+    that install.sh adds before the real one), open sessions kicked;
+  - Usermin: added to denyusers= in its miniserv.conf (reloaded), its
+    sessions deleted;
+  - a non-empty Usermin password-recovery address (~/.usermin/changepass/
+    recovery) is moved aside to recovery.openxs-<time>, so whoever set it
+    can't take the account back after the password change;
+  - saslauthd is restarted: with -c it keeps accepting the old password
+    from its cache for a few minutes after a password change.
+Unblock undoes the first two; the recovery address is NOT put back.
+With SASL_WATCH_NOTIFY=1 (default) the account itself and its Virtualmin
+domain's contact address get a short notice (template: /etc/openxs/sasl_blocked_notice.txt, subject on line 1).
 A blocked account stays blocked until the admin unblocks it - a password
 change alone doesn't release it by default, since whoever stole the password
 can change it themselves (e.g. through Usermin). SASL_WATCH_UNBLOCK_ON_PWCHANGE=1
@@ -45,7 +58,9 @@ import fnmatch
 import hashlib
 import json
 import os
+import pwd
 import re
+import stat
 import subprocess
 import sys
 import time
@@ -220,17 +235,18 @@ NOTICE_TEMPLATE_FILE = "/etc/openxs/sasl_blocked_notice.txt"
 # Subject on the first line, then the body; {user} is replaced. Deliberately
 # no links or details: the mailbox's password is known to whoever is
 # abusing it, so they can read this too.
-DEFAULT_NOTICE = """Ο λογαριασμός σας μπλοκαρίστηκε για αποστολή / Your account was blocked from sending
+DEFAULT_NOTICE = """Ο λογαριασμός σας μπλοκαρίστηκε / Your mail account was blocked
 
-Λόγω ύποπτης κίνησης, ο λογαριασμός {user} μπλοκαρίστηκε για αποστολή email.
-Ο κωδικός του φαίνεται να έχει διαρρεύσει. Αλλάξτε τον το συντομότερο και
-επικοινωνήστε με τον διαχειριστή του server για να ενεργοποιηθεί ξανά η
-αποστολή. Η λήψη email δεν επηρεάζεται.
+Λόγω ύποπτης κίνησης, ο λογαριασμός {user} μπλοκαρίστηκε: δεν μπορεί να
+στείλει email ούτε να διαβάσει τα μηνύματά του (IMAP/POP, Usermin). Ο κωδικός
+του φαίνεται να έχει διαρρεύσει. Αλλάξτε τον το συντομότερο και επικοινωνήστε
+με τον διαχειριστή του server για να ενεργοποιηθεί ξανά. Τα εισερχόμενα email
+συνεχίζουν να παραδίδονται κανονικά.
 
-Due to suspicious activity, sending email from {user} has been blocked. Its
-password appears to have leaked. Please change it as soon as possible and
-contact the server administrator to have sending re-enabled. Receiving email
-is not affected.
+Due to suspicious activity, {user} has been blocked from sending email and
+from reading it (IMAP/POP, Usermin). Its password appears to have leaked.
+Please change it as soon as possible and contact the server administrator to
+have it re-enabled. Incoming email is still delivered as usual.
 """
 
 
@@ -267,6 +283,153 @@ def _postmap(map_path):
     subprocess.run(["postmap", map_path], check=True, capture_output=True, timeout=30)
 
 
+DOVECOT_DENY_FILE = "/etc/dovecot/openxs_blocked"
+USERMIN_CONF = "/etc/usermin/miniserv.conf"
+
+
+def _run(cmd, **kw):
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=60, check=False, **kw)
+
+
+def _local_users(names):
+    """The names that are Unix accounts - the ones Usermin knows."""
+    shadow = _shadow()
+    return sorted({account(n, shadow) for n in names} & set(shadow))
+
+
+def _dovecot_set(names, add):
+    """Adds/removes the names (lowercased, as Dovecot's default
+    auth_username_format compares them) in DOVECOT_DENY_FILE. Dovecot
+    re-reads a passwd-file when it changes, so no reload; open sessions
+    are kicked on add. None when install.sh never set it up here."""
+    if not os.path.exists(DOVECOT_DENY_FILE):
+        return None
+    wanted = {n.lower() for n in names}
+    with open(DOVECOT_DENY_FILE, encoding="utf-8") as f:
+        present = [line.strip() for line in f if line.strip()]
+    keep = sorted(set(present) | wanted) if add else [n for n in present if n not in wanted]
+    if keep != present:
+        with open(DOVECOT_DENY_FILE + ".tmp", "w", encoding="utf-8") as f:
+            f.write("".join(n + "\n" for n in keep))
+        os.replace(DOVECOT_DENY_FILE + ".tmp", DOVECOT_DENY_FILE)
+    if add:
+        for n in sorted(wanted):
+            _run(["doveadm", "kick", n])
+    return "IMAP/POP " + ("denied, sessions kicked" if add else "re-enabled")
+
+
+def _usermin_set(names, add):
+    """Adds/removes the account's Unix names in Usermin's denyusers= and
+    reloads it (SIGHUP). On add, also deletes their open sessions from
+    Usermin's session DB - denyusers is only checked at login. None when
+    Usermin isn't installed or the account isn't a Unix user."""
+    users = _local_users(names)
+    if not users or not os.path.exists(USERMIN_CONF):
+        return None
+    with open(USERMIN_CONF, encoding="utf-8", errors="surrogateescape") as f:
+        lines = f.read().splitlines()
+    conf = dict(line.split("=", 1) for line in lines if "=" in line)
+    deny = conf.get("denyusers", "").split()
+    new = deny + [u for u in users if u not in deny] if add else [u for u in deny if u not in users]
+    if new != deny:
+        lines = [line for line in lines if not line.startswith("denyusers=")]
+        if new:
+            lines.append("denyusers=" + " ".join(new))
+        st = os.stat(USERMIN_CONF)
+        with open(USERMIN_CONF + ".tmp", "w", encoding="utf-8", errors="surrogateescape") as f:
+            f.write("\n".join(lines) + "\n")
+        os.chmod(USERMIN_CONF + ".tmp", st.st_mode & 0o7777)
+        os.replace(USERMIN_CONF + ".tmp", USERMIN_CONF)
+        _run(["systemctl", "reload", "usermin"])
+    if not add:
+        return "Usermin re-enabled"
+    note = "Usermin denied"
+    if conf.get("allowusers", "").strip():
+        note += " (WARNING: allowusers= is set in " + USERMIN_CONF + ", so Usermin ignores denyusers=)"
+    sessiondb = conf.get("sessiondb") or os.path.join(os.path.dirname(conf.get("pidfile", "/var/usermin/x")), "sessiondb")
+    # Perl, as Usermin itself does: SDBM first, then NDBM (its
+    # open_session_db()); plain dbmopen() picks NDBM and fails on the SDBM
+    # files Usermin actually writes. O_RDWR without O_CREAT: never creates
+    # one. Values are "<user> <time> <ip>", "!<user> ..." once logged out.
+    out = _run(["perl", "-MFcntl", "-e",
+                'my $f = shift; my %s;'
+                ' (eval { require SDBM_File; tie(%s, "SDBM_File", $f, O_RDWR, 0600) }'
+                ' || eval { require NDBM_File; tie(%s, "NDBM_File", $f, O_RDWR, 0600) }) or exit;'
+                ' my %u = map { $_ => 1 } @ARGV; my $n = 0;'
+                ' for my $k (keys %s) { my ($v) = split(/\\s+/, $s{$k}); $v =~ s/^!// if defined $v;'
+                ' if (defined $v && $u{$v}) { delete $s{$k}; $n++ } } untie(%s); print $n',
+                sessiondb] + sorted(set(names) | set(users))).stdout
+    if out and out.strip().isdigit() and int(out) > 0:
+        note += f", {int(out)} session(s) ended"
+    return note
+
+
+def _remove_recovery(names, now):
+    """Moves aside a non-empty Usermin password-recovery address in the
+    home of each Unix user the login names map to (Virtualmin names a
+    mailbox user x@d, x-d or x.d; its home is under /home/<owner>/homes/).
+    Empty ones are left: Virtualmin creates those on every migration.
+    The user owns that directory, so nothing is followed through a
+    symlink: root must not read (into the alert) or rename another file."""
+    homes = set()
+    for n in names:
+        for cand in {n, n.replace("@", "-"), n.replace("@", ".")}:
+            try:
+                homes.add(pwd.getpwnam(cand).pw_dir)
+            except KeyError:
+                pass
+    moved = []
+    for home in sorted(homes):
+        path = os.path.join(home, ".usermin", "changepass", "recovery")
+        if os.path.realpath(os.path.dirname(path)) != os.path.join(os.path.realpath(home), ".usermin", "changepass"):
+            continue
+        try:
+            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            with os.fdopen(fd, encoding="utf-8", errors="replace") as f:
+                if not stat.S_ISREG(os.fstat(fd).st_mode):
+                    continue
+                addr = f.read(512).strip()
+        except OSError:
+            continue
+        if addr:
+            backup = f"{path}.openxs-{time.strftime('%Y%m%d-%H%M%S', time.localtime(now))}"
+            os.rename(path, backup)
+            moved.append(f"{addr} ({backup})")
+    return f"Usermin recovery address removed: {'; '.join(moved)}" if moved else None
+
+
+def lock_other_access(names, now=None):
+    """Everything a block does besides the SMTP map. Returns notes, never
+    raises - each step is independent, a failing one doesn't stop the rest."""
+    now = now if now is not None else time.time()
+    notes = []
+    for label, step in (("IMAP/POP", lambda: _dovecot_set(names, True)),
+                        ("Usermin", lambda: _usermin_set(names, True)),
+                        ("Usermin recovery address", lambda: _remove_recovery(names, now)),
+                        ("saslauthd restart", lambda: _run(["systemctl", "try-restart", "saslauthd"]).returncode == 0
+                         and "saslauthd restarted (drops its cached password)")):
+        try:
+            note = step()
+        except Exception as e:
+            note = f"{label} FAILED: {e}"
+        if note:
+            notes.append(note)
+    return notes
+
+
+def unlock_other_access(names):
+    notes = []
+    for label, step in (("IMAP/POP", lambda: _dovecot_set(names, False)),
+                        ("Usermin", lambda: _usermin_set(names, False))):
+        try:
+            note = step()
+        except Exception as e:
+            note = f"{label} FAILED: {e}"
+        if note:
+            notes.append(note)
+    return notes
+
+
 def block_user(names, map_path):
     """Adds `name REJECT ...` for each login name of one account to the
     check_sasl_access map and postmaps it. Returns a one-line description
@@ -286,19 +449,25 @@ def block_user(names, map_path):
                                       capture_output=True, text=True, timeout=10).stdout
         note = "" if map_path in restrictions else (
             f" WARNING: {map_path} is not in smtpd_sender_restrictions, so the block has no effect yet.")
-        return f"AUTO-BLOCKED: {', '.join(sorted(names))} in {map_path} (undo: sasl_watch.py unblock {min(names)}).{note}"
+        others = lock_other_access(names)
+        return (f"AUTO-BLOCKED: {', '.join(sorted(names))} in {map_path} (undo: sasl_watch.py unblock {min(names)}).{note}"
+                + "".join(f"\n  {n}" for n in others))
     except Exception as e:
         return f"AUTO-BLOCK FAILED: {e}"
 
 
-def remove_from_map(acct, map_path):
-    """Removes every login name of that account."""
+def remove_from_map(acct, map_path, names=()):
+    """Removes every login name of that account, and undoes the rest of
+    the block (IMAP/POP, Usermin). Returns those notes."""
     shadow = _shadow()
     with open(map_path, encoding="utf-8") as f:
         lines = f.readlines()
+    mine = lambda line: line.split() and account(line.split()[0], shadow) == acct
+    names = sorted({acct, *names, *(line.split()[0] for line in lines if mine(line))})
     with open(map_path, "w", encoding="utf-8") as f:
-        f.writelines(line for line in lines if not line.split() or account(line.split()[0], shadow) != acct)
+        f.writelines(line for line in lines if not mine(line))
     _postmap(map_path)
+    return unlock_other_access(names)
 
 
 def password_fingerprint(user):
@@ -499,7 +668,7 @@ def cmd_unblock(user, hours, conf, now=None):
     in_map = _map_accounts(conf["SASL_WATCH_MAP"])
     if acct not in in_map and acct not in blocked:
         return f"{acct} is not blocked"
-    remove_from_map(acct, conf["SASL_WATCH_MAP"])
+    notes = remove_from_map(acct, conf["SASL_WATCH_MAP"], blocked.get(acct, {}).get("names", []))
     if hours:
         b = blocked.setdefault(acct, {"since": now, "reason": "manual", "pw": password_fingerprint(acct)})
         b.setdefault("names", in_map.get(acct) or [acct])
@@ -511,7 +680,7 @@ def cmd_unblock(user, hours, conf, now=None):
     # Don't let the same 24h of log lines re-block it on the next run.
     state.setdefault("not_before", {})[acct] = now
     _save_state(state)
-    return msg
+    return msg + "".join(f"\n  {n}" for n in notes)
 
 
 def cmd_block(user, conf, now=None):

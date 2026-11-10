@@ -2,11 +2,22 @@ import os
 import sys
 import time
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
 import sasl_watch as s
 
 NOW = time.mktime(time.strptime("2026-11-09 12:00:00", "%Y-%m-%d %H:%M:%S"))
 CONF = dict(s.DEFAULTS)
+
+
+@pytest.fixture(autouse=True)
+def _no_real_system_files(tmp_path, monkeypatch):
+    # A block now also touches Dovecot/Usermin files and home dirs; keep
+    # every test away from the real ones.
+    monkeypatch.setattr(s, "DOVECOT_DENY_FILE", str(tmp_path / "no-dovecot" / "openxs_blocked"))
+    monkeypatch.setattr(s, "USERMIN_CONF", str(tmp_path / "no-usermin" / "miniserv.conf"))
+    monkeypatch.setattr(s.pwd, "getpwnam", lambda n: (_ for _ in ()).throw(KeyError(n)))
 
 
 def sasl(ts, qid, host, ip, user):
@@ -139,3 +150,93 @@ def test_forwarded_unauthenticated_rejects_counted():
              bounce("F4", "orig_to=<info@ex.gr>, ", "550-5.7.1")]  # other reason
     _, _, _, st = s.analyze(lines, CONF, NOW)
     assert st["fwd_unauth_rejected"] == {"count": 3, "top": [("info@ex.gr", 2), ("sales@ex.gr", 1)]}
+
+
+def test_block_locks_imap_usermin_recovery_and_unblock_undoes(tmp_path, monkeypatch):
+    # Found live 2026-11-10: the SMTP map alone left the stolen password
+    # working for IMAP (35 IPs) and Usermin, where a recovery address was set.
+    dove = tmp_path / "openxs_blocked"
+    dove.write_text("other\n")
+    um = tmp_path / "miniserv.conf"
+    um.write_text("port=20000\ndenyusers=baduser\npidfile=/var/usermin/miniserv.pid\n")
+    um.chmod(0o600)
+    home = tmp_path / "home"
+    rec = home / ".usermin" / "changepass" / "recovery"
+    rec.parent.mkdir(parents=True)
+    rec.write_text("attacker@gmail.example\n")
+    (tmp_path / "shadow").write_text("victim:$6$a:1::\n")
+    monkeypatch.setattr(s, "SHADOW_FILE", str(tmp_path / "shadow"))
+    monkeypatch.setattr(s, "DOVECOT_DENY_FILE", str(dove))
+    monkeypatch.setattr(s, "USERMIN_CONF", str(um))
+    monkeypatch.setattr(s.pwd, "getpwnam", lambda n: type("P", (), {"pw_dir": str(home)})() if n == "victim" else (_ for _ in ()).throw(KeyError(n)))
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        out = "check_sasl_access hash:" + str(tmp_path / "map") if cmd[0] == "postconf" else ("2" if cmd[0] == "perl" else "")
+        return type("R", (), {"stdout": out, "returncode": 0})()
+
+    monkeypatch.setattr(s.subprocess, "run", fake_run)
+    result = s.block_user(["victim", "victim@ex.gr"], str(tmp_path / "map"))
+
+    assert result.startswith("AUTO-BLOCKED")
+    assert dove.read_text().split() == ["other", "victim", "victim@ex.gr"]
+    assert ["doveadm", "kick", "victim@ex.gr"] in calls
+    assert "denyusers=baduser victim" in um.read_text()
+    assert (um.stat().st_mode & 0o777) == 0o600
+    assert ["systemctl", "reload", "usermin"] in calls
+    perl = next(c for c in calls if c[0] == "perl")
+    assert perl[4] == "/var/usermin/sessiondb" and "victim" in perl[5:]
+    assert "2 session(s) ended" in result
+    assert not rec.exists()
+    backup = next(rec.parent.glob("recovery.openxs-*"))
+    assert backup.read_text() == "attacker@gmail.example\n"
+    assert "attacker@gmail.example" in result
+    assert ["systemctl", "try-restart", "saslauthd"] in calls
+
+    # idempotent: a second block changes nothing
+    s.block_user(["victim", "victim@ex.gr"], str(tmp_path / "map"))
+    assert dove.read_text().split() == ["other", "victim", "victim@ex.gr"]
+    assert um.read_text().count("victim") == 1
+
+    monkeypatch.setattr(s, "_postmap", lambda p: None)
+    notes = s.remove_from_map("victim", str(tmp_path / "map"))
+    assert dove.read_text().split() == ["other"]
+    assert "denyusers=baduser\n" in um.read_text() and "victim" not in um.read_text()
+    assert notes == ["IMAP/POP re-enabled", "Usermin re-enabled"]
+    assert backup.exists() and not rec.exists()  # the recovery address is never put back
+
+
+def test_empty_recovery_file_is_left_alone(tmp_path, monkeypatch):
+    # Virtualmin creates empty ones on every migration.
+    rec = tmp_path / ".usermin" / "changepass" / "recovery"
+    rec.parent.mkdir(parents=True)
+    rec.write_text("")
+    monkeypatch.setattr(s.pwd, "getpwnam", lambda n: type("P", (), {"pw_dir": str(tmp_path)})())
+    assert s._remove_recovery(["x@d.gr"], NOW) is None
+    assert rec.exists()
+
+
+def test_failing_step_does_not_stop_the_others(tmp_path, monkeypatch):
+    dove = tmp_path / "openxs_blocked"
+    dove.write_text("")
+    monkeypatch.setattr(s, "DOVECOT_DENY_FILE", str(dove))
+    monkeypatch.setattr(s, "_usermin_set", lambda names, add: 1 / 0)
+    monkeypatch.setattr(s.subprocess, "run", lambda *a, **k: type("R", (), {"stdout": "", "returncode": 0})())
+    notes = s.lock_other_access(["u"])
+    assert notes[0] == "IMAP/POP denied, sessions kicked"
+    assert notes[1].startswith("Usermin FAILED: division by zero")
+    assert notes[-1].startswith("saslauthd restarted")
+
+
+def test_recovery_symlink_is_not_followed(tmp_path, monkeypatch):
+    # The account owns ~/.usermin: a symlink must not make root read
+    # another file into the alert, or rename it.
+    secret = tmp_path / "secret"
+    secret.write_text("root:$6$hash\n")
+    d = tmp_path / ".usermin" / "changepass"
+    d.mkdir(parents=True)
+    (d / "recovery").symlink_to(secret)
+    monkeypatch.setattr(s.pwd, "getpwnam", lambda n: type("P", (), {"pw_dir": str(tmp_path)})())
+    assert s._remove_recovery(["x"], NOW) is None
+    assert secret.read_text() == "root:$6$hash\n" and (d / "recovery").is_symlink()

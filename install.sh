@@ -210,6 +210,40 @@ cat > /etc/cron.d/openxs-collector <<'EOF'
 EOF
 chmod 644 /etc/cron.d/openxs-collector
 
+echo "==> Dovecot deny list for blocked mail accounts (sasl_watch)..."
+# sasl_watch.py's block also stops IMAP/POP by listing the account in
+# /etc/dovecot/openxs_blocked. This deny=yes passdb is what makes that file
+# count: conf.d/05-* is included before 10-auth.conf's real passdb, so it's
+# checked first. An empty file blocks nobody. Dovecot 2.4 changed the
+# passdb syntax, hence two versions. Removed again if doveconf rejects it.
+if command -v doveconf >/dev/null 2>&1 && [ -d /etc/dovecot/conf.d ]; then
+    [ -e /etc/dovecot/openxs_blocked ] || install -m 644 /dev/null /etc/dovecot/openxs_blocked
+    snippet=/etc/dovecot/conf.d/05-openxs-blocked.conf
+    case "$(dovecot --version 2>/dev/null)" in
+        2.[0-3].*) passdb='passdb {
+  driver = passwd-file
+  args = /etc/dovecot/openxs_blocked
+  deny = yes
+}' ;;
+        *) passdb='passdb openxs_blocked {
+  driver = passwd-file
+  passwd_file_path = /etc/dovecot/openxs_blocked
+  deny = yes
+}' ;;
+    esac
+    content="# Managed by OpenXS install.sh - accounts blocked by sasl_watch.py
+$passdb"
+    if [ "$(cat "$snippet" 2>/dev/null)" != "$content" ]; then
+        printf '%s\n' "$content" > "$snippet"
+        if doveconf -n >/dev/null 2>&1; then
+            doveadm reload || true
+        else
+            echo "    WARNING: doveconf rejected $snippet - removed, IMAP/POP blocking not active"
+            rm -f "$snippet"
+        fi
+    fi
+fi
+
 echo "==> Log rotation..."
 cp "$HERE/tools/openxs-logrotate.conf" /etc/logrotate.d/openxs
 
