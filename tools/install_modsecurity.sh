@@ -75,6 +75,19 @@ else
     echo "Wrote /etc/modsecurity/openxs-php2shell.conf (at least one unprotected PHP version found)"
 fi
 
+# WordPress core update-staging RCE (CVE-2026-119977) - blocks direct HTTP
+# access to wp-content/upgrade/ regardless of WP core version, so it also
+# covers installs too old to ever be updated past the fix. Only installed
+# if WordPress is actually present - no benefit, only extra WAF surface,
+# on a server with nothing to protect.
+rm -f /etc/modsecurity/openxs-wp-upgrade-rce.conf
+if python3 "$(dirname "$0")/wp_upgrade_rce_check.py"; then
+    echo "No WordPress install found - skipping its ModSecurity rule."
+else
+    cp "$(dirname "$0")/modsec-rules/wp-upgrade-rce.conf" /etc/modsecurity/openxs-wp-upgrade-rce.conf
+    echo "Wrote /etc/modsecurity/openxs-wp-upgrade-rce.conf (WordPress found)"
+fi
+
 python3 "$(dirname "$0")/openxs_modsec_mode.py" > /dev/null
 python3 "$(dirname "$0")/openxs_modsec_rule_exclusions.py" > /dev/null
 python3 "$(dirname "$0")/openxs_modsec_exclusions.py" > /dev/null
