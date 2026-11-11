@@ -197,7 +197,14 @@ else
 fi
 
 echo "==> Daily scheduled scan (cron)..."
-cat > /etc/cron.d/openxs-scan <<'EOF'
+# cron's own PATH is /usr/bin:/bin, so without this line shutil.which()
+# finds no maldet (/usr/local/sbin) and the nightly scan silently skips it,
+# and sasl_watch's postmap/postconf (/usr/sbin) fail - unless the host's
+# /etc/environment happens to set PATH (found 2026-11-11: maldet never ran
+# nightly on the Debian servers, only on the Ubuntu one).
+CRON_PATH="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+cat > /etc/cron.d/openxs-scan <<EOF
+$CRON_PATH
 17 2 * * * root /opt/php-malware-finder/run_scheduled_scan.sh >> /opt/php-malware-finder/cron.log 2>&1
 EOF
 chmod 644 /etc/cron.d/openxs-scan
@@ -205,7 +212,8 @@ chmod 644 /etc/cron.d/openxs-scan
 echo "==> Periodic stats/cache upkeep (cron)..."
 # One entry for every lightweight periodic job (see openxs_collector.py)
 # instead of a separate cron file per feature.
-cat > /etc/cron.d/openxs-collector <<'EOF'
+cat > /etc/cron.d/openxs-collector <<EOF
+$CRON_PATH
 */5 * * * * root python3 /opt/php-malware-finder/openxs_collector.py >> /opt/php-malware-finder/cron.log 2>&1
 EOF
 chmod 644 /etc/cron.d/openxs-collector
