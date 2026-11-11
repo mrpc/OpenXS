@@ -1,0 +1,44 @@
+import os
+import sys
+
+sys.path.insert(0, "tools")
+import wp_upgrade_rce_check as wc
+
+
+def test_scan_roots_accounts_mode():
+    conf = {"SCAN_MODE": "accounts", "ACCOUNTS_DIR": "/home", "ACCOUNTS_SUBPATH": "public_html",
+            "SCAN_PATH": "/var/www"}
+    roots = wc.scan_roots(conf)
+    assert all(r.startswith("/home/") and r.endswith("/public_html") for r in roots) or roots == []
+
+
+def test_scan_roots_plain_mode():
+    conf = {"SCAN_MODE": "", "ACCOUNTS_DIR": "/home", "ACCOUNTS_SUBPATH": "", "SCAN_PATH": "/var/www"}
+    assert wc.scan_roots(conf) == ["/var/www"]
+
+
+def test_any_wordpress_installed_true(tmp_path, monkeypatch):
+    wp_includes = tmp_path / "site" / "wp-includes"
+    wp_includes.mkdir(parents=True)
+    (wp_includes / "version.php").write_text("<?php\n$wp_version = '6.8.1';\n")
+    conf = {"SCAN_MODE": "", "ACCOUNTS_DIR": "/home", "ACCOUNTS_SUBPATH": "", "SCAN_PATH": str(tmp_path)}
+    assert wc.any_wordpress_installed(conf) is True
+
+
+def test_any_wordpress_installed_false(tmp_path):
+    conf = {"SCAN_MODE": "", "ACCOUNTS_DIR": "/home", "ACCOUNTS_SUBPATH": "", "SCAN_PATH": str(tmp_path)}
+    assert wc.any_wordpress_installed(conf) is False
+
+
+def test_main_exits_one_when_wordpress_found(monkeypatch):
+    monkeypatch.setattr(wc, "any_wordpress_installed", lambda conf: True)
+    with __import__("pytest").raises(SystemExit) as exc_info:
+        wc.main()
+    assert exc_info.value.code == 1
+
+
+def test_main_exits_zero_when_no_wordpress(monkeypatch):
+    monkeypatch.setattr(wc, "any_wordpress_installed", lambda conf: False)
+    with __import__("pytest").raises(SystemExit) as exc_info:
+        wc.main()
+    assert exc_info.value.code == 0
