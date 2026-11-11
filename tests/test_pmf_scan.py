@@ -26,7 +26,7 @@ def test_load_ignore_patterns_plain_and_hashes(tmp_path):
     assert "/some/path" in plain
     assert md5s == {"abcdef"}  # lowercased
     assert sha256s == {"deadbeef"}
-    assert regexes == []
+    assert len(regexes) == 1  # just the one shipped in default_ignore (sess_* files)
 
 
 def test_load_ignore_patterns_missing_file_still_loads_shipped_defaults():
@@ -42,16 +42,23 @@ def test_load_ignore_patterns_compiles_regex_entries(tmp_path):
     ignore_file = tmp_path / "ignore"
     ignore_file.write_text(r"regex:^/tmp/clamav-.*" + "\n")
     plain, md5s, sha256s, regexes = pmf_scan.load_ignore_patterns(str(ignore_file))
-    assert len(regexes) == 1
-    assert regexes[0].search("/tmp/clamav-abc123")
-    assert not regexes[0].search("/home/tmp/clamav-abc123")  # anchored, shouldn't match mid-path
+    assert len(regexes) == 2  # the local one plus the one shipped in default_ignore
+    local = regexes[-1]
+    assert local.search("/tmp/clamav-abc123")
+    assert not local.search("/home/tmp/clamav-abc123")  # anchored, shouldn't match mid-path
+
+
+def test_default_ignore_covers_php_session_files():
+    _, _, _, regexes = pmf_scan.load_ignore_patterns("/no/such/file")
+    assert any(r.search("/home/someuser/tmp/sess_35ecb554a659a6387046e8bcd5dcc24e") for r in regexes)
+    assert not any(r.search("/home/someuser/public_html/sess_table.php") for r in regexes)
 
 
 def test_load_ignore_patterns_skips_invalid_regex(tmp_path):
     ignore_file = tmp_path / "ignore"
     ignore_file.write_text("regex:(unclosed\n/some/path\n")
     plain, md5s, sha256s, regexes = pmf_scan.load_ignore_patterns(str(ignore_file))
-    assert regexes == []
+    assert len(regexes) == 1  # the invalid local one is skipped; the shipped one still loads
     assert "/some/path" in plain  # the rest of the file still loads fine
 
 

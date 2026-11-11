@@ -18,3 +18,10 @@
 /wp-content/plugins/simple-lightbox/load.php
 # GOTMLS (WordPress malware-scanner plugin - ironically flags itself)
 /wp-content/plugins/gotmls/index.php
+# PHP's own session files (default session.save_path, any site/server -
+# not a false positive, but plain serialized data that's never executed
+# as code, rewritten on every request. Found 2026-11-11: on a busy
+# server these dominate the #43 48h-recent-file set (205k of ~205k) and
+# pushed ClamAV/maldet past their 600s timeout, while the actual webroot
+# churn was negligible. YARA/ClamAV/maldet never see these either way.
+regex:/sess_[A-Za-z0-9,-]{20,}$
