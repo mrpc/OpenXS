@@ -42,3 +42,12 @@ def test_main_exits_zero_when_no_wordpress(monkeypatch):
     with __import__("pytest").raises(SystemExit) as exc_info:
         wc.main()
     assert exc_info.value.code == 0
+
+
+def test_rule_normalizes_path_before_matching():
+    # Without these, /wp-content/./upgrade/x.php, /wp-content//upgrade/x.php
+    # and /wp-content/%75pgrade/x.php slip past the rule while Apache still
+    # maps them to the same file and runs it (verified on mod_security2 2.9.11).
+    with open(os.path.join("tools", "modsec-rules", "wp-upgrade-rce.conf")) as f:
+        conf = f.read()
+    assert "t:none,t:urlDecodeUni,t:normalizePath" in conf
