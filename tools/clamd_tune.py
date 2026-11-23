@@ -86,7 +86,16 @@ def _rewrite(path, new_text):
 
 
 def apply_profile():
-    if not os.path.exists(PROFILE) or not shutil.which("apparmor_parser"):
+    if not os.path.exists(PROFILE):
+        return
+    if not shutil.which("apparmor_parser"):
+        # The profile file ships with the clamav-daemon .deb regardless of
+        # whether AppArmor itself is installed, so this is reachable even
+        # with PROFILE present - and was, silently, on a server missing
+        # the apparmor package: every install_clamav.sh run "succeeded"
+        # with clamd left unconfined and no sign of it anywhere.
+        print("==> WARNING: apparmor not installed - clamd AppArmor hardening inactive",
+              file=sys.stderr)
         return
     with open(PROFILE, encoding="utf-8") as f:
         new = fix_profile(f.read())
