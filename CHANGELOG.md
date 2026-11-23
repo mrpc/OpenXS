@@ -37,6 +37,9 @@ Release from that section's text.
   rule's own unique marker instead of a single generic string - adding
   the WordPress brute-force rule below could otherwise have made itself
   look already present once the first rule existed.
+- `install_csf_hook.py` now no-ops if `/etc/openxs/no-csf-hook` exists,
+  so a server with an explicit "do not install this hook" policy
+  decision isn't silently reverted by a future `--with-csf-hook` run.
 
 ### Added
 - CSF auto-ban for WordPress wp-login/XML-RPC brute force
