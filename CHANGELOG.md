@@ -23,8 +23,29 @@ Release from that section's text.
 - Watch daemon now exits non-zero when inotifywait stops (e.g. a watched
   path vanished during watch setup), so systemd restarts it. It used to
   exit 0 and real-time monitoring stayed off until someone noticed.
+- `install_clamav.sh` now also installs a `DPkg::Post-Invoke` apt hook
+  that reruns `clamd_tune.py` after every apt/dpkg transaction, so a
+  `clamav-daemon` package upgrade reinstalling its stock AppArmor profile
+  (silently dropping `attach_disconnected.path=/`) gets caught right
+  away instead of only on the next OpenXS self-update.
+- `clamd_tune.py` now warns (stderr) when `apparmor_parser` itself is
+  missing, instead of returning silently the same way it does when the
+  profile file is merely absent (normal pre-install) - a server missing
+  the `apparmor` package entirely had clamd running fully unconfined with
+  no sign of it anywhere.
+- `install_csf_hook.py`'s "already installed" check now looks for each
+  rule's own unique marker instead of a single generic string - adding
+  the WordPress brute-force rule below could otherwise have made itself
+  look already present once the first rule existed.
 
 ### Added
+- CSF auto-ban for WordPress wp-login/XML-RPC brute force
+  (`install_csf_hook.py`, every vhost's access log): these always return
+  HTTP 200, so nothing else blocks them, and mod_security is often
+  DetectionOnly. Auto-detects the access-log location (Virtualmin,
+  cPanel, plain Apache); threshold/ban window configurable via
+  `/etc/openxs/openxs.conf`'s `WP_BRUTE_THRESHOLD`/`WP_BRUTE_BAN_SECS`
+  (default 30/h, 3600s).
 - Usermin/Webmin persistence and login watch (`webmin_watch.py`, every 5
   minutes): alerts on a changed password-recovery address or a new mail-
   handling file (`.usermin/{forward,filter,fetchmail,schedule,cron}`,
