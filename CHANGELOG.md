@@ -23,6 +23,16 @@ Release from that section's text.
 - Watch daemon now exits non-zero when inotifywait stops (e.g. a watched
   path vanished during watch setup), so systemd restarts it. It used to
   exit 0 and real-time monitoring stayed off until someone noticed.
+- `install_clamav.sh` now also installs a `DPkg::Post-Invoke` apt hook
+  that reruns `clamd_tune.py` after every apt/dpkg transaction, so a
+  `clamav-daemon` package upgrade reinstalling its stock AppArmor profile
+  (silently dropping `attach_disconnected.path=/`) gets caught right
+  away instead of only on the next OpenXS self-update.
+- `clamd_tune.py` now warns (stderr) when `apparmor_parser` itself is
+  missing, instead of returning silently the same way it does when the
+  profile file is merely absent (normal pre-install) - a server missing
+  the `apparmor` package entirely had clamd running fully unconfined with
+  no sign of it anywhere.
 
 ### Added
 - Mail accounts page: warns when forwarded mail is rejected as
