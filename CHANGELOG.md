@@ -33,8 +33,19 @@ Release from that section's text.
   profile file is merely absent (normal pre-install) - a server missing
   the `apparmor` package entirely had clamd running fully unconfined with
   no sign of it anywhere.
+- `install_csf_hook.py`'s "already installed" check now looks for each
+  rule's own unique marker instead of a single generic string - adding
+  the WordPress brute-force rule below could otherwise have made itself
+  look already present once the first rule existed.
 
 ### Added
+- CSF auto-ban for WordPress wp-login/XML-RPC brute force
+  (`install_csf_hook.py`, every vhost's access log): these always return
+  HTTP 200, so nothing else blocks them, and mod_security is often
+  DetectionOnly. Auto-detects the access-log location (Virtualmin,
+  cPanel, plain Apache); threshold/ban window configurable via
+  `/etc/openxs/openxs.conf`'s `WP_BRUTE_THRESHOLD`/`WP_BRUTE_BAN_SECS`
+  (default 30/h, 3600s).
 - Mail accounts page: warns when forwarded mail is rejected as
   unauthenticated (Gmail `550 5.7.26` on `orig_to=` lines) in the last 24h,
   with the forwarding mailboxes, and points to virtualmin-authfwd (local
