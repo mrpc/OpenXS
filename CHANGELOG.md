@@ -46,6 +46,13 @@ Release from that section's text.
   cPanel, plain Apache); threshold/ban window configurable via
   `/etc/openxs/openxs.conf`'s `WP_BRUTE_THRESHOLD`/`WP_BRUTE_BAN_SECS`
   (default 30/h, 3600s).
+- Usermin/Webmin persistence and login watch (`webmin_watch.py`, every 5
+  minutes): alerts on a changed password-recovery address or a new mail-
+  handling file (`.usermin/{forward,filter,fetchmail,schedule,cron}`,
+  `.forward`/`.procmailrc`/`.fetchmailrc`), and on a login from an IP
+  never seen before for that Usermin/Webmin account. Found live after a
+  SASL account compromise also used Usermin to set a recovery address
+  that could have reclaimed the account post-password-change.
 - Mail accounts page: warns when forwarded mail is rejected as
   unauthenticated (Gmail `550 5.7.26` on `orig_to=` lines) in the last 24h,
   with the forwarding mailboxes, and points to virtualmin-authfwd (local
