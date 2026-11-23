@@ -19,10 +19,12 @@ import sys
 
 import openxs_modsec_record
 import sasl_watch
+import webmin_watch
 
 JOBS = [
     ("modsec", openxs_modsec_record.run),
     ("sasl", sasl_watch.run),
+    ("webmin", webmin_watch.run),
 ]
 
 

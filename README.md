@@ -220,6 +220,18 @@ Webmin **Mail accounts** page shows the same plus the last 24h per account
 (messages, distinct/top IPs, bounces, last alert), the login names most
 targeted by failed AUTH, and milter status, with Block/Unblock buttons. `MAIL_LOG` overrides `/var/log/mail.log`.
 
+Usermin/Webmin watch (`webmin_watch.py`, same 5-minute collector cron):
+alert-only, no auto-block. Watches each Unix account's home for a changed
+password-recovery address (`~/.usermin/changepass/recovery`) or a new/
+changed mail-handling file (`.usermin/{forward,filter,fetchmail,schedule,
+cron}`, `.forward`, `.procmailrc`, `.fetchmailrc`) - the first sighting of
+each is trusted as its pre-monitoring baseline, so only a later change is
+the finding. Also parses `/var/usermin/miniserv.log` and
+`/var/webmin/miniserv.log` for a login from an IP never seen before for
+that account (first sighting baselines the same way); not request-rate
+based, since the same authenticated user can legitimately poll a page
+every few seconds.
+
 ## Testing
 
 ```sh
