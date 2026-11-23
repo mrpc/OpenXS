@@ -1,6 +1,7 @@
 """Unit tests for clamd_tune.py - the AppArmor profile header fix and the
 "raise, never lower" clamd.conf size limits."""
 import os
+import shutil
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
@@ -36,3 +37,13 @@ def test_fix_clamd_conf_raises_never_lowers_and_appends_missing():
 def test_fix_clamd_conf_missing_directive_only_appended_above_default():
     assert ct.fix_clamd_conf("Foo bar\n", 50 * M) == "Foo bar\n"
     assert f"StreamMaxLength {150 * M}\n" in ct.fix_clamd_conf("Foo bar\n", 150 * M)
+
+
+def test_apply_profile_warns_when_apparmor_parser_missing(tmp_path, monkeypatch, capsys):
+    profile = tmp_path / "usr.sbin.clamd"
+    profile.write_text("/usr/sbin/clamd {\n}\n")
+    monkeypatch.setattr(ct, "PROFILE", str(profile))
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    ct.apply_profile()
+    assert "apparmor not installed" in capsys.readouterr().err
+    assert profile.read_text() == "/usr/sbin/clamd {\n}\n"  # untouched
