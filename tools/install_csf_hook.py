@@ -31,6 +31,13 @@ second rule here can't make the first one look "already present".
 
 Used both by install.sh (--with-csf-hook) and the Webmin dashboard's
 "Install" button (install_csf_hook.cgi) - single source of truth.
+
+A server with an explicit "do not install this hook" policy decision
+(e.g. it runs its own hand-tuned CSF setup) can opt out permanently by
+creating /etc/openxs/no-csf-hook (empty file is enough) - this script
+then no-ops instead of silently reapplying rules that were deliberately
+removed there, if --with-csf-hook or the Webmin button is ever run
+again by mistake.
 """
 import glob
 import os
@@ -41,6 +48,7 @@ import sys
 CSF_CONF = "/etc/csf/csf.conf"
 CSF_REGEX = "/etc/csf/regex.custom.pm"
 OPENXS_CONF = "/etc/openxs/openxs.conf"
+NO_HOOK_MARKER = "/etc/openxs/no-csf-hook"
 
 # Tried in this order; the first one that actually has files wins. Plain
 # Apache is last since on a Virtualmin/cPanel box it usually only holds
@@ -92,6 +100,11 @@ def _insert_rule(content, unique_marker, rule_text):
 
 
 def main():
+    if os.path.exists(NO_HOOK_MARKER):
+        print(f"{NO_HOOK_MARKER} exists - this server has an explicit "
+              "no-CSF-hook policy decision, skipping.")
+        return
+
     if not os.path.exists(CSF_CONF):
         print("CSF was not found on this server - nothing to do.")
         return

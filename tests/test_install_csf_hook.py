@@ -104,6 +104,26 @@ def test_main_inserts_both_rules_with_configured_thresholds(tmp_path, monkeypatc
     assert regex_text2.count("openxs-scan") == regex_text.count("openxs-scan")
 
 
+def test_main_noops_when_no_hook_marker_present(tmp_path, monkeypatch, capsys):
+    csf_conf = tmp_path / "csf.conf"
+    csf_conf.write_text('CUSTOM1_LOG = ""\nCUSTOM2_LOG = ""\n')
+    csf_regex = tmp_path / "regex.custom.pm"
+    csf_regex.write_text(REGEX_SKELETON)
+    marker = tmp_path / "no-csf-hook"
+    marker.write_text("")
+
+    monkeypatch.setattr(h, "CSF_CONF", str(csf_conf))
+    monkeypatch.setattr(h, "CSF_REGEX", str(csf_regex))
+    monkeypatch.setattr(h, "NO_HOOK_MARKER", str(marker))
+    monkeypatch.setattr(h.subprocess, "run", _fake_run)
+
+    h.main()
+
+    assert csf_conf.read_text() == 'CUSTOM1_LOG = ""\nCUSTOM2_LOG = ""\n'
+    assert csf_regex.read_text() == REGEX_SKELETON
+    assert "no-csf-hook" in capsys.readouterr().out
+
+
 def test_main_skips_wpbrute_rule_when_no_access_log_found(tmp_path, monkeypatch):
     csf_conf = tmp_path / "csf.conf"
     csf_conf.write_text('CUSTOM1_LOG = ""\nCUSTOM2_LOG = ""\n')

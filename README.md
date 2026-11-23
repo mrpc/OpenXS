@@ -62,7 +62,9 @@ product.
   custom-trigger mechanism (no changes to `lfd` itself). Also auto-bans
   WordPress wp-login/XML-RPC brute force across every vhost's access log
   — something CSF alone never catches, since those attempts always
-  return HTTP 200.
+  return HTTP 200. A server with an explicit "don't install this hook"
+  decision can opt out permanently by creating
+  `/etc/openxs/no-csf-hook`.
 - **Scheduled + on-demand scanning**: a daily cron job plus a manual
   "scan this directory" action.
 - **Quarantine**: optional, opt-in — moves flagged files out of the
