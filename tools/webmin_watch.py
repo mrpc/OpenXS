@@ -70,6 +70,10 @@ WATCHED_RELPATHS = [
     ".fetchmailrc",
 ]
 MAX_HASH_BYTES = 65536
+# Sentinel for "observed absent" in the persistence store - distinct from any
+# sha256 hex digest, so a file appearing where it was confirmed absent before
+# is itself a finding (not treated as a fresh, trust-it baseline).
+_ABSENT = "ABSENT"
 
 LOGIN_SOURCES = {
     "Usermin": "/var/usermin/miniserv.log",
@@ -150,19 +154,37 @@ def _safe_hash(home, relpath, max_bytes=MAX_HASH_BYTES):
 def check_persistence(state):
     """Returns a list of (user, home, relpath) findings, and updates
     state["persistence"] in place (baseline-on-first-sight, see module
-    docstring)."""
+    docstring).
+
+    Absence (the file truly doesn't exist) is tracked too, as _ABSENT, not
+    just dropped from the store: a file that never existed before and is
+    then created (e.g. an attacker setting up a recovery address or a
+    .forward pipe-command on an account that never had one) is exactly the
+    case this module exists to catch - treating "never observed" and
+    "observed absent" as the same state would let that first creation slip
+    through as a silent baseline. A path that exists but fails the safety
+    checks in _safe_hash (symlink escape, not a regular file) is left
+    untracked, same as before - it's not safe to read, not confirmed absent."""
     store = state.setdefault("persistence", {})
     findings = []
     for user, home in _homes():
         for relpath in WATCHED_RELPATHS:
             key = f"{home}:{relpath}"
-            digest = _safe_hash(home, relpath)
+            path = os.path.join(home, relpath)
             prev = store.get(key)
+            if not os.path.lexists(path):
+                if prev != _ABSENT:
+                    store[key] = _ABSENT
+                continue
+            digest = _safe_hash(home, relpath)
             if digest is None:
-                store.pop(key, None)
+                store.pop(key, None)  # exists but unsafe to read: don't track
                 continue
             if prev is None:
-                store[key] = digest  # first sighting: trust it, don't alert
+                store[key] = digest  # first sighting with content: trust it, don't alert
+            elif prev == _ABSENT:
+                store[key] = digest
+                findings.append((user, home, relpath))  # appeared where confirmed absent
             elif prev != digest:
                 store[key] = digest
                 findings.append((user, home, relpath))

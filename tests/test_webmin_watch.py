@@ -58,20 +58,29 @@ def test_persistence_ignores_symlink_escape(tmp_path, monkeypatch):
     assert f"{home}:.forward" not in state.get("persistence", {})
 
 
-def test_persistence_missing_file_tracked_then_cleared(tmp_path, monkeypatch):
+def test_persistence_file_created_where_confirmed_absent_is_a_finding(tmp_path, monkeypatch):
     home = _mkhome(tmp_path, "victim")
     forward = home / ".forward"
     monkeypatch.setattr(w, "_homes", lambda: [("victim", str(home))])
 
     state = {}
-    assert w.check_persistence(state) == []  # nothing there yet
+    assert w.check_persistence(state) == []  # nothing there yet: baselined as absent
+    assert state["persistence"][f"{home}:.forward"] == w._ABSENT
 
     forward.write_text("|/some/pipe")
-    assert w.check_persistence(state) == []  # first sighting, baselined
+    findings = w.check_persistence(state)
+    assert findings == [("victim", str(home), ".forward")]
+
+    # same content again: no repeat finding
+    assert w.check_persistence(state) == []
 
     forward.unlink()
-    assert w.check_persistence(state) == []
-    assert f"{home}:.forward" not in state["persistence"]
+    assert w.check_persistence(state) == []  # deletion itself isn't a finding
+    assert state["persistence"][f"{home}:.forward"] == w._ABSENT
+
+    # re-created after deletion: a finding again, not silently re-baselined
+    forward.write_text("|/some/other/pipe")
+    assert w.check_persistence(state) == [("victim", str(home), ".forward")]
 
 
 USERMIN_AUTH = 'X.X.X.X - root [29/Jan/2024:15:57:02 +0200] "GET /mailbox/index.cgi?id=INBOX HTTP/1.1" 200 4208\n'
